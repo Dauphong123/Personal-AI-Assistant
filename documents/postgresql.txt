@@ -1,0 +1,99 @@
+PostgreSQL Databases
+
+PostgreSQL is an open-source relational database management system. It stores structured data in tables consisting of rows and columns. PostgreSQL supports SQL for creating, reading, updating, and deleting data.
+
+A PostgreSQL database can contain multiple schemas. A schema is a logical namespace that can contain tables, views, functions, and other database objects. The default schema is commonly called public.
+
+A table consists of columns and rows. Each column has a data type that determines what kind of value can be stored. Common PostgreSQL data types include integer, numeric, text, boolean, date, timestamp, and UUID.
+
+A primary key uniquely identifies each row in a table. A primary key cannot contain NULL values and should uniquely identify the corresponding record.
+
+For example, a users table could contain an id column as its primary key:
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL
+);
+
+The SERIAL type can automatically generate sequential integer values. Modern PostgreSQL applications can also use identity columns instead of SERIAL.
+
+A foreign key creates a relationship between two tables. It requires values in one column to correspond to values in a referenced column of another table.
+
+For example, an orders table could reference the users table:
+
+CREATE TABLE orders (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    total NUMERIC(10, 2)
+);
+
+In this example, user_id is a foreign key that references the id column of users.
+
+SQL queries can retrieve data using SELECT. For example:
+
+SELECT username, email
+FROM users
+WHERE id = 10;
+
+The WHERE clause filters rows. Without a WHERE clause, a SELECT query can return every row in the table.
+
+The INSERT statement adds new rows:
+
+INSERT INTO users (username, email)
+VALUES ('alice', 'alice@example.com');
+
+The UPDATE statement modifies existing rows:
+
+UPDATE users
+SET email = 'new@example.com'
+WHERE id = 10;
+
+The DELETE statement removes rows:
+
+DELETE FROM users
+WHERE id = 10;
+
+A transaction groups multiple database operations into a single logical unit. PostgreSQL transactions follow the ACID properties: atomicity, consistency, isolation, and durability.
+
+A transaction can be started using BEGIN and completed using COMMIT. If an error occurs, changes can be undone using ROLLBACK.
+
+Indexes can improve the speed of queries that search or sort data. An index is a separate data structure maintained by the database. Although indexes can make reads faster, they require additional storage and can increase the cost of INSERT, UPDATE, and DELETE operations.
+
+For example, an index can be created on an email column:
+
+CREATE INDEX idx_users_email
+ON users(email);
+
+PostgreSQL commonly uses B-tree indexes for equality and range queries. Other index types, such as Hash, GiST, SP-GiST, GIN, and BRIN, are available for specific workloads.
+
+A JOIN combines rows from multiple tables. An INNER JOIN returns rows where the join condition matches in both tables.
+
+For example:
+
+SELECT users.username, orders.total
+FROM users
+INNER JOIN orders
+ON users.id = orders.user_id;
+
+A LEFT JOIN returns every row from the table on the left side and matching rows from the table on the right side. If no matching row exists, the columns from the right table contain NULL.
+
+Database normalization is a technique for organizing data to reduce unnecessary duplication and improve consistency. Relational database designs commonly separate related information into different tables and connect them using keys.
+
+PostgreSQL supports constraints that enforce rules on stored data. Common constraints include PRIMARY KEY, FOREIGN KEY, UNIQUE, NOT NULL, and CHECK.
+
+A CHECK constraint can ensure that a value satisfies a condition:
+
+CREATE TABLE products (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    price NUMERIC(10, 2) CHECK (price >= 0)
+);
+
+PostgreSQL also supports views. A view is a stored query that can be used similarly to a table. Views can simplify complex queries and control which data is exposed to users.
+
+PostgreSQL supports roles and permissions for controlling database access. A role can be granted privileges such as SELECT, INSERT, UPDATE, and DELETE on database objects.
+
+PostgreSQL databases can be backed up using tools such as pg_dump. A backup can be restored to recover data after accidental deletion, corruption, or other failures.
+
+PostgreSQL is commonly used as the database layer for web applications, APIs, data-processing systems, and other software applications that require reliable structured data storage.

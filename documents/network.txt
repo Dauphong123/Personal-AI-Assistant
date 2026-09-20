@@ -1,0 +1,59 @@
+Computer Networking Fundamentals
+
+A computer network is a collection of devices that communicate with each other to exchange data. Devices on a network can include computers, servers, smartphones, routers, switches, and other network-enabled equipment.
+
+An IP address identifies a device or network interface at the network layer. IPv4 addresses consist of 32 bits and are commonly written as four decimal numbers separated by periods. For example, 192.168.1.10 is an IPv4 address.
+
+IPv6 uses 128-bit addresses and was developed to provide a much larger address space than IPv4. An IPv6 address is normally written using hexadecimal numbers separated by colons.
+
+A private IPv4 address is intended for use inside private networks and is not directly routable on the public Internet. Common private IPv4 ranges include 10.0.0.0/8, 172.16.0.0/12, and 192.168.0.0/16.
+
+A router connects different networks and forwards packets between them. A typical home router connects a private local network to the Internet.
+
+A switch connects devices within a local network. Ethernet switches forward frames based on MAC addresses. Unlike a basic network hub, a switch can send a frame only toward the appropriate port when it knows the destination MAC address.
+
+A MAC address is a hardware-level address associated with a network interface. Ethernet normally uses MAC addresses to deliver frames within a local network.
+
+The Domain Name System, or DNS, translates domain names into IP addresses. For example, a DNS lookup can translate example.com into an IP address that a client can use to connect to the server.
+
+The Dynamic Host Configuration Protocol, or DHCP, can automatically provide network configuration information to clients. DHCP can assign an IP address, subnet mask, default gateway, and DNS server information.
+
+A subnet mask determines which portion of an IPv4 address identifies the network and which portion identifies a host. CIDR notation is commonly used to describe network prefixes. For example, 192.168.1.0/24 represents a network with a 24-bit prefix.
+
+TCP and UDP are transport-layer protocols.
+
+TCP is connection-oriented and provides reliable, ordered delivery of data. It uses mechanisms such as acknowledgements, sequence numbers, retransmission, and flow control. TCP is commonly used when reliable delivery is important.
+
+UDP is connectionless and does not guarantee delivery, ordering, or retransmission. UDP has lower protocol overhead than TCP and can be useful for applications where low latency is more important than guaranteed delivery.
+
+HTTP is an application-layer protocol commonly used for communication between web clients and web servers. HTTPS is HTTP transmitted over a secure connection using TLS.
+
+TLS provides encryption, authentication, and integrity protection for network communication. HTTPS uses TLS to protect HTTP traffic.
+
+A port number identifies a network service associated with a transport-layer connection. Port numbers allow multiple applications to use network communication on the same host.
+
+Some commonly associated ports include port 80 for HTTP, port 443 for HTTPS, port 22 for SSH, and port 53 for DNS. These are conventional assignments, although software can be configured to use different ports.
+
+The Transmission Control Protocol uses a three-way handshake to establish a connection. The client sends a SYN packet, the server responds with SYN-ACK, and the client sends an ACK.
+
+After a TCP connection has been established, data can be exchanged between the two endpoints. TCP uses sequence numbers to track transmitted data and acknowledgements to indicate successfully received data.
+
+A firewall controls network traffic according to configured rules. A firewall can allow or block traffic based on factors such as source address, destination address, port, protocol, or connection state.
+
+NAT, or Network Address Translation, modifies network address information as packets pass through a network device. Home routers commonly use NAT to allow multiple private devices to share a public IPv4 address.
+
+A VPN, or Virtual Private Network, creates a protected communication channel over another network. VPNs can be used to connect remote users to private networks or connect separate networks securely.
+
+Latency is the time required for data to travel between endpoints. Bandwidth describes the maximum rate at which data can theoretically be transferred. High bandwidth does not necessarily mean low latency.
+
+Packet loss occurs when network packets fail to reach their destination. Packet loss can result from congestion, faulty hardware, interference, or other network problems.
+
+Ping is a common diagnostic tool used to test reachability and measure round-trip time between a host and another network endpoint. It commonly uses ICMP echo requests and replies.
+
+Traceroute is a diagnostic tool that can show the sequence of network hops between a source and destination. It can help identify where delays or connectivity problems occur.
+
+A client-server architecture separates applications into clients that request services and servers that provide services. For example, a web browser acts as a client while a web server provides web resources.
+
+A load balancer distributes incoming traffic across multiple servers. Load balancing can improve scalability, availability, and fault tolerance.
+
+Caching stores frequently accessed data closer to the client or application. Network and web caches can reduce latency and decrease the amount of traffic sent to an origin server.

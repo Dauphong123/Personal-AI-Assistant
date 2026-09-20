@@ -1,0 +1,44 @@
+Docker Containers and Images
+
+Docker is a platform for developing, packaging, and running applications in isolated environments called containers. A container includes an application and the software dependencies required to run it, while sharing the host operating system's kernel.
+
+A Docker image is a read-only template used to create containers. Images contain the files, libraries, dependencies, and configuration needed by an application. A single image can be used to create multiple containers.
+
+A Docker container is a running instance of an image. Containers are isolated from each other, but they can communicate through Docker networks when configured to do so.
+
+Dockerfiles are text files that describe how to build a Docker image. A Dockerfile can specify a base image, install dependencies, copy application files, expose ports, and define the command that starts the application.
+
+For example, a simple Python application might use the following Dockerfile:
+
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["python", "app.py"]
+
+The FROM instruction specifies the base image. WORKDIR sets the working directory inside the image. COPY copies files from the build context into the image. RUN executes commands while building the image. CMD specifies the default command executed when a container starts.
+
+The docker build command creates an image from a Dockerfile. For example:
+
+docker build -t my-python-app .
+
+The -t option gives the image a name. The period specifies the current directory as the build context.
+
+The docker run command creates and starts a container from an image. For example:
+
+docker run my-python-app
+
+A container can be stopped with docker stop and removed with docker rm. Images can be removed with docker rmi.
+
+Docker volumes provide persistent storage for containers. Normally, data stored only inside a container can disappear when the container is removed. A volume stores data outside the container's writable layer, allowing the data to survive container recreation.
+
+Docker networks allow containers to communicate with each other. For example, a web application container can communicate with a PostgreSQL database container through a Docker network.
+
+Docker Compose is a tool for defining and running applications consisting of multiple containers. A Compose configuration can define services such as a web server, application server, and database. The services can share networks and volumes.
+
+Containers are generally more lightweight than virtual machines because containers share the host operating system kernel. A virtual machine normally includes its own guest operating system and kernel.
+
+Docker does not provide complete isolation in exactly the same way as a virtual machine. Containers share the host kernel, so the security boundary is different from that of a virtual machine.
+
+A common development workflow is to create a Dockerfile, build an image, run a container from that image, test the application, and then publish the image to a container registry. Registries allow images to be stored and distributed between machines.
