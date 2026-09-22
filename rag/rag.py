@@ -1,6 +1,6 @@
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
-from langchain_core import document_loaders
+from langchain_core.tools import BaseTool, tool
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -34,3 +34,16 @@ class RAG:
 
     def get_retriever(self, parameter):
         return self.vectorstores.as_retriever(kwargs=parameter)
+
+    def get_search_document_tools(self, query: str) -> BaseTool:
+        @tool
+        def search_document(query: str) -> str:
+            """Search the codebase for the relevant source code"""
+            documents = self.query(query)
+
+            return "\n\n".join(
+                f"FILE: {doc.metadata['source']}\n{doc.page_content}"
+                for doc in documents
+            )
+
+        return search_document
