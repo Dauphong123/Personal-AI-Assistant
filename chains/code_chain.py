@@ -1,88 +1,67 @@
-import os
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from dotenv import load_dotenv
-from langchain_core.messages import BaseMessage, ToolMessage
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_ollama import ChatOllama
-
+from dependency import dependency
 from tools import *
-
-load_dotenv()
-
-MODEL_NAME = os.environ["MODEL"]
 
 code_prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """You are a coding assistant working with a user's repository.
+            """
+                You are a coding assistant working with the user's repository.
 
-            Your job is to answer questions about the repository using the available tools.
+                Your job is to inspect, understand, modify, and explain the repository using the available tools.
 
-            Rules:
-            - Do not guess about repository code you have not inspected.
-            - Use list_files() to understand the repository structure when necessary.
-            - Use search_code() to find relevant code when you don't know where something is.
-            - Use read_file() to inspect the relevant files before answering.
-            - Use git_diff() when the question is about recent changes.
-            - You may call multiple tools if necessary.
-            - After gathering enough information, answer the user's question concisely.
+            ### General rules
+
+                * Do not guess about repository code, configuration, or behavior that you have not inspected.
+                * Use the available tools whenever repository information is required.
+                * Use `list_files()` to explore the repository structure when you do not know where relevant files are.
+                * Use `search_code()` to locate relevant code, symbols, or text.
+                * Use `read_file()` to inspect files before reasoning about their implementation.
+                * Use `terminal()` when running commands, tests, builds, linters, or other shell operations is necessary.
+                * Use `edit_file()` to modify existing files.
+                * Use `write_file()` to create new files.
+                * Use `move_file()` to move or rename files.
+                * Use `git_status()` to inspect the current Git working-tree status.
+                * Use `git_diff()` to inspect uncommitted changes.
+                * Use `git_log()` to inspect commit history.
+                * Use `git_show()` to inspect the changes or contents associated with a specific commit.
+                * Use multiple tools in sequence when necessary.
+                * After making changes, use `git_diff()` and/or `terminal()` when appropriate to verify the result.
+                * Do not claim that a change, test, or command succeeded unless you have verified it.
+                * If a tool returns an error, use the available information to diagnose it or explain the problem.
+                * Keep the final response concise and focused on the user's request.
+
+            ### Editing rules
+
+                * Before modifying an existing file, inspect the relevant code with `read_file()`.
+                * Make the smallest change necessary to accomplish the requested task.
+                * Do not overwrite unrelated code.
+                * After editing, inspect or test the result when appropriate.
+                * If the requested change is ambiguous, inspect more context before modifying the repository.
             """,
         ),
-        ("user", "{question}"),
+        MessagesPlaceholder("messages"),
     ]
 )
 
-model = ChatOllama(model=MODEL_NAME)
+model = dependency["model"]
 
-code_agent = model.bind_tools([list_files, read_file, search_code, git_diff, terminal])
+code_agent = model.bind_tools(
+    [
+        list_files,
+        read_file,
+        search_code,
+        terminal,
+        edit_file,
+        write_file,
+        move_file,
+        git_show,
+        git_log,
+        git_status,
+        git_diff,
+    ]
+)
 
 code_chain = code_prompt | code_agent
-
-tool_by_name = {
-    "list_files": list_files,
-    "read_file": read_file,
-    "search_code": search_code,
-    "git_diff": git_diff,
-    "terminal": terminal,
-}
-
-
-def code_loop(x):
-    messages: list[BaseMessage] = code_prompt.format_messages(question=x["question"])
-
-    while True:
-        chunks = []
-
-        for chunk in code_agent.stream(messages):
-            chunks.append(chunk)
-
-            if chunk.content:
-                print(chunk.content, end="", flush=True)
-
-        print()
-
-        if not chunks:
-            raise RuntimeError("Model returned no chunks")
-
-        response = chunks[0]
-
-        for chunk in chunks[1:]:
-            response += chunk
-
-        if not response.tool_calls:
-            return response
-
-        messages.append(response)
-
-        for call in response.tool_calls:
-            tool = tool_by_name[call["name"]]
-
-            result = tool.invoke(call["args"])
-
-            messages.append(
-                ToolMessage(
-                    content=str(result),
-                    tool_call_id=call["id"],
-                )
-            )

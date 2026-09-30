@@ -1,12 +1,7 @@
-import os
-from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
-from data.route_query import Router
-from dotenv import load_dotenv
 
-load_dotenv()
-
-MODEL_NAME = os.environ["MODEL"]
+from data import Router
+from dependency import dependency
 
 router_prompt = ChatPromptTemplate.from_messages(
     [
@@ -22,7 +17,7 @@ router_prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
-model = ChatOllama(model=MODEL_NAME)
+model = dependency["model"]
 model = model.with_structured_output(Router)
 
 router_chain = router_prompt | model

@@ -1,1 +1,1 @@
-from .rag import RAG
+from .rag import RAG as RAG

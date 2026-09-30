@@ -1,13 +1,9 @@
-import os
-from langchain_core.runnables import RunnableLambda, RunnablePassthrough
-from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
+
+from data import RagOutput
+from dependency import dependency
 from rag import RAG
-from dotenv import load_dotenv
-
-load_dotenv()
-
-MODEL_NAME = os.environ["MODEL"]
 
 
 def format_docs(docs):
@@ -41,7 +37,8 @@ rag_prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
-model = ChatOllama(model=MODEL_NAME)
+model = dependency["model"]
+structured_model = model.with_structured_output(RagOutput)
 
 rag_chain = (
     {
@@ -49,5 +46,5 @@ rag_chain = (
         "question": RunnablePassthrough(),
     }
     | rag_prompt
-    | model
+    | structured_model
 )

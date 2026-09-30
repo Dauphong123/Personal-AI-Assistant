@@ -29,17 +29,17 @@ class RAG:
         else:
             self.vectorstores.add_documents(documents)
 
-    def query(self, query):
+    def search(self, query):
         return self.retriever.invoke(query)
 
     def get_retriever(self, parameter):
         return self.vectorstores.as_retriever(kwargs=parameter)
 
-    def get_search_document_tools(self, query: str) -> BaseTool:
+    def get_search_document_tools(self) -> BaseTool:
         @tool
         def search_document(query: str) -> str:
             """Search the codebase for the relevant source code"""
-            documents = self.query(query)
+            documents = self.search(query)
 
             return "\n\n".join(
                 f"FILE: {doc.metadata['source']}\n{doc.page_content}"
