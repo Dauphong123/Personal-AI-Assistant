@@ -3,7 +3,6 @@ from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
 from data import RagOutput
 from dependency import dependency
-from rag import RAG
 
 
 def format_docs(docs):
@@ -18,9 +17,8 @@ def format_docs(docs):
     )
 
 
-rag = RAG()
+rag = dependency["rag"]
 retriever = rag.get_retriever({"k": 5, "filter": {}})
-
 
 rag_prompt = ChatPromptTemplate.from_messages(
     [

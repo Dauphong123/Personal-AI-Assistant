@@ -30,7 +30,6 @@ while True:
             metadata.get("langgraph_node")  # pyright: ignore
             in [
                 "direct",
-                "rag",
                 "code_tools",
                 "tool_execute",
             ]

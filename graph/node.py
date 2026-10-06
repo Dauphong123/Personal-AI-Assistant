@@ -6,21 +6,32 @@ from data.route_query import Router
 from data.state import State
 from dependency import dependency
 from tools import (
-    git_diff,
-    list_files,
-    read_file,
-    search_code,
-    terminal,
     delete_file,
+    edit_file,
+    git_diff,
     git_log,
     git_show,
     git_status,
-    edit_file,
+    list_files,
     move_file,
+    read_file,
+    search_code,
+    terminal,
     write_file,
 )
 
 MAX_HISTORY_TOKENS = 8000
+
+
+def count_message_tokens(messages):
+    return sum(
+        len(
+            dependency["tokenizer"].encode(
+                str(message.content), add_special_tokens=False
+            )
+        )
+        for message in messages
+    )
 
 
 def code_tools(state: State):
@@ -30,7 +41,7 @@ def code_tools(state: State):
 
 
 def rag(state: State):
-    output: RagOutput = rag_chain.invoke({"question": state["messages"][-1]})  # pyright: ignore
+    output: RagOutput = rag_chain.invoke({"question": state["messages"][-1].content})  # pyright: ignore
 
     return {"messages": [output.response], "search_file": [output.source]}
 
@@ -52,6 +63,7 @@ def tool_execute(state: State):
         "delete_file": delete_file,
         "edit_file": edit_file,
         "write_file": write_file,
+        "move_file": move_file,
         # using terminal
         "terminal": terminal,
         # look at git history
@@ -92,7 +104,7 @@ def direct(state: State):
 
 
 def summarize_need(state: State):
-    tokens_num = dependency["model"].get_num_tokens_from_messages(state["messages"])
+    tokens_num = count_message_tokens(state["messages"])
 
     if tokens_num > MAX_HISTORY_TOKENS:
         return "summarize"

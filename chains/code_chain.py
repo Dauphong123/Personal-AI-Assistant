@@ -27,6 +27,7 @@ code_prompt = ChatPromptTemplate.from_messages(
                 * Use `git_diff()` to inspect uncommitted changes.
                 * Use `git_log()` to inspect commit history.
                 * Use `git_show()` to inspect the changes or contents associated with a specific commit.
+                # Use `search_knowledge()` to search for information in memory
                 * Use multiple tools in sequence when necessary.
                 * After making changes, use `git_diff()` and/or `terminal()` when appropriate to verify the result.
                 * Do not claim that a change, test, or command succeeded unless you have verified it.
@@ -61,6 +62,7 @@ code_agent = model.bind_tools(
         git_log,
         git_status,
         git_diff,
+        search_knowledge,
     ]
 )
 

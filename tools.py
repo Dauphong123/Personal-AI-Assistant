@@ -5,7 +5,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from rag.rag import RAG
+from dependency import dependency
 
 IGNORED_DIRS = {
     ".venv",
@@ -69,8 +69,8 @@ def list_files(path: str = ".") -> list[str]:
 @tool
 def read_file(
     path: str,
-    start_line: int | None = None,
-    end_line: int | None = None,
+    start_line: int | None = 100,
+    end_line: int | None = 180,
 ) -> str:
     """Read a file and optionally restrict the returned line range."""
 
@@ -101,6 +101,11 @@ def search_code(query: str, directory: str = ".") -> str:
 
     root = Path(directory)
 
+    ignore = []
+    for i in IGNORED_DIRS:
+        ignore.append("--glob")
+        ignore.append("!" + i + "/**")
+
     if not root.exists():
         return f"Error: directory does not exist: {root}"
 
@@ -110,7 +115,7 @@ def search_code(query: str, directory: str = ".") -> str:
     # No shell needed here.
     # This works on Windows, Linux, and macOS as long as rg is installed.
     result = subprocess.run(
-        ["rg", "-n", query, str(root)],
+        ["rg", "-n"] + ignore + [query, str(root)],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -153,6 +158,18 @@ def git_diff(repo_path: str = ".") -> str:
         return f"Error running git diff:\n{result.stderr.strip()}"
 
     return result.stdout
+
+
+ALLOWED_COMMANDS = {
+    "python",
+    "pytest",
+    "pip",
+    "git",
+    "npm",
+    "node",
+    "ruff",
+    "mypy",
+}
 
 
 @tool
@@ -350,6 +367,5 @@ def git_show(dir: str, commit: str) -> str:
     return result.stdout
 
 
-rag = RAG()
-rag.add_document("./documents/")
+rag = dependency["rag"]
 search_knowledge = rag.get_search_document_tools()

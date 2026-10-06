@@ -1,9 +1,9 @@
 import os
 
 from dotenv import load_dotenv
-from dependency import dependency
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_ollama import ChatOllama
+
+from dependency import dependency
 
 load_dotenv()
 

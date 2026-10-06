@@ -19,7 +19,6 @@ graph = StateGraph(State)
 
 graph.add_node("direct", direct)
 graph.add_node("code_tools", code_tools)
-graph.add_node("rag", rag)
 graph.add_node("tool_execute", tool_execute)
 graph.add_node("summarize_need", summarize_need)
 graph.add_node("reverse_router", reverse_router)
@@ -27,7 +26,7 @@ graph.add_node("clear_history", clear_history)
 graph.add_node("summarize", summarize)
 
 graph.add_conditional_edges(
-    START, router, {"rag": "rag", "code_tools": "code_tools", "direct": "direct"}
+    START, router, {"code_tools": "code_tools", "direct": "direct"}
 )
 
 graph.add_conditional_edges(

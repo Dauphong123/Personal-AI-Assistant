@@ -8,7 +8,6 @@ router_prompt = ChatPromptTemplate.from_messages(
         (
             "system",
             """You route user question.
-                Use "rag" when the question requires information from the provided document collection. 
                 Use "direct" when the question can be answered using the model's general knowledge.
                 Use "code" when the question need to read the code base from the machine.
             """,
