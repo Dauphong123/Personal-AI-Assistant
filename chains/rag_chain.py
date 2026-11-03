@@ -18,7 +18,7 @@ def format_docs(docs):
 
 
 rag = dependency["rag"]
-retriever = rag.get_retriever({"k": 5, "filter": {}})
+retriever = rag.get_retriever({"k": 5})
 
 rag_prompt = ChatPromptTemplate.from_messages(
     [

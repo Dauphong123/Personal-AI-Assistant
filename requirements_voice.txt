@@ -1,0 +1,7 @@
+# Optional: wake-word voice mode (python main.py --voice). Not needed for keyboard use.
+sounddevice==0.5.6        # microphone + speaker (PortAudio)
+openwakeword==0.6.0       # wake word (ONNX backend)
+silero-vad==6.2.3         # voice activity detection
+faster-whisper==1.2.1     # speech recognition
+piper-tts==1.8.0          # text-to-speech
+sherpa-onnx==2.0.1       # speaker verification (voiceprint)
