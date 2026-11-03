@@ -1,5 +1,5 @@
+__pycache__/
+*.pyc
 .venv
-__pycache__
 chroma_db
 .env
-
