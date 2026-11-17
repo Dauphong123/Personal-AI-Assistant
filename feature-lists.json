@@ -445,13 +445,48 @@
       "id": "F019",
       "name": "Web UI rewrite: TypeScript frontend, Python backend, multiple sessions",
       "description": "Split the web chat into a TypeScript frontend (webui) and the Python app as an API backend, and let the browser hold several chat sessions, each with its own conversation.",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-17",
-      "completed": null,
+      "completed": "2026-11-17",
       "branch": "feature/F019-webui-typescript-sessions",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "6cc01b6",
+      "files": [
+        "backend/__init__.py",
+        "backend/__main__.py",
+        "backend/session.py",
+        "backend/sessions.py",
+        "backend/server.py",
+        "backend/CLAUDE.md",
+        "webui/package.json",
+        "webui/package-lock.json",
+        "webui/tsconfig.json",
+        "webui/tsconfig.build.json",
+        "webui/scripts/copy-public.mjs",
+        "webui/src/types.ts",
+        "webui/src/api.ts",
+        "webui/src/state.ts",
+        "webui/src/url.ts",
+        "webui/src/main.ts",
+        "webui/public/index.html",
+        "webui/public/style.css",
+        "webui/test/",
+        "webui/CLAUDE.md",
+        ".gitignore",
+        ".claude/skills/new-feature/SKILL.md",
+        "README.md",
+        "CLAUDE.md",
+        "docs/PROJECT.md"
+      ],
+      "tests": [
+        "tests/test_backend_session.py",
+        "tests/test_backend_sessions.py",
+        "tests/test_backend_server.py",
+        "tests/test_backend_main.py",
+        "tests/test_webui_frontend.py",
+        "webui/test/state.test.ts",
+        "webui/test/api.test.ts",
+        "webui/test/url.test.ts"
+      ],
       "steps": [
         {
           "n": 0,
@@ -516,10 +551,10 @@
           "tests": [
             "full suite 520 OK, 11 skipped (2026-11-17)"
           ],
-          "commit": null
+          "commit": "6cc01b6"
         }
       ],
-      "notes": "Opened before planning at the user's request. Rewrites F018 (webui/), which was never committed; its Python code moves to backend/. Defaults chosen (user declined questions): python -m backend; one turn at a time across sessions (WEBUI_MAX_TURNS); sessions in memory only."
+      "notes": "Opened before planning at the user's request. Rewrites F018 (webui/), which was never committed; its Python code moves to backend/. Defaults chosen (user declined questions): python -m backend; one turn at a time across sessions (WEBUI_MAX_TURNS); sessions in memory only. Replaces F018's python -m webui with python -m backend (breaking command change, as requested). Old F018 Python files were never committed and were deleted. Browser-verified in headless Chrome over DevTools with a fake model; never run against the real Ollama graph in this session. Limits: sessions in memory only, no job notices or voice in the web UI."
     }
   ]
 }
