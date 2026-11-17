@@ -830,15 +830,18 @@
           "tests": [
             "tests/test_voice_push_to_talk.py (29 tests: HoldToTalkTests, HandsFreeTests, DictationCommandTests, RecorderTests, BuildKeyTests)"
           ],
-          "commit": null,
+          "commit": "f48f923",
           "done": "2026-11-17"
         },
         {
           "n": 4,
-          "title": "Web transcripts cleaned",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "title": "Web transcripts cleaned (opt-in ?dictate=1)",
+          "status": "done",
+          "tests": [
+            "tests/test_backend_dictation.py (6 tests)"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
         },
         {
           "n": 5,

@@ -1,7 +1,9 @@
 """Voice for the web chat: the browser records, the backend transcribes and speaks.
 
 Push-to-talk replaces the wake word: the page uploads one recording (webm/ogg/wav, decoded with
-PyAV through faster-whisper), gets the text back and sends it like a typed message. Answers are
+PyAV through faster-whisper), gets the text back and sends it like a typed message. With
+?dictate=1 the answer also carries the cleaned-up prompt and any hands-free command
+(`dictation`, from voice.dictation), as the keyboard voice mode uses them. Answers are
 cleaned for speech (voice.text) and synthesized with Piper into a WAV the page plays. Models
 come from voice/ (settings in .env, see voice/CLAUDE.md) and load on first use.
 """
@@ -144,3 +146,13 @@ class WebVoice:
             wav.writeframes(np.asarray(samples, dtype=np.int16).tobytes())
 
         return out.getvalue()
+
+
+def dictation(text: str) -> dict:
+    """The prompt to send for a dictated recording, and "on"/"off" if it was a hands-free command."""
+    from voice.dictation import dictated_prompt, hands_free_command
+
+    if not text.strip():
+        return {"prompt": "", "hands_free": None}
+
+    return {"prompt": dictated_prompt(text), "hands_free": hands_free_command(text)}

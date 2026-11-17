@@ -19,7 +19,8 @@ API (JSON bodies, token in X-Token or Authorization: Bearer):
     POST /api/sessions/<id>/reset
     POST /api/sessions/<id>/rename  {title}
     POST /api/sessions/<id>/delete
-    POST /api/voice/transcribe  audio/*     {"text"}; 503 unless started with --voice
+    POST /api/voice/transcribe  audio/*     {"text"}; 503 unless started with --voice;
+                                            ?dictate=1 adds {"prompt", "hands_free"} (backend.voice.dictation)
     POST /api/voice/speak       {text}      audio/wav (204: nothing speakable)
 """
 
@@ -375,7 +376,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authorized(parse_qs(url.query)):
                 return
 
-            return self._transcribe() if url.path.endswith("/transcribe") else self._speak()
+            if url.path.endswith("/transcribe"):
+                return self._transcribe(dictate=parse_qs(url.query).get("dictate") == ["1"])
+
+            return self._speak()
 
         route = API_ROUTE.match(url.path)
 
@@ -443,8 +447,9 @@ class Handler(BaseHTTPRequestHandler):
 
         self._json(200, self.server.describe())
 
-    def _transcribe(self) -> None:
-        """POST /api/voice/transcribe: raw browser audio in, {"text"} out."""
+    def _transcribe(self, dictate: bool = False) -> None:
+        """POST /api/voice/transcribe: raw browser audio in, {"text"} out (plus the cleaned
+        prompt and hands-free command when dictating)."""
         voice = self.server.voice
 
         if voice is None or not voice.can_transcribe:
@@ -477,7 +482,12 @@ class Handler(BaseHTTPRequestHandler):
             logger.warning("Could not transcribe a recording: %s", exc)
             return self._fail(422, "Could not understand the recording")
 
-        self._json(200, {"text": text})
+        if not dictate:
+            return self._json(200, {"text": text})
+
+        from .voice import dictation
+
+        self._json(200, {"text": text, **dictation(text)})
 
     def _speak(self) -> None:
         """POST /api/voice/speak {text}: a WAV reading it aloud (204 when nothing is speakable)."""
