@@ -1,0 +1,467 @@
+{
+  "features": [
+    {
+      "id": "F001",
+      "name": "RAG over documents",
+      "description": "Chroma vector store over ./documents/, synced idempotently on import (stable chunk ids, stale chunks deleted); exposed as the search_knowledge tool.",
+      "status": "done",
+      "created": "2026-09-21",
+      "completed": "2026-09-21",
+      "commit": "8511e68",
+      "files": [
+        "rag/rag.py",
+        "dependency.py",
+        "documents/"
+      ],
+      "tests": [
+        "tests/test_rag.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F002",
+      "name": "Base model and chains",
+      "description": "ChatOllama model, tokenizer, direct/router/code/summarize chains, import-time dependency singleton.",
+      "status": "done",
+      "created": "2026-09-21",
+      "completed": "2026-09-21",
+      "commit": "8511e68",
+      "files": [
+        "dependency.py",
+        "chains/",
+        "llm_options.py",
+        "data/route_query.py"
+      ],
+      "tests": [
+        "tests/test_llm_options.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F003",
+      "name": "Coding tools",
+      "description": "Filesystem, shell and git tools (list_files, read_file, search_code, terminal, write/edit/delete/move_file, git_status/diff/log/show) confined to PROJECT_ROOT via resolve_path; credential files refused.",
+      "status": "done",
+      "created": "2026-09-22",
+      "completed": "2026-09-22",
+      "commit": "2556293",
+      "files": [
+        "tools.py",
+        "chains/code_chain.py"
+      ],
+      "tests": [
+        "tests/test_tools.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F004",
+      "name": "LangGraph agent flow",
+      "description": "recall_memory -> router -> direct | code_tools <-> tool_execute -> save_memory; summarization over MAX_HISTORY_TOKENS; approval interrupts for state-changing tools; tool_execute never raises, capped at 30 calls per turn.",
+      "status": "done",
+      "created": "2026-09-30",
+      "completed": "2026-09-30",
+      "commit": "cc14206",
+      "files": [
+        "graph/graph.py",
+        "graph/node.py",
+        "data/state.py",
+        "main.py"
+      ],
+      "tests": [
+        "tests/test_graph.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F005",
+      "name": "Long-term memory (Postgres/pgvector)",
+      "description": "Episodic, semantic and procedural memory with LLM extraction, near-duplicate overwrite, supersession and recall into the prompt; optional when DB is unreachable.",
+      "status": "done",
+      "created": "2026-09-30",
+      "completed": "2026-09-30",
+      "commit": "cc14206",
+      "files": [
+        "memories/",
+        "compose.yaml"
+      ],
+      "tests": [
+        "tests/test_memory.py"
+      ],
+      "steps": [],
+      "notes": "Commit attribution approximate: memory present by 8f4c300 at the latest; check git log if exact origin matters."
+    },
+    {
+      "id": "F006",
+      "name": "Live input and turn queue",
+      "description": "ChatLoop runs turns on a worker thread; mid-turn messages queued; stop phrases cancel the turn; y/N approval on the same input line; /jobs and /cancel commands.",
+      "status": "done",
+      "created": "2026-11-04",
+      "completed": "2026-11-04",
+      "commit": "8f4c300",
+      "files": [
+        "chat_loop.py",
+        "turns.py",
+        "main.py"
+      ],
+      "tests": [
+        "tests/test_chat_loop.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F007",
+      "name": "Background jobs",
+      "description": "terminal runs via JobManager; after 5 s it moves to background, completion queues a system notice; job_status and cancel_job tools; jobs killed after 10 min.",
+      "status": "done",
+      "created": "2026-11-04",
+      "completed": "2026-11-04",
+      "commit": "8f4c300",
+      "files": [
+        "jobs.py",
+        "tools.py"
+      ],
+      "tests": [
+        "tests/test_jobs.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F008",
+      "name": "Streaming speech",
+      "description": "SpeechStream turns streamed answers into sentences (tool-call text muted, code omitted, speech limit); run_turn on_speech; on_cancel drops queued speech.",
+      "status": "done",
+      "created": "2026-11-04",
+      "completed": "2026-11-04",
+      "commit": "8f4c300",
+      "files": [
+        "turns.py",
+        "chat_loop.py"
+      ],
+      "tests": [
+        "tests/test_streaming_speech.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F009",
+      "name": "Voice mode",
+      "description": "Optional wake-word/VAD/STT/TTS assistant state machine feeding ChatLoop; spoken approvals; voice.enroll and voice.check utilities.",
+      "status": "done",
+      "created": "2026-11-04",
+      "completed": "2026-11-04",
+      "commit": "8f4c300",
+      "files": [
+        "voice/",
+        "requirements_voice.txt"
+      ],
+      "tests": [
+        "tests/test_voice.py",
+        "tests/test_voice_parts.py",
+        "tests/test_voice_hardening.py",
+        "tests/test_voice_engines.py"
+      ],
+      "steps": [],
+      "notes": "test_voice_engines needs RUN_VOICE_ENGINE_TESTS=1 (real models)."
+    },
+    {
+      "id": "F010",
+      "name": "Speaker verification",
+      "description": "WeSpeaker voiceprint enrolment and verification of command audio; fails closed on short speech; convenience lock only.",
+      "status": "done",
+      "created": "2026-11-04",
+      "completed": "2026-11-04",
+      "commit": "8f4c300",
+      "files": [
+        "voice/speaker.py",
+        "voice/enroll.py"
+      ],
+      "tests": [
+        "tests/test_speaker.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F011",
+      "name": "Web search and page reading",
+      "description": "web_search (ddgs, cached) and read_webpage with SSRF guards (public addresses only, redirect re-checks, DNS pinning, size/time/type limits), BM25 focus, untrusted labelling; WEB_SEARCH_ENABLED switch.",
+      "status": "done",
+      "created": "2026-11-04",
+      "completed": "2026-11-04",
+      "commit": "8f4c300",
+      "files": [
+        "web.py",
+        "tools.py"
+      ],
+      "tests": [
+        "tests/test_web.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F012",
+      "name": "Hybrid RAG retrieval",
+      "description": "Shared BM25 (stop words, accent folding) fused with vector search by weighted reciprocal rank fusion; distance cutoff; max 2 passages per file.",
+      "status": "done",
+      "created": "2026-11-04",
+      "completed": "2026-11-04",
+      "commit": "8f4c300",
+      "files": [
+        "retrieval.py",
+        "rag/rag.py"
+      ],
+      "tests": [
+        "tests/test_retrieval.py",
+        "tests/test_rag.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F013",
+      "name": "Vietnamese support",
+      "description": "Language detection, NFC normalisation, localized fixed phrases, Vietnamese stop phrases, per-language speech settings.",
+      "status": "done",
+      "created": "2026-11-04",
+      "completed": "2026-11-04",
+      "commit": "8f4c300",
+      "files": [
+        "language.py",
+        "chat_loop.py",
+        "turns.py",
+        "voice/"
+      ],
+      "tests": [
+        "tests/test_vietnamese.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F014",
+      "name": "Hardening",
+      "description": "Fenced job notices skipped by memory, background memory save with wait_for_memory, secret-file refusal, bounded job output, clean ChatLoop/JobManager shutdown.",
+      "status": "done",
+      "created": "2026-11-04",
+      "completed": "2026-11-04",
+      "commit": "8f4c300",
+      "files": [
+        "chat_loop.py",
+        "jobs.py",
+        "tools.py",
+        "memories/"
+      ],
+      "tests": [
+        "tests/test_hardening.py"
+      ],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F015",
+      "name": "edit_file line-ending preservation and form-text fix",
+      "description": "edit_file keeps line endings; web page text kept when wrapped in one form, form dropped unless it holds most of the text.",
+      "status": "done",
+      "created": "2026-11-17",
+      "completed": "2026-11-17",
+      "commit": "b1f4f1e",
+      "files": [
+        "tools.py",
+        "web.py"
+      ],
+      "tests": [
+        "tests/test_tools.py",
+        "tests/test_web.py"
+      ],
+      "steps": [],
+      "notes": "Commits e6cbf47 and b1f4f1e."
+    },
+    {
+      "id": "F016",
+      "name": "Project docs and role skills",
+      "description": "Split CLAUDE.md (root, voice, memories), roster, PROJECT.md and role skills.",
+      "status": "done",
+      "created": "2026-11-17",
+      "completed": "2026-11-17",
+      "commit": "18fac94",
+      "files": [
+        "CLAUDE.md",
+        "docs/",
+        "voice/CLAUDE.md",
+        "memories/CLAUDE.md",
+        ".claude/skills/"
+      ],
+      "tests": [],
+      "steps": [],
+      "notes": "Backfilled from existing code; no step history."
+    },
+    {
+      "id": "F017",
+      "name": "Postgres connection preflight",
+      "description": "Diagnose DB connection failures (e.g. another Postgres owning port 5432): memories.check script, clearer startup warning, container moved to host port 5433.",
+      "status": "done",
+      "created": "2026-11-17",
+      "completed": "2026-11-17",
+      "commit": null,
+      "files": [
+        "memories/diagnose.py",
+        "memories/check.py",
+        "dependency.py",
+        "compose.yaml",
+        ".env.example",
+        "README.md",
+        "CLAUDE.md",
+        "memories/CLAUDE.md",
+        "docs/PROJECT.md"
+      ],
+      "tests": [
+        "tests/test_db_diagnose.py",
+        "tests/test_db_check.py"
+      ],
+      "steps": [
+        {
+          "n": 1,
+          "title": "memories/diagnose.py: parse_netstat + classify",
+          "status": "done",
+          "tests": [
+            "ParseNetstatTests",
+            "ClassifyTests",
+            "RedactTests"
+          ]
+        },
+        {
+          "n": 2,
+          "title": "python -m memories.check script",
+          "status": "done",
+          "tests": [
+            "PortOwnersTests",
+            "RunCheckTests",
+            "MainTests"
+          ]
+        },
+        {
+          "n": 3,
+          "title": "Classified hint in dependency.memory_init warning",
+          "status": "done",
+          "tests": [
+            "ExplainFailureTests"
+          ]
+        },
+        {
+          "n": 4,
+          "title": "Docs (memories/CLAUDE.md, root CLAUDE.md)",
+          "status": "done",
+          "tests": []
+        },
+        {
+          "n": 5,
+          "title": "compose.yaml + .env.example to host port 5433",
+          "status": "done",
+          "tests": []
+        }
+      ],
+      "notes": "Cause verified 2026-11-17: native Windows postgres pid 6688 listens on 5432; Docker not running. User edits own .env DB_URL. Step 5 is config only (no test). dependency.py edit not unit-tested (module is stubbed in tests); verified by reading."
+    },
+    {
+      "id": "F018",
+      "name": "Web chat UI",
+      "description": "python -m webui: local browser chat (streaming, tool approvals, stop, new chat) over the existing graph; stdlib server, loopback only, token + Host/Origin checks.",
+      "status": "done",
+      "created": "2026-11-17",
+      "completed": "2026-11-17",
+      "commit": null,
+      "files": [
+        "webui/__init__.py",
+        "webui/session.py",
+        "webui/server.py",
+        "webui/__main__.py",
+        "webui/static/index.html",
+        "webui/static/app.js",
+        "webui/static/style.css",
+        "webui/CLAUDE.md",
+        "README.md",
+        "CLAUDE.md",
+        "docs/PROJECT.md"
+      ],
+      "tests": [
+        "tests/test_webui_session.py",
+        "tests/test_webui_server.py",
+        "tests/test_webui_static.py",
+        "tests/test_webui_main.py"
+      ],
+      "steps": [
+        {
+          "n": 1,
+          "title": "webui/session.py ChatSession (events, approval, stop, new chat)",
+          "status": "done",
+          "tests": [
+            "tests/test_webui_session.py (15 tests, 2026-11-17)"
+          ]
+        },
+        {
+          "n": 2,
+          "title": "webui/server.py stdlib HTTP+SSE server with token/Host/Origin/size checks",
+          "status": "done",
+          "tests": [
+            "tests/test_webui_server.py (24 tests, 2026-11-17)"
+          ]
+        },
+        {
+          "n": 3,
+          "title": "webui/static index.html + app.js + style.css (separate files for strict CSP; textContent only)",
+          "status": "done",
+          "tests": [
+            "tests/test_webui_static.py (17 tests, 2026-11-17)"
+          ]
+        },
+        {
+          "n": 4,
+          "title": "python -m webui entry point",
+          "status": "done",
+          "tests": [
+            "tests/test_webui_main.py (9 tests)",
+            "LoopbackTests::test_a_busy_port_is_an_error_not_a_silent_second_bind"
+          ]
+        },
+        {
+          "n": 5,
+          "title": "Docs (README, CLAUDE.md, PROJECT.md)",
+          "status": "done",
+          "tests": []
+        }
+      ],
+      "notes": "v1 limits: single user/conversation, no job notices, no voice, tool output streams into answer text. Frontend never run in a real browser (tests check CSP-compat, no HTML sinks, node --check); backend smoke-tested live (page 200, no token 401, bad Host/Origin 403, second bind refused)."
+    },
+    {
+      "id": "F019",
+      "name": "Web UI rewrite: TypeScript frontend, Python backend, multiple sessions",
+      "description": "Split the web chat into a TypeScript frontend (webui) and the Python app as an API backend, and let the browser hold several chat sessions, each with its own conversation.",
+      "status": "in_progress",
+      "created": "2026-11-17",
+      "completed": null,
+      "branch": "feature/F019-webui-typescript-sessions",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {"n": 0, "title": "Workflow: 'open' status in new-feature skill", "status": "done", "tests": [], "commit": null},
+        {"n": 1, "title": "backend/sessions.py: SessionManager (many ChatSessions, shared turn limit)", "status": "in_progress", "tests": ["tests/test_backend_sessions.py"], "commit": null},
+        {"n": 2, "title": "backend/server.py: session API + SSE, serves built frontend from webui/dist", "status": "todo", "tests": ["tests/test_backend_server.py"], "commit": null},
+        {"n": 3, "title": "python -m backend entry point", "status": "todo", "tests": ["tests/test_backend_main.py"], "commit": null},
+        {"n": 4, "title": "webui/ TypeScript core: package.json, tsconfig, api.ts, state.ts, build script", "status": "todo", "tests": ["webui/test/*.test.ts (node --test)"], "commit": null},
+        {"n": 5, "title": "webui/ multi-session UI: main.ts, index.html, style.css", "status": "todo", "tests": ["tests/test_webui_frontend.py", "webui/test/*.test.ts"], "commit": null},
+        {"n": 6, "title": "Remove old Python webui, docs", "status": "todo", "tests": [], "commit": null}
+      ],
+      "notes": "Opened before planning at the user's request. Rewrites F018 (webui/), which was never committed; its Python code moves to backend/. Defaults chosen (user declined questions): python -m backend; one turn at a time across sessions (WEBUI_MAX_TURNS); sessions in memory only."
+    }
+  ]
+}
