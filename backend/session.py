@@ -1,7 +1,7 @@
 """One web conversation: runs turns on a worker thread and records what happens as events.
 
-Events are dicts with a growing `id` and a `type`: user, waiting, token, approval, done,
-cancelled, error, reset. A client reads them with `events_after(last_id)`, so a reconnect
+Events are dicts with a growing `id` and a `type`: user, notice (a finished background job
+starts a turn), waiting, token, approval, done, cancelled, error, reset. A client reads them with `events_after(last_id)`, so a reconnect
 resumes.
 """
 
@@ -11,9 +11,11 @@ import re
 import threading
 import time
 import uuid
+from collections import deque
 
 from langgraph.errors import GraphRecursionError
 
+from jobs import job_owner
 from turns import TurnCancelled, run_turn
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,7 @@ class ChatSession:
         self._cancel = threading.Event()
         self._approval: queue.Queue[bool] | None = None
         self._approval_request: dict | None = None
+        self._notices: deque[tuple[str, str]] = deque()  # (model text, summary) waiting to run
         self.thread_id = self._new_thread_id()
 
     def _new_thread_id(self) -> str:
@@ -118,10 +121,35 @@ class ChatSession:
         if not self._title:
             self._title = short_title(text)
 
-        self._cancel.clear()
-        self._emit("user", text=text)
-        threading.Thread(target=self._work, args=(text,), daemon=True).start()
+        self._begin(text, notice=None)
         return True
+
+    def notify(self, text: str, summary: str) -> None:
+        """Queue a system notice (a finished background job) as a turn of its own.
+
+        `text` goes to the model (flagged, so memory skips it); `summary` is what the page
+        shows. It runs now if the session is idle, else right after the current turn."""
+        with self._cond:
+            self._notices.append((text, summary))
+
+            if self._busy:
+                return
+
+            self._busy = True
+            text, summary = self._notices.popleft()
+
+        self._begin(text, notice=summary)
+
+    def _begin(self, text: str, notice: str | None) -> None:
+        """Start a turn on a worker thread; the caller has already marked the session busy."""
+        self._cancel.clear()
+
+        if notice is None:
+            self._emit("user", text=text)
+        else:
+            self._emit("notice", text=notice)
+
+        threading.Thread(target=self._work, args=(text, notice is not None), daemon=True).start()
 
     def approve(self, allow: bool) -> bool:
         """Answer the waiting tool-approval request. False if none is waiting."""
@@ -186,32 +214,36 @@ class ChatSession:
         finally:
             self._waiting = False
 
-    def _work(self, text: str) -> None:
+    def _work(self, text: str, notice: bool) -> None:
         if not self._take_slot():
             self._finish(("cancelled", {}))
             return
 
         try:
-            outcome = self._turn(text)
+            outcome = self._turn(text, notice)
         finally:
             if self._slot is not None:
                 self._slot.release()
 
         self._finish(outcome)
 
-    def _turn(self, text: str) -> tuple[str, dict]:
+    def _turn(self, text: str, notice: bool) -> tuple[str, dict]:
         """Run the turn; return the final event (type, fields)."""
         config = {"configurable": {"thread_id": self.thread_id}, "recursion_limit": 100}
+        kwargs = {"notice": True} if notice else {}
 
         try:
-            self._run(
-                self.app,
-                text,
-                config,
-                lambda chunk: self._emit("token", text=chunk),
-                self._ask_approval,
-                self._cancel,
-            )
+            # Background jobs started in this turn belong to this session (their notice comes here).
+            with job_owner(self.id):
+                self._run(
+                    self.app,
+                    text,
+                    config,
+                    lambda chunk: self._emit("token", text=chunk),
+                    self._ask_approval,
+                    self._cancel,
+                    **kwargs,
+                )
             return "done", {}
         except TurnCancelled:
             return "cancelled", {}
@@ -222,8 +254,17 @@ class ChatSession:
             return "error", {"text": f"{type(exc).__name__}: {exc}"}
 
     def _finish(self, outcome: tuple[str, dict]) -> None:
-        # The slot is already free; free the session before announcing the end, so a client
-        # that reacts to the event can send its next message at once.
+        # The slot is already free. With no queued notice, free the session before announcing
+        # the end, so a client that reacts to the event can send its next message at once.
         type_, fields = outcome
-        self._busy = False
+
+        with self._cond:
+            queued = self._notices.popleft() if self._notices else None
+
+            if queued is None:
+                self._busy = False
+
         self._emit(type_, **fields)
+
+        if queued is not None:
+            self._begin(queued[0], notice=queued[1])

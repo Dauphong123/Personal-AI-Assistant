@@ -48,6 +48,13 @@ def build_app():
     return ModelGraph.compile(checkpointer=InMemorySaver())
 
 
+def connect_jobs(manager: SessionManager) -> None:
+    """Finished background jobs notify the session that started them."""
+    from tools import JOBS
+
+    JOBS.on_finish = manager.job_finished
+
+
 def cleanup() -> None:
     from graph.node import wait_for_memory
     from tools import JOBS
@@ -74,12 +81,15 @@ def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     print("Loading models...", flush=True)
     manager = SessionManager(build_app(), max_turns=args.max_turns)
+    connect_jobs(manager)
     token = new_token()
     server = None
 
     try:
         try:
-            server = make_server(manager, token, host=args.host, port=args.port, allow_remote=args.allow_remote)
+            server = make_server(
+                manager, token, host=args.host, port=args.port, allow_remote=args.allow_remote, notices=True
+            )
         except OSError as exc:
             sys.exit(f"Could not listen on {args.host}:{args.port} ({exc}). Try another --port.")
 

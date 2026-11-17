@@ -185,7 +185,23 @@ class Handler(BaseHTTPRequestHandler):
 
     def _fail(self, status: int, message: str) -> None:
         self.close_connection = True
+        self._drain_body()
         self._json(status, {"error": message})
+
+    def _drain_body(self) -> None:
+        """Read a request body nobody read yet, so the error is not lost to a reset (closing a
+        socket with unread data makes Windows reset the connection)."""
+        if self.command != "POST" or getattr(self, "_body_read", False):
+            return
+
+        self._body_read = True
+
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return
+
+        self._discard(length)
 
     # --- checks ------------------------------------------------------------------
 
@@ -247,6 +263,8 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self._fail(411, "Content-Length required")
             return None
+
+        self._body_read = True
 
         if length < 0 or length > MAX_BODY:
             self._discard(length)
@@ -331,6 +349,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         url = urlsplit(self.path)
+        self._body_read = False  # the handler serves every request of a keep-alive connection
 
         if not self._host_ok():
             return self._fail(403, "Forbidden host")

@@ -6,12 +6,16 @@ tokens per second, and the shared tokenizer is not known to be safe under concur
 a session whose turn must wait emits a `waiting` event.
 """
 
+import logging
 import threading
 from typing import Literal
 
+from jobs import finished_notice
 from turns import run_turn
 
 from .session import ChatSession
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_SESSIONS = 50
 
@@ -65,6 +69,20 @@ class SessionManager:
 
             del self._sessions[session_id]
             return "deleted"
+
+    def job_finished(self, job) -> None:
+        """JobManager.on_finish: hand a finished background job to the session that started it.
+        Called on a job watcher thread; never raises."""
+        try:
+            session = self.get(job.owner) if job.owner else None
+
+            if session is None:
+                logger.info("Background job %s ended; its session is gone, notice dropped", job.id)
+                return
+
+            session.notify(finished_notice(job), f"Background job {job.id} ended: {job.command}")
+        except Exception:
+            logger.exception("Could not deliver the notice for background job %s", getattr(job, "id", "?"))
 
     def stop_all(self) -> None:
         with self._lock:

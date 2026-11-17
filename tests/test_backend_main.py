@@ -56,11 +56,13 @@ class MainTests(unittest.TestCase):
         build_app = mock.Mock(return_value=SimpleNamespace())
         cleanup = mock.Mock()
         make = mock.Mock(side_effect=make_error, return_value=server)
+        connect_jobs = mock.Mock()
 
         with (
             mock.patch.object(entry, "build_app", build_app),
             mock.patch.object(entry, "cleanup", cleanup),
             mock.patch.object(entry, "make_server", make),
+            mock.patch.object(entry, "connect_jobs", connect_jobs),
             mock.patch.object(entry, "frontend_built", mock.Mock(return_value=built)),
             contextlib.redirect_stdout(out),
         ):
@@ -70,7 +72,9 @@ class MainTests(unittest.TestCase):
             except SystemExit as exc:
                 error = exc
 
-        return SimpleNamespace(out=out.getvalue(), build_app=build_app, cleanup=cleanup, make=make, error=error)
+        return SimpleNamespace(
+            out=out.getvalue(), build_app=build_app, cleanup=cleanup, make=make, connect_jobs=connect_jobs, error=error
+        )
 
     def test_remote_host_is_refused_before_loading_anything(self):
         result = self.run_main(["--host", "0.0.0.0"])
@@ -117,6 +121,12 @@ class MainTests(unittest.TestCase):
         self.assertIsInstance(manager, SessionManager)
         self.assertIs(manager.app, result.build_app.return_value)
         self.assertEqual(manager._slot._value, 2)
+
+    def test_job_notices_are_connected_to_the_sessions(self):
+        result = self.run_main([], server=FakeServer())
+        manager = result.make.call_args.args[0]
+        result.connect_jobs.assert_called_once_with(manager)
+        self.assertEqual(result.make.call_args.kwargs["notices"], True)
 
     def test_max_turns_below_one_is_refused(self):
         result = self.run_main(["--max-turns", "0"])

@@ -192,6 +192,15 @@ class SecurityTests(ServerCase):
         self.assertEqual(status, 403)
         self.assertEqual(self.manager.list(), [])
 
+    def test_refused_post_is_answered_not_reset(self):
+        # Closing a socket with an unread body makes Windows reset the connection, and the client
+        # then sees ConnectionAbortedError instead of the 401/403.
+        body = {"title": "x" * 300_000}  # bigger than the socket buffers, below DISCARD_LIMIT
+        for _ in range(15):
+            self.assertEqual(self.request("POST", "/api/sessions", body, headers={"Origin": "http://evil.example"})[0], 403)
+            self.assertEqual(self.request("POST", "/api/sessions", body, token=False)[0], 401)
+            self.assertEqual(self.request("POST", "/api/sessions/000000000000/send", body)[0], 413)
+
     def test_same_origin_is_accepted(self):
         origin = f"http://127.0.0.1:{self.port}"
         self.assertEqual(self.request("POST", "/api/sessions", {}, headers={"Origin": origin})[0], 201)

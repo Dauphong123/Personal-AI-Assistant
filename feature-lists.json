@@ -586,19 +586,23 @@
             "tests/test_job_owner.py (7 tests)",
             "tests/test_chat_loop.py, tests/test_hardening.py still green"
           ],
-          "commit": null
+          "commit": "e47518a"
         },
         {
           "n": 3,
           "title": "Backend notices: ChatSession.notify queue + 'notice' event; SessionManager routes JOBS.on_finish",
-          "status": "in_progress",
-          "tests": [],
+          "status": "done",
+          "tests": [
+            "tests/test_backend_notices.py (10 tests)",
+            "tests/test_backend_main.py::test_job_notices_are_connected_to_the_sessions",
+            "tests/test_backend_server.py::SecurityTests::test_refused_post_is_answered_not_reset (fix: refused POST bodies are drained; was a 1-in-150 ConnectionAbortedError)"
+          ],
           "commit": null
         },
         {
           "n": 4,
           "title": "Frontend notices: notice items in the reducer and the log",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [],
           "commit": null
         },
