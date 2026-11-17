@@ -5,11 +5,10 @@ Shared memory across sessions. Read at session start (imported by root `CLAUDE.m
 Tags: **[verified]** checked in code/tests/docs (cite where) · **[assumed]** believed, not checked · **[unknown]** open.
 
 ## Current state
-- Branch `main`. Last commits: `892bd56` docs, `8f4c300` live input/jobs/voice/web/hybrid RAG. [verified: git log, 2026-11-17]
-- Uncommitted at 2026-11-17 start: edits in `memories/store.py`, `memories/table.py`, `retrieval.py`, `tools.py`, `turns.py`, `voice/text.py`, `data/__init__.py`, and many `tests/*`. Purpose not yet recorded. [verified: git status]
-- Test status: full suite 576 tests OK, 11 skipped, 2026-11-17, on branch `feature/F020-webui-handshake` (includes 45 frontend `node --test` tests run through `tests/test_webui_frontend.py`). [verified: unittest discover]
-- F019 (web UI rewrite) is on `feature/F019-webui-typescript-sessions`; F020 (handshake, web job notices, web voice) on `feature/F020-webui-handshake`, branched from F019. Neither is merged; merge F019 first. Unrelated uncommitted edits (F017 DB port/`memories.check`, `retrieval.py`, `turns.py`, voice, tests) were left unstaged on purpose; doc hunks about them in `README.md`/`CLAUDE.md`/`PROJECT.md` are also still unstaged. [verified: git status]
-- F021 (memory retrieval) on `feature/F021-memory-retrieval`, branched from F020 plus `26c45e5` (memory tests, DB check on port 15432), because `main` lacks them; merge order F019 -> F020 -> F021. [verified: git log]
+- `main` at `6d6be86`: F019 (web UI rewrite), F020 (handshake, web job notices, web voice) and F021 (memory retrieval) fast-forwarded in on 2026-11-17, with `d3eb111`. No merge commits. [verified: git log]
+- Test status: full suite 647 OK, 11 skipped (opt-in memory eval and voice engine tests), 2026-11-17; memory eval (`RUN_MEMORY_EVAL=1`) 40/40. [verified: unittest discover]
+- Still uncommitted at 2026-11-17 end (purpose not recorded; they pass the tests): `jobs.py`, `retrieval.py`, `turns.py`, `web.py`, `voice/text.py`, `voice/vad.py`, many `tests/*`, doc hunks in `README.md`/`CLAUDE.md`/`docs/PROJECT.md`/`docs/ROSTER.md`; untracked `docs/agents/`, `pyrightconfig.json`, `tests/test_project_docs.py`, `tests/test_typecheck.py`. [verified: git status]
+- 2026-11-17: a script emptied the working copies of `README.md`, `CLAUDE.md`, `docs/PROJECT.md`, `memories/CLAUDE.md`; their uncommitted hunks were rebuilt from Claude Code file backups (`~/.claude/file-history`) and the session's own output. Sizes match the earlier diffs (README 284 lines, CLAUDE.md 17); if a README hunk looks missing, that is why. [verified: git diff --stat]
 
 ## Decisions
 Format: `date — decision — why — alternatives rejected`.
