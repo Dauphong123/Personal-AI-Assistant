@@ -50,6 +50,11 @@ def _without_secrets(extraction: MemoryExtraction) -> MemoryExtraction:
     })
 
 
+def memory_query(messages: list) -> str:
+    """The text long-term memory is searched with before a turn: the latest message."""
+    return str(messages[-1].content) if messages else ""
+
+
 def format_memories(hits: MemoryHits) -> str:
     """Render recalled memories as a block for a system prompt ("" when empty)."""
     if not hits:

@@ -242,6 +242,19 @@ class ExtractionPromptTests(unittest.TestCase):
         self.assertEqual(MemoryExtractor(model).extract(messages), MemoryExtraction())
 
 
+class MemoryQueryTests(unittest.TestCase):
+    def test_query_is_the_latest_message(self):
+        from memories.manager import memory_query
+
+        messages = [HumanMessage(content="first"), AIMessage(content="answer"), HumanMessage(content="second")]
+        self.assertEqual(memory_query(messages), "second")
+
+    def test_no_messages_gives_an_empty_query(self):
+        from memories.manager import memory_query
+
+        self.assertEqual(memory_query([]), "")
+
+
 class ManagerTests(unittest.TestCase):
     def test_remember_stores_each_type_and_counts_new_rows(self):
         extraction = MemoryExtraction(

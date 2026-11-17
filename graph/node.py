@@ -18,6 +18,7 @@ from chains import code_chain, direct_chain, router_chain, summerize_chain
 from data.route_query import Router
 from data.state import State
 from dependency import dependency
+from memories.manager import memory_query
 from tools import NEEDS_APPROVAL, TOOL_BY_NAME
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def recall_memory(state: State):
 
     if manager is not None and not last.additional_kwargs.get("notice"):
         try:
-            context = manager.recall(str(last.content))
+            context = manager.recall(memory_query(state["messages"]))
         except Exception:
             logger.warning("Memory recall failed", exc_info=True)
 

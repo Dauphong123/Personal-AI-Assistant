@@ -698,15 +698,19 @@
             "ManagerTests.test_old_facts_found_by_the_new_facts_text_are_reviewed_and_deleted",
             "ExtractorTests.test_runs_the_model_at_temperature_zero"
           ],
-          "commit": null,
+          "commit": "50e22ec",
           "done": "2026-11-17"
         },
         {
           "n": 1,
           "title": "Opt-in retrieval eval with real embeddings (recall@k)",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_memory_eval.py::MemoryRetrievalEval (opt-in RUN_MEMORY_EVAL=1; baseline 15/30)",
+            "tests/test_memory.py::MemoryQueryTests"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
         },
         {
           "n": 2,
