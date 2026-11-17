@@ -709,15 +709,23 @@
             "tests/test_memory_eval.py::MemoryRetrievalEval (opt-in RUN_MEMORY_EVAL=1; baseline 15/30)",
             "tests/test_memory.py::MemoryQueryTests"
           ],
-          "commit": null,
+          "commit": "3f933f3",
           "done": "2026-11-17"
         },
         {
           "n": 2,
           "title": "Always-on profile facts + fixed fact categories",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_memory.py::ManagerTests.test_profile_facts_are_recalled_for_any_question",
+            "ManagerTests.test_a_profile_fact_found_by_search_is_not_listed_twice",
+            "ManagerTests.test_blank_query_still_gets_the_profile_without_searching",
+            "ManagerTests.test_unknown_or_missing_category_becomes_general",
+            "StoreIntegrationTests.test_profile_facts_are_user_categories_newest_first",
+            "tests/test_memory_eval.py (26/30)"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
         },
         {
           "n": 3,

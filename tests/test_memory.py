@@ -169,9 +169,13 @@ class FindSupersededTests(unittest.TestCase):
 
 
 class FakeStore:
-    def __init__(self, known=()):
+    def __init__(self, known=(), profile=()):
         self.calls = []
         self.known = list(known)
+        self.profile = list(profile)
+
+    def profile_facts(self, limit=12):
+        return self.profile[:limit]
 
     def add_episode(self, *args, **kwargs):
         self.calls.append(("episode", args, kwargs))
@@ -333,7 +337,7 @@ class ManagerTests(unittest.TestCase):
         MemoryManager(store, extractor).remember([HumanMessage(content="I use spaces now")])
         self.assertIn(("fact", "uses spaces"), store.calls)
 
-    def test_an_overlong_category_is_cut_to_the_column_width(self):
+    def test_unknown_or_missing_category_becomes_general(self):
         categories = []
 
         class CategoryStore(FakeStore):
@@ -341,9 +345,35 @@ class ManagerTests(unittest.TestCase):
                 categories.append(category)
                 return None, True
 
-        extraction = MemoryExtraction(facts=[Fact(fact="a", category="x" * 200), Fact(fact="b", category=None), Fact(fact="c", category="project")])
+        extraction = MemoryExtraction(facts=[Fact(fact="a", category="x" * 200), Fact(fact="b", category=None),
+                                             Fact(fact="c", category="project"), Fact(fact="d")])
         MemoryManager(CategoryStore(), SimpleNamespace(extract=lambda messages, known=(): extraction)).remember([])
-        self.assertEqual(categories, ["x" * 64, None, "project"])
+        self.assertEqual(categories, ["general", "general", "project", "general"])
+
+    def test_profile_facts_are_recalled_for_any_question(self):
+        profile = [SimpleNamespace(id=1, fact="The user's name is Dat."),
+                   SimpleNamespace(id=2, fact="The user's answer style is short.")]
+        store = FakeStore(profile=profile)
+        text = MemoryManager(store, None).recall("explain hash maps")
+
+        self.assertIn("About the user:\n- The user's name is Dat.\n- The user's answer style is short.", text)
+        self.assertNotIn("Facts:", text)
+
+    def test_a_profile_fact_found_by_search_is_not_listed_twice(self):
+        name = SimpleNamespace(id=1, fact="The user's name is Dat.")
+        other = SimpleNamespace(id=9, fact="The project's database is Postgres 17.")
+        text = MemoryManager(FakeStore(known=[name, other], profile=[name]), None).recall("my name and db?")
+
+        self.assertEqual(text.count("The user's name is Dat."), 1)
+        self.assertIn("Facts:\n- The project's database is Postgres 17.", text)
+
+    def test_blank_query_still_gets_the_profile_without_searching(self):
+        class NoSearch(FakeStore):
+            def search(self, *args, **kwargs):
+                raise AssertionError("blank query must not be embedded")
+
+        store = NoSearch(profile=[SimpleNamespace(id=1, fact="The user's name is Dat.")])
+        self.assertIn("The user's name is Dat.", MemoryManager(store, None).recall("   "))
 
     def test_recall_blank_query_and_no_hits(self):
         manager = MemoryManager(FakeStore(), None)
@@ -496,6 +526,16 @@ class StoreIntegrationTests(unittest.TestCase):
         self.assertEqual((found[0].task, found[0].outcome, found[0].importance, found[0].thread_id),
                          ("test", "passed", 0.9, "t-int"))
         self.assertIsNotNone(found[0].created_at)
+
+    def test_profile_facts_are_user_categories_newest_first(self):
+        tag = self.tag
+        for text, category in [("name", "user_profile"), ("db", "project"), ("style", "user_preference"),
+                               ("os", "environment"), ("cat", "general"), ("old wording", None)]:
+            self.store.add_fact(f"profile {text} {tag}", category)
+
+        mine = [f.fact for f in self.store.profile_facts(limit=100) if tag in f.fact]
+        self.assertEqual(mine, [f"profile os {tag}", f"profile style {tag}", f"profile name {tag}"])
+        self.assertEqual([f.fact for f in self.store.profile_facts(limit=1)], [f"profile os {tag}"])
 
     def test_deleting_unknown_fact_ids_deletes_nothing(self):
         self.assertEqual(self.store.delete_facts([-1, -2]), 0)

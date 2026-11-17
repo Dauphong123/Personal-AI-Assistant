@@ -13,6 +13,11 @@ from .table import EMBEDDING_DIM, EpisodicMemory, ProceduralMemory, SemanticMemo
 FACT_DUPLICATE_DISTANCE = 0.08
 PROCEDURE_DUPLICATE_DISTANCE = 0.2
 
+# Recalled on every turn whatever the question. About 12 tokens a fact, so the cap keeps the
+# block near 150 tokens of the MAX_HISTORY_TOKENS budget.
+PROFILE_CATEGORIES = ("user_profile", "user_preference", "environment")
+PROFILE_LIMIT = 12
+
 
 @dataclass
 class MemoryHits:
@@ -146,6 +151,18 @@ class MemoryStore:
         return result.rowcount
 
     # ---- reads ----------------------------------------------------------
+
+    def profile_facts(self, limit: int = PROFILE_LIMIT) -> list[SemanticMemory]:
+        """Facts about the user (PROFILE_CATEGORIES), most recently updated first."""
+        stmt = (
+            select(SemanticMemory)
+            .where(SemanticMemory.category.in_(PROFILE_CATEGORIES))
+            .order_by(SemanticMemory.updated_at.desc(), SemanticMemory.id.desc())
+            .limit(limit)
+        )
+
+        with self._session_factory() as session:
+            return list(session.scalars(stmt))
 
     def search(
         self,

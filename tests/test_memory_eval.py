@@ -71,7 +71,7 @@ CASES = [
 ]
 
 # Recall must find at least this share of cases. Raised by each step of F021 as retrieval improves.
-MIN_HIT_RATE = 0.50  # step 1 baseline: last message only, vector search only
+MIN_HIT_RATE = 0.85  # step 2: 26/30 with always-on profile facts (step 1 baseline 15/30)
 
 
 def as_messages(turns):
