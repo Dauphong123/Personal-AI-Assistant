@@ -673,6 +673,64 @@
         }
       ],
       "notes": "Opened at the user's request right after F019 in the same session (user asked to continue). Branched from feature/F019-webui-typescript-sessions (main has no backend/ yet). Browser-verified in headless Chrome with a fake mic and fake STT/TTS engines (real PyAV decoding). Not run with real faster-whisper/Piper models or the real Ollama graph in this session. Also fixed: refused POSTs lost to a Windows connection reset; faster_whisper.decode_audio incompatible with PyAV 19."
+    },
+    {
+      "id": "F021",
+      "name": "Better semantic memory retrieval",
+      "description": "Store facts more reliably and find them better: always-on profile facts, hybrid vector+BM25 fact search, follow-up aware query, measured by an eval.",
+      "status": "in_progress",
+      "created": "2026-11-17",
+      "completed": null,
+      "branch": "feature/F021-memory-retrieval",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {
+          "n": 0,
+          "title": "Finish fact storing: temperature 0, secret filter, review of outdated facts",
+          "status": "done",
+          "tests": [
+            "tests/test_memory.py::SecretFilterTests",
+            "FindSupersededTests",
+            "ExtractionPromptTests",
+            "TrivialTurnTests",
+            "ManagerTests.test_old_facts_found_by_the_new_facts_text_are_reviewed_and_deleted",
+            "ExtractorTests.test_runs_the_model_at_temperature_zero"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
+        },
+        {
+          "n": 1,
+          "title": "Opt-in retrieval eval with real embeddings (recall@k)",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 2,
+          "title": "Always-on profile facts + fixed fact categories",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "Hybrid fact search: vector + BM25 fused",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 4,
+          "title": "Search with the last two user messages",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        }
+      ],
+      "notes": "Branched from feature/F020-webui-handshake (26c45e5): main lacks the memory test commit. Multilingual memory embeddings (plan step 5) not approved yet."
     }
   ]
 }

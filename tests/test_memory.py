@@ -16,10 +16,11 @@ from memories.extractor import (
     MemoryExtraction,
     MemoryExtractor,
     Procedure,
+    Superseded,
     format_turn,
     is_trivial_turn,
 )
-from memories.manager import MemoryManager, format_memories
+from memories.manager import REVIEW_DISTANCE, MemoryManager, format_memories
 from memories.store import MemoryHits, MemoryStore
 from memories.table import EMBEDDING_DIM
 
@@ -79,6 +80,93 @@ class ExtractorTests(unittest.TestCase):
         model = SimpleNamespace(with_structured_output=lambda schema: RunnableLambda(boom))
         self.assertEqual(MemoryExtractor(model).extract([]), MemoryExtraction())
 
+    def test_runs_the_model_at_temperature_zero(self):
+        from langchain_ollama import ChatOllama
+
+        chat = ChatOllama(model="qwen3:8b", temperature=0.7)
+        used = []
+        real = ChatOllama.with_structured_output
+
+        def spy(self, schema, **kwargs):
+            used.append(self.temperature)
+            return real(self, schema, **kwargs)
+
+        with patch.object(ChatOllama, "with_structured_output", spy):
+            MemoryExtractor(chat)
+
+        self.assertEqual(used, [0, 0])
+        self.assertEqual(chat.temperature, 0.7)  # the chat model itself is untouched
+
+
+class SecretFilterTests(unittest.TestCase):
+    def test_key_like_values_are_secret(self):
+        from memories.manager import looks_secret
+
+        # Built at runtime so no key-shaped literal sits in the repository for secret scanners.
+        fake = "x1Y2z3W4" * 5
+        for text in ("The user's OpenAI key is sk-abc123def456", "token " + "ghp" + "_" + fake,
+                     "AKIA" + "IOSFODNN7" + "FAKEKEY", "uses " + "AI" + "za" + fake,
+                     "secret 9f8e7d6c5b4a39281706f5e4d3c2b1a0"):
+            with self.subTest(text=text):
+                self.assertTrue(looks_secret(text))
+
+    def test_ordinary_facts_are_not_secret(self):
+        from memories.manager import looks_secret
+
+        for text in ("The user's name is Dat", "The project's database is Postgres 17 on port 15432",
+                     "The user's GPU is RTX 3050", "The model is qwen3:8b", "uses BAAI/bge-small-en-v1.5",
+                     "The user's skill level is senior", "The user's task is sk-learn tuning"):
+            with self.subTest(text=text):
+                self.assertFalse(looks_secret(text))
+
+    def test_facts_about_keys_or_passwords_are_secret(self):
+        from memories.manager import looks_secret
+
+        for text in ("The user provided an OpenAI key.", "The user's password is hunter2",
+                     "The user shared their API key", "The user's access token is stored"):
+            with self.subTest(text=text):
+                self.assertTrue(looks_secret(text, fact=True))
+        self.assertFalse(looks_secret("The user asked how to reset a password"))
+
+    def test_secret_memories_are_not_stored(self):
+        extraction = MemoryExtraction(
+            episode=Episode(event="User gave key sk-abc123def456 for a script"),
+            facts=[Fact(fact="The user's OpenAI key is sk-abc123def456"),
+                   Fact(fact="The user provided an OpenAI key."), Fact(fact="The user's name is Dat")],
+            procedures=[Procedure(task="call the API", steps=["export KEY=sk-abc123def456", "run"])],
+        )
+        store = FakeStore()
+        saved = MemoryManager(store, SimpleNamespace(extract=lambda messages, known=(): extraction)).remember([])
+
+        self.assertEqual(saved, {"episodes": 0, "facts": 1, "procedures": 0})
+        self.assertEqual([c for c in store.calls if c[0] != "delete"], [("fact", "The user's name is Dat")])
+
+
+class FindSupersededTests(unittest.TestCase):
+    def model(self, answer, seen):
+        def run(prompt_value):
+            seen.append(prompt_value.to_string())
+            return answer
+
+        return SimpleNamespace(with_structured_output=lambda schema: RunnableLambda(run))
+
+    def test_asks_the_model_with_new_and_old_facts(self):
+        seen = []
+        answer = Superseded(superseded_fact_ids=[3])
+        old = [SimpleNamespace(id=3, fact="The user's editor is VS Code")]
+        ids = MemoryExtractor(self.model(answer, seen)).find_superseded(["The user's editor is Vim"], old)
+
+        self.assertEqual(ids, [3])
+        self.assertIn("The user's editor is Vim", seen[0])
+        self.assertIn("3: The user's editor is VS Code", seen[0])
+
+    def test_no_model_call_without_new_or_old_facts(self):
+        seen = []
+        extractor = MemoryExtractor(self.model(Superseded(superseded_fact_ids=[1]), seen))
+        self.assertEqual(extractor.find_superseded([], [SimpleNamespace(id=1, fact="x")]), [])
+        self.assertEqual(extractor.find_superseded(["x"], []), [])
+        self.assertEqual(seen, [])
+
 
 class FakeStore:
     def __init__(self, known=()):
@@ -111,6 +199,39 @@ class TrivialTurnTests(unittest.TestCase):
         self.assertFalse(
             is_trivial_turn([HumanMessage(content="I prefer tabs"), AIMessage(content="ok")])
         )
+
+    def test_short_self_introduction_is_not_trivial(self):
+        for text in ("I'm Dat", "Dat here", "Tôi tên Đạt", "call me Dat"):
+            with self.subTest(text=text):
+                self.assertFalse(is_trivial_turn([HumanMessage(content=text), AIMessage(content="Hi!")]))
+
+    def test_greetings_and_acknowledgements_are_trivial(self):
+        for text in ("hi", "Hello!", "thanks", "ok, thank you", "xin chào", "Cảm ơn", "bye", "  "):
+            with self.subTest(text=text):
+                self.assertTrue(is_trivial_turn([HumanMessage(content=text), AIMessage(content="Hi!")]))
+
+
+class ExtractionPromptTests(unittest.TestCase):
+    def system_text(self):
+        from memories.extractor import extraction_prompt
+
+        return extraction_prompt.format_messages(known_facts="(none)", transcript="x")[0].content
+
+    def test_facts_about_the_user_count_as_durable(self):
+        text = self.system_text()
+        self.assertIn("name", text)
+        self.assertIn("user_profile", text)
+
+    def test_memories_are_written_in_english_for_the_english_embeddings(self):
+        self.assertIn("English", self.system_text())
+
+    def test_requests_about_future_answers_are_preferences_not_ignored_instructions(self):
+        text = self.system_text()
+        self.assertIn("always answer", text)
+        self.assertIn("not an instruction to you", text)
+
+    def test_sharing_a_secret_is_not_a_fact(self):
+        self.assertIn("that a secret was shared", self.system_text())
 
     def test_model_not_called_for_trivial_turn(self):
         def boom(_):
@@ -154,6 +275,50 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(seen["known"], [7, 8])
         self.assertEqual([c[0] for c in store.calls], ["delete", "fact"])
         self.assertEqual(store.calls[0][1], [7])
+
+    def test_old_facts_found_by_the_new_facts_text_are_reviewed_and_deleted(self):
+        # The question search finds nothing (e.g. a Vietnamese turn against English facts),
+        # but the new fact's own English text finds the outdated one.
+        old = SimpleNamespace(id=5, fact="The user's editor is VS Code")
+        unrelated = SimpleNamespace(id=6, fact="The user is a student")
+        reviewed = {}
+
+        class Store(FakeStore):
+            def search(self, query, limit=3, max_distance=0.5):
+                self.calls.append(("search", query, max_distance))
+                return MemoryHits(facts=[old, unrelated] if query.startswith("The user") else [])
+
+        def find_superseded(new_facts, candidates):
+            reviewed["new"] = list(new_facts)
+            reviewed["old"] = [c.id for c in candidates]
+            return [5, 999]  # 999 was never offered
+
+        extractor = SimpleNamespace(
+            extract=lambda messages, known=(): MemoryExtraction(facts=[Fact(fact="The user's editor is Vim")]),
+            find_superseded=find_superseded,
+        )
+        store = Store()
+        MemoryManager(store, extractor).remember([HumanMessage(content="Mình chuyển sang dùng Vim rồi")])
+
+        self.assertEqual(reviewed, {"new": ["The user's editor is Vim"], "old": [5, 6]})
+        fact_search = next(c for c in store.calls if c[0] == "search" and c[1] == "The user's editor is Vim")
+        self.assertEqual(fact_search[2], REVIEW_DISTANCE)
+        writes = [c for c in store.calls if c[0] != "search"]
+        self.assertEqual(writes, [("delete", [5]), ("fact", "The user's editor is Vim")])
+
+    def test_facts_already_offered_are_not_reviewed_twice(self):
+        known = [SimpleNamespace(id=7, fact="uses tabs")]
+
+        def boom(*_):
+            raise AssertionError("no second review for facts the extractor already saw")
+
+        extractor = SimpleNamespace(
+            extract=lambda messages, known=(): MemoryExtraction(facts=[Fact(fact="uses spaces")]),
+            find_superseded=boom,
+        )
+        store = FakeStore(known)  # every search returns the same known fact
+        MemoryManager(store, extractor).remember([HumanMessage(content="I use spaces now")])
+        self.assertIn(("fact", "uses spaces"), store.calls)
 
     def test_an_overlong_category_is_cut_to_the_column_width(self):
         categories = []
