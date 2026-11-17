@@ -8,7 +8,7 @@ Local LLM agent: LangChain + LangGraph on Ollama (default `qwen3:8b`). Interacti
 .\.venv\Scripts\Activate.ps1
 python main.py                              # interactive chat; "exit" or "quit" stops
 npm --prefix webui install; npm --prefix webui run build   # once: build the TypeScript web frontend
-python -m backend [--voice]                 # browser chat on 127.0.0.1:8000, many sessions, job notices, optional voice (link with token is printed)
+python -m backend [--no-voice]              # browser chat on 127.0.0.1:8000, many sessions, job notices, voice if installed (link with token is printed)
 python -m unittest discover -s tests -t .   # tests (Postgres test skipped if DB unreachable)
 docker compose up -d                        # pgvector Postgres 17 (db agent_memory, user agent)
 ```

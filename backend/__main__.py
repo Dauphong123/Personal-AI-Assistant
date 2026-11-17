@@ -23,8 +23,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--voice",
-        action="store_true",
-        help="talk to the assistant from the browser (push-to-talk) and hear its answers; needs requirements_voice.txt",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="talk to the assistant from the browser and hear its answers (on by default when "
+        "requirements_voice.txt is installed; --no-voice turns it off)",
     )
     parser.add_argument(
         "--max-turns",
@@ -101,6 +103,9 @@ def main(argv: list[str] | None = None) -> None:
             f"speech input {'on' if voice.can_transcribe else 'off'}, output {'on' if voice.can_speak else 'off'}.",
             flush=True,
         )
+
+        if not (voice.can_transcribe or voice.can_speak):
+            voice = None  # nothing installed: the page shows no voice controls
 
     token = new_token()
     server = None

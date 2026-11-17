@@ -34,6 +34,7 @@ Format: `date — decision — why — alternatives rejected`.
 - Memory retrieval eval (`tests/test_memory_eval.py`): 15/30 -> profile 26/30 -> (35 cases) hybrid 32/35 -> follow-up 33/35 -> (40 cases, 5 held-out Vietnamese) bge 36/40, multilingual-e5-small 40/40 at recall cutoff 0.20 (0.3 extra facts a question). e5 distances: paraphrase <= 0.034, same subject 0.05-0.14, different subject >= 0.14, relevant question 0.13-0.24, unrelated 0.20-0.29. A known-fact cutoff of 0.24 pulled unrelated facts into the extractor prompt and qwen3:8b then missed the new fact; 0.18 fixed it. [verified 2026-11-17]
 - Headless Chrome with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-audio-capture=<wav>` (looped 1.2 s tone bursts) drives the web hands-free loop end to end: utterances split, prompts queued and sent in order, "stop listening" ends it (scratchpad script, fake STT and model). [verified 2026-11-17]
 - `ctypes.WinDLL("user32").GetAsyncKeyState(0xA3)` reads Right Ctrl from the venv without extra packages (`voice.build_key`). [verified 2026-11-17]
+- Web Talk/Hands-free buttons were missing because web voice was opt-in (`--voice`): without it the handshake reports `voice.transcribe=false` (`backend/server.py` `describe`) and `webui/src/main.ts` `setUpVoice` hides them. Now on by default when the packages are installed, `--no-voice` to turn off (`tests/test_backend_main.py::MainTests`). [verified 2026-11-18, real handshake]
 - (add: finding — evidence file:line or test)
 
 ## Dependencies and conflicts

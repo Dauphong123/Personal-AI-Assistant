@@ -51,8 +51,11 @@ class UrlTests(unittest.TestCase):
 
 
 class MainTests(unittest.TestCase):
-    def run_main(self, argv, server=None, make_error=None, built=True):
+    NO_PACKAGES = SimpleNamespace(can_transcribe=False, can_speak=False)
+
+    def run_main(self, argv, server=None, make_error=None, built=True, voice=NO_PACKAGES):
         out = io.StringIO()
+        build_voice = mock.Mock(return_value=voice)
         build_app = mock.Mock(return_value=SimpleNamespace())
         cleanup = mock.Mock()
         make = mock.Mock(side_effect=make_error, return_value=server)
@@ -63,6 +66,7 @@ class MainTests(unittest.TestCase):
             mock.patch.object(entry, "cleanup", cleanup),
             mock.patch.object(entry, "make_server", make),
             mock.patch.object(entry, "connect_jobs", connect_jobs),
+            mock.patch.object(entry, "build_voice", build_voice),
             mock.patch.object(entry, "frontend_built", mock.Mock(return_value=built)),
             contextlib.redirect_stdout(out),
         ):
@@ -73,7 +77,13 @@ class MainTests(unittest.TestCase):
                 error = exc
 
         return SimpleNamespace(
-            out=out.getvalue(), build_app=build_app, cleanup=cleanup, make=make, connect_jobs=connect_jobs, error=error
+            out=out.getvalue(),
+            build_app=build_app,
+            cleanup=cleanup,
+            make=make,
+            connect_jobs=connect_jobs,
+            build_voice=build_voice,
+            error=error,
         )
 
     def test_remote_host_is_refused_before_loading_anything(self):
@@ -128,22 +138,32 @@ class MainTests(unittest.TestCase):
         result.connect_jobs.assert_called_once_with(manager)
         self.assertEqual(result.make.call_args.kwargs["notices"], True)
 
-    def test_voice_is_off_by_default(self):
-        result = self.run_main([], server=FakeServer())
-        self.assertIsNone(result.make.call_args.kwargs["voice"])
-
-    def test_voice_flag_gives_the_server_a_web_voice(self):
+    def test_voice_is_on_by_default(self):
         fake = SimpleNamespace(can_transcribe=True, can_speak=True)
-        with mock.patch.object(entry, "build_voice", mock.Mock(return_value=fake)) as build_voice:
-            result = self.run_main(["--voice"], server=FakeServer())
-        build_voice.assert_called_once()
+        result = self.run_main([], server=FakeServer(), voice=fake)
+        result.build_voice.assert_called_once()
         self.assertIs(result.make.call_args.kwargs["voice"], fake)
 
-    def test_voice_flag_without_packages_says_so(self):
-        fake = SimpleNamespace(can_transcribe=False, can_speak=False)
-        with mock.patch.object(entry, "build_voice", mock.Mock(return_value=fake)):
-            result = self.run_main(["--voice"], server=FakeServer())
+    def test_no_voice_flag_turns_voice_off(self):
+        result = self.run_main(["--no-voice"], server=FakeServer())
+        result.build_voice.assert_not_called()
+        self.assertIsNone(result.make.call_args.kwargs["voice"])
+
+    def test_voice_without_packages_is_off_with_a_hint(self):
+        result = self.run_main([], server=FakeServer())
+        self.assertIsNone(result.make.call_args.kwargs["voice"])
         self.assertIn("requirements_voice.txt", result.out)
+
+    def test_voice_flag_still_works(self):
+        fake = SimpleNamespace(can_transcribe=True, can_speak=True)
+        result = self.run_main(["--voice"], server=FakeServer(), voice=fake)
+        self.assertIs(result.make.call_args.kwargs["voice"], fake)
+
+    def test_half_installed_voice_is_kept_and_named(self):
+        fake = SimpleNamespace(can_transcribe=True, can_speak=False)
+        result = self.run_main([], server=FakeServer(), voice=fake)
+        self.assertIs(result.make.call_args.kwargs["voice"], fake)
+        self.assertIn("speech input on, output off", result.out)
 
     def test_max_turns_below_one_is_refused(self):
         result = self.run_main(["--max-turns", "0"])
