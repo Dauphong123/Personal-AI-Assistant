@@ -1,12 +1,14 @@
 import hashlib
+import os
 import random
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from sqlalchemy import delete
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableLambda
+from sqlalchemy import delete
 
 from memories.extractor import (
     Episode,
@@ -174,7 +176,7 @@ class ManagerTests(unittest.TestCase):
         hits = MemoryHits(
             facts=[SimpleNamespace(fact="Project uses Ollama")],
             episodes=[SimpleNamespace(event="Fixed a bug", task="debug", outcome="success",
-                                      created_at=datetime(2026, 1, 2, tzinfo=timezone.utc))],
+                                      created_at=datetime(2026, 1, 2, tzinfo=UTC))],
             procedures=[SimpleNamespace(task="run the app", steps=["activate venv", "python main.py"])],
         )
         text = format_memories(hits)
@@ -190,10 +192,53 @@ class StoreValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             store.add_fact("anything")
 
+    def test_deleting_no_facts_never_opens_a_session(self):
+        store = MemoryStore(FakeEmbeddings(), session_factory=object())
+        self.assertEqual(store.delete_facts([]), 0)
+
+    def test_empty_hits_are_falsy(self):
+        self.assertFalse(MemoryHits())
+        self.assertTrue(MemoryHits(procedures=[object()]))
+
+
+class DatabaseUrlTests(unittest.TestCase):
+    def url(self, **env):
+        from memories.database import get_database_url
+
+        with patch.dict(os.environ, env, clear=True):
+            return get_database_url()
+
+    def test_database_url_wins_over_db_url(self):
+        self.assertEqual(
+            self.url(DATABASE_URL="postgresql+psycopg://a@h/d1", DB_URL="postgresql+psycopg://b@h/d2"),
+            "postgresql+psycopg://a@h/d1",
+        )
+
+    def test_db_url_is_the_fallback(self):
+        self.assertEqual(self.url(DB_URL="postgresql+psycopg://b@h/d2"), "postgresql+psycopg://b@h/d2")
+
+    def test_bare_postgresql_scheme_is_rewritten_for_psycopg3(self):
+        self.assertEqual(
+            self.url(DB_URL="postgresql://u:p@localhost:15432/agent_memory"),
+            "postgresql+psycopg://u:p@localhost:15432/agent_memory",
+        )
+
+    def test_only_the_scheme_is_rewritten(self):
+        self.assertEqual(
+            self.url(DB_URL="postgresql://u@h/postgresql://x"),
+            "postgresql+psycopg://u@h/postgresql://x",
+        )
+
+    def test_missing_or_empty_url_raises_a_clear_error(self):
+        for env in ({}, {"DATABASE_URL": "", "DB_URL": ""}):
+            with self.subTest(env=env), self.assertRaisesRegex(RuntimeError, "DATABASE_URL"):
+                self.url(**env)
+
 
 def _database_available():
     try:
         from sqlalchemy import text
+
         from memories.database import get_engine, init_db
 
         with get_engine().connect() as conn:
@@ -212,11 +257,110 @@ class StoreIntegrationTests(unittest.TestCase):
         self.sessions = get_session_factory()
         self.store = MemoryStore(FakeEmbeddings())
         self.created = []
+        self.tag = f"it-{random.random()}"
 
     def tearDown(self):
+        from memories.table import EpisodicMemory, ProceduralMemory, SemanticMemory
+
+        like = f"%{self.tag}%"
         with self.sessions() as session, session.begin():
             for row in self.created:
                 session.execute(delete(type(row)).where(type(row).id == row.id))
+            session.execute(delete(EpisodicMemory).where(EpisodicMemory.event.like(like)))
+            session.execute(delete(SemanticMemory).where(SemanticMemory.fact.like(like)))
+            session.execute(delete(ProceduralMemory).where(ProceduralMemory.task.like(like)))
+
+    def test_search_respects_limit_and_distance(self):
+        tag = self.tag
+
+        class Shared(FakeEmbeddings):
+            def embed_query(self, text):
+                return super().embed_query(tag if tag in text else text)
+
+        store = MemoryStore(Shared())
+        ids = [store.add_episode(f"event {i} {tag}").id for i in range(4)]
+
+        hits = store.search(f"query {tag}", limit=2)
+        self.assertEqual(len(hits.episodes), 2)
+        self.assertTrue({e.id for e in hits.episodes} <= set(ids))
+
+        unrelated = store.search(f"something else entirely {random.random()}")
+        self.assertFalse({e.id for e in unrelated.episodes} & set(ids))
+
+    def test_merged_fact_keeps_category_and_highest_confidence(self):
+        fact, _ = self.store.add_fact(f"fact {self.tag}", category="project", confidence=0.9)
+        again, created = self.store.add_fact(f"fact {self.tag}", category=None, confidence=0.4)
+
+        self.assertFalse(created)
+        self.assertEqual(again.id, fact.id)
+        self.assertEqual(again.category, "project")
+        self.assertEqual(again.confidence, 0.9)
+        self.assertGreaterEqual(again.updated_at, fact.created_at)
+
+    def test_merged_procedure_keeps_old_notes_when_none_given(self):
+        first, _ = self.store.add_procedure(f"deploy {self.tag}", ["build"], notes="use venv")
+        second, created = self.store.add_procedure(f"deploy {self.tag}", ["build", "ship"])
+        third, _ = self.store.add_procedure(f"deploy {self.tag}", ["ship"], notes="new note")
+
+        self.assertFalse(created)
+        self.assertEqual(second.notes, "use venv")
+        self.assertEqual(third.notes, "new note")
+        self.assertEqual(third.success_count, 3)
+        self.assertEqual(third.id, first.id)
+        self.assertEqual(self.store.search(f"deploy {self.tag}", max_distance=0.01).procedures[0].steps, ["ship"])
+
+    def test_episode_keeps_its_fields_and_thread(self):
+        episode = self.store.add_episode(f"ran tests {self.tag}", task="test", outcome="passed",
+                                         importance=0.9, thread_id="t-int")
+        found = self.store.search(f"ran tests {self.tag} test", max_distance=0.01).episodes
+
+        self.assertEqual([e.id for e in found], [episode.id])
+        self.assertEqual((found[0].task, found[0].outcome, found[0].importance, found[0].thread_id),
+                         ("test", "passed", 0.9, "t-int"))
+        self.assertIsNotNone(found[0].created_at)
+
+    def test_deleting_unknown_fact_ids_deletes_nothing(self):
+        self.assertEqual(self.store.delete_facts([-1, -2]), 0)
+
+    def test_manager_remembers_then_recalls_and_replaces_a_superseded_fact(self):
+        tag = self.tag
+        old_fact = f"user prefers tabs {tag}"
+        new_fact = f"user prefers spaces {tag}"
+        store = MemoryStore(FakeEmbeddings())
+        extractions = iter([
+            MemoryExtraction(
+                episode=Episode(event=f"set up editor {tag}", outcome="success"),
+                facts=[Fact(fact=old_fact, category="style")],
+                procedures=[Procedure(task=f"format code {tag}", steps=["run black"])],
+            ),
+            None,  # filled in below once the old fact's id is known
+        ])
+        offered = []
+
+        def extract(messages, known_facts=()):
+            offered.append([f.id for f in known_facts])
+            nxt = next(extractions)
+            if nxt is None:
+                nxt = MemoryExtraction(facts=[Fact(fact=new_fact)], superseded_fact_ids=list(offered[-1]))
+            return nxt
+
+        manager = MemoryManager(store, SimpleNamespace(extract=extract))
+        saved = manager.remember([HumanMessage(content=f"setup {tag}"), AIMessage(content="done")], thread_id="t")
+        self.assertEqual(saved, {"episodes": 1, "facts": 1, "procedures": 1})
+
+        recalled = manager.recall(old_fact)
+        self.assertIn(f"- {old_fact}", recalled)
+        self.assertIn("Long-term memory", recalled)
+        self.assertIn(f"To format code {tag}: 1. run black", manager.recall(f"format code {tag}"))
+        self.assertIn(f"set up editor {tag} (outcome: success)", manager.recall(f"set up editor {tag}"))
+
+        # Second turn: the question equals the old fact, so remember() offers it as known and
+        # the extractor marks it superseded; the new wording must be a new row.
+        saved = manager.remember([HumanMessage(content=old_fact), AIMessage(content="ok")])
+        self.assertEqual(saved["facts"], 1)
+        self.assertEqual(len(offered[-1]), 1)
+        self.assertNotIn(old_fact, manager.recall(old_fact))
+        self.assertIn(f"- {new_fact}", manager.recall(new_fact))
 
     def test_round_trip_and_dedupe(self):
         tag = f"{random.random()}"

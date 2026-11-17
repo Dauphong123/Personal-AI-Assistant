@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON, DateTime, Float, Index, Integer, String, Text
@@ -12,7 +12,7 @@ CATEGORY_LENGTH = 64  # width of the fact category column
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _embedding_index(table: str) -> Index:

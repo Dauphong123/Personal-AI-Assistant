@@ -41,11 +41,14 @@ def memory_init(model, rag):
         db_init()
 
         return MemoryManager(MemoryStore(rag.embeddings), MemoryExtractor(model))
-    except Exception:
-        logger.warning(
-            "Long-term memory disabled (is `docker compose up -d` running?)",
-            exc_info=True,
-        )
+    except Exception as exc:
+        try:
+            from memories.check import explain_failure
+
+            hint = explain_failure(exc)
+        except Exception:
+            hint = "Is `docker compose up -d` running?"
+        logger.warning("Long-term memory disabled.\n%s", hint, exc_info=True)
         return None
 
 
