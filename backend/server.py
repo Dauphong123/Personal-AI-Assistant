@@ -1,0 +1,440 @@
+"""HTTP + Server-Sent Events API over SessionManager, standard library only.
+
+It also serves the built TypeScript frontend (webui/dist) so the page and the API share one
+origin. The agent can run commands and write files, so the server is locked down: it binds to
+loopback, every API call needs the launch token, the Host header must be ours (DNS
+rebinding) and a browser Origin must be ours (cross-site requests). Pages are served with a
+CSP that forbids inline script and style.
+
+API (JSON bodies, token in X-Token or Authorization: Bearer):
+    GET  /api/sessions                      {"sessions": [info, ...]}
+    POST /api/sessions        {title?}      201 {"session": info}; 429 at the session limit
+    GET  /api/sessions/<id>                 {"session": info}
+    GET  /api/sessions/<id>/events          SSE; ?after=N or Last-Event-ID; ?token= accepted
+    POST /api/sessions/<id>/send    {text}
+    POST /api/sessions/<id>/approve {allow}
+    POST /api/sessions/<id>/stop
+    POST /api/sessions/<id>/reset
+    POST /api/sessions/<id>/rename  {title}
+    POST /api/sessions/<id>/delete
+"""
+
+import hmac
+import json
+import re
+import secrets
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlsplit
+
+from .session import ChatSession
+from .sessions import SessionManager
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "webui" / "dist"
+BUILD_HINT = "The web frontend is not built. Run: npm --prefix webui install && npm --prefix webui run build"
+MAX_BODY = 64 * 1024
+DISCARD_LIMIT = 1024 * 1024  # how much of a refused body is read so the client sees our answer
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost"}
+KEEPALIVE_SECONDS = 10
+
+# Only these file types are served from the build directory.
+CONTENT_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
+}
+
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
+        "img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+}
+
+API_ROUTE = re.compile(r"^/api/sessions(?:/(?P<id>[0-9a-f]{12})(?:/(?P<action>[a-z]+))?)?$")
+POST_ACTIONS = {"send", "approve", "stop", "reset", "rename", "delete"}
+
+
+def new_token() -> str:
+    return secrets.token_urlsafe(24)
+
+
+class WebServer(ThreadingHTTPServer):
+    daemon_threads = True  # an open event stream must not keep the process alive
+    allow_reuse_address = False  # on Windows SO_REUSEADDR lets a second process share the port
+
+    def __init__(self, address, manager: SessionManager, token: str, static_dir: Path, allow_remote: bool):
+        super().__init__(address, Handler)
+        self.manager = manager
+        self.token = token
+        self.static_dir = static_dir
+        self.allow_remote = allow_remote
+
+    def allowed_hosts(self) -> set[str]:
+        port = self.server_address[1]
+        return {f"{name}:{port}" for name in LOOPBACK_HOSTS}
+
+
+def make_server(
+    manager: SessionManager,
+    token: str,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    static_dir: Path = STATIC_DIR,
+    allow_remote: bool = False,
+) -> WebServer:
+    if host not in LOOPBACK_HOSTS and not allow_remote:
+        raise ValueError(f"Refusing to listen on {host!r}: only loopback is allowed without allow_remote.")
+
+    return WebServer((host, port), manager, token, Path(static_dir), allow_remote)
+
+
+def static_file(static_dir: Path, url_path: str) -> Path | None:
+    """The build file a URL path names, or None. Hidden names, '..', backslashes and
+    unlisted file types are refused; the result must stay inside static_dir."""
+    path = unquote(url_path)
+
+    if "\\" in path or "\x00" in path:
+        return None
+
+    parts = (path.lstrip("/") or "index.html").split("/")
+
+    if any(not part or part.startswith(".") for part in parts):
+        return None
+
+    if Path(parts[-1]).suffix.lower() not in CONTENT_TYPES:
+        return None
+
+    root = static_dir.resolve()
+    file = root.joinpath(*parts).resolve()
+
+    if not file.is_relative_to(root) or not file.is_file():
+        return None
+
+    return file
+
+
+class Handler(BaseHTTPRequestHandler):
+    server: WebServer  # pyright: ignore
+
+    def log_message(self, format, *args):  # noqa: A002  (request lines carry the token)
+        pass
+
+    # --- responses ---------------------------------------------------------------
+
+    def _send(self, status: int, body: bytes, content_type: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+
+        for name, value in SECURITY_HEADERS.items():
+            self.send_header(name, value)
+
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, status: int, payload: dict) -> None:
+        self._send(status, json.dumps(payload).encode("utf-8"), "application/json")
+
+    def _fail(self, status: int, message: str) -> None:
+        self.close_connection = True
+        self._json(status, {"error": message})
+
+    # --- checks ------------------------------------------------------------------
+
+    def _host_ok(self) -> bool:
+        if self.server.allow_remote:
+            return True
+
+        return self.headers.get("Host", "") in self.server.allowed_hosts()
+
+    def _origin_ok(self) -> bool:
+        origin = self.headers.get("Origin")
+
+        if origin is None or self.server.allow_remote:
+            return True
+
+        return origin in {f"http://{host}" for host in self.server.allowed_hosts()}
+
+    def _token_ok(self, query: dict, allow_query: bool) -> bool:
+        supplied = self.headers.get("X-Token", "")
+        auth = self.headers.get("Authorization", "")
+
+        if not supplied and auth.startswith("Bearer "):
+            supplied = auth[len("Bearer "):]
+
+        if not supplied and allow_query:
+            supplied = query.get("token", [""])[0]  # EventSource cannot set headers
+
+        return hmac.compare_digest(supplied.encode(), self.server.token.encode())
+
+    def _discard(self, length: int) -> None:
+        """Read and drop a refused body (up to DISCARD_LIMIT).
+
+        Closing a socket that still has unread data makes the OS reset the connection, and the
+        client then never sees our 413. Beyond the limit we just answer and close."""
+        remaining = min(max(length, 0), DISCARD_LIMIT)
+        self.connection.settimeout(2)
+
+        try:
+            while remaining > 0:
+                data = self.rfile.read(min(remaining, 65536))
+
+                if not data:
+                    break
+
+                remaining -= len(data)
+        except OSError:
+            pass
+
+    def _read_json(self) -> dict | None:
+        """The JSON object in the request body, or None after sending an error."""
+        content_type = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+
+        if content_type != "application/json":
+            self._fail(415, "Content-Type must be application/json")
+            return None
+
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            self._fail(411, "Content-Length required")
+            return None
+
+        if length < 0 or length > MAX_BODY:
+            self._discard(length)
+            self._fail(413, "Request body too large")
+            return None
+
+        try:
+            data = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, UnicodeDecodeError):
+            self._fail(400, "Invalid JSON")
+            return None
+
+        if not isinstance(data, dict):
+            self._fail(400, "JSON object expected")
+            return None
+
+        return data
+
+    def _authorized(self, query: dict, allow_query_token: bool = False) -> bool:
+        """Token and Origin checks for an API call; sends the error when they fail."""
+        if not self._token_ok(query, allow_query_token):
+            self._fail(401, "Missing or wrong token")
+            return False
+
+        if not self._origin_ok():
+            self._fail(403, "Forbidden origin")
+            return False
+
+        return True
+
+    def _session(self, session_id: str) -> ChatSession | None:
+        session = self.server.manager.get(session_id)
+
+        if session is None:
+            self._fail(404, "No such session")
+
+        return session
+
+    # --- routing -----------------------------------------------------------------
+
+    def do_GET(self) -> None:
+        url = urlsplit(self.path)
+        query = parse_qs(url.query)
+
+        if not self._host_ok():
+            return self._fail(403, "Forbidden host")
+
+        if not url.path.startswith("/api/"):
+            return self._static(url.path)
+
+        route = API_ROUTE.match(url.path)
+
+        if route is None:
+            return self._fail(404, "Not found")
+
+        sid, action = route.group("id"), route.group("action")
+
+        if action is not None and action != "events" and action not in POST_ACTIONS:
+            return self._fail(404, "Not found")
+
+        if not self._authorized(query, allow_query_token=action == "events"):
+            return
+
+        if sid is None:
+            return self._json(200, {"sessions": self.server.manager.list()})
+
+        session = self._session(sid)
+
+        if session is None:
+            return
+
+        if action is None:
+            return self._json(200, {"session": session.info()})
+
+        if action == "events":
+            return self._events(session, query)
+
+        self._fail(405, "Use POST")
+
+    def do_POST(self) -> None:
+        url = urlsplit(self.path)
+
+        if not self._host_ok():
+            return self._fail(403, "Forbidden host")
+
+        if not url.path.startswith("/api/"):
+            return self._fail(405, "Use GET")
+
+        route = API_ROUTE.match(url.path)
+
+        if route is None:
+            return self._fail(404, "Not found")
+
+        sid, action = route.group("id"), route.group("action")
+
+        if action is not None and action != "events" and action not in POST_ACTIONS:
+            return self._fail(404, "Not found")
+
+        if not self._authorized(parse_qs(url.query)):
+            return
+
+        if sid is not None and action in (None, "events"):
+            return self._fail(405, "Use GET")
+
+        data = self._read_json()
+
+        if data is None:
+            return
+
+        if sid is None:
+            return self._create(data)
+
+        session = self._session(sid)
+
+        if session is not None:
+            self._action(session, action, data)  # pyright: ignore[reportArgumentType]
+
+    # --- handlers ----------------------------------------------------------------
+
+    def _static(self, path: str) -> None:
+        if not self.server.static_dir.is_dir():
+            return self._send(503, BUILD_HINT.encode("utf-8"), "text/plain; charset=utf-8")
+
+        file = static_file(self.server.static_dir, path)
+
+        if file is None:
+            return self._fail(404, "Not found")
+
+        try:
+            body = file.read_bytes()
+        except OSError:
+            return self._fail(404, "Not found")
+
+        self._send(200, body, CONTENT_TYPES[file.suffix.lower()])
+
+    def _create(self, data: dict) -> None:
+        title = data.get("title")
+
+        if title is not None and not isinstance(title, str):
+            return self._fail(400, "title must be a string")
+
+        session = self.server.manager.create(title=title)
+
+        if session is None:
+            return self._fail(429, "Too many sessions; delete one first")
+
+        self._json(201, {"session": session.info()})
+
+    def _action(self, session: ChatSession, action: str, data: dict) -> None:
+        if action == "send":
+            text = data.get("text")
+
+            if not isinstance(text, str) or not text.strip():
+                return self._fail(400, "text must be a non-empty string")
+
+            if not session.send(text):
+                return self._fail(409, "A turn is already running")
+        elif action == "approve":
+            allow = data.get("allow")
+
+            if not isinstance(allow, bool):
+                return self._fail(400, "allow must be true or false")
+
+            if not session.approve(allow):
+                return self._fail(409, "Nothing is waiting for approval")
+        elif action == "stop":
+            session.stop()
+        elif action == "reset":
+            if not session.new_chat():
+                return self._fail(409, "Stop the running turn first")
+        elif action == "rename":
+            title = data.get("title")
+
+            if not isinstance(title, str) or not session.rename(title):
+                return self._fail(400, "title must be a non-empty string")
+        elif action == "delete":
+            result = self.server.manager.delete(session.id)
+
+            if result == "busy":
+                return self._fail(409, "Stop the running turn first")
+
+            if result == "missing":
+                return self._fail(404, "No such session")
+
+            return self._json(200, {"ok": True})
+
+        self._json(200, {"ok": True, "session": session.info()})
+
+    def _events(self, session: ChatSession, query: dict) -> None:
+        after = 0
+
+        for raw in (query.get("after", [""])[0], self.headers.get("Last-Event-ID", "")):
+            try:
+                after = max(after, int(raw))
+            except ValueError:
+                pass
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+
+        for name, value in SECURITY_HEADERS.items():
+            self.send_header(name, value)
+
+        self.end_headers()
+        last_write = time.monotonic()
+
+        try:
+            while True:
+                if self.server.manager.get(session.id) is not session:
+                    # Deleted: say so (no id, so a reconnect does not skip anything) and end.
+                    self.wfile.write(b'data: {"type": "gone"}\n\n')
+                    self.wfile.flush()
+                    return
+
+                events = session.events_after(after, timeout=1.0)
+
+                for event in events:
+                    chunk = f"id: {event['id']}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+                    self.wfile.write(chunk.encode("utf-8"))
+                    after = event["id"]
+
+                if events:
+                    self.wfile.flush()
+                    last_write = time.monotonic()
+                elif time.monotonic() - last_write >= KEEPALIVE_SECONDS:
+                    # A comment line; also how a vanished client is noticed.
+                    self.wfile.write(b": keepalive\n\n")
+                    self.wfile.flush()
+                    last_write = time.monotonic()
+        except OSError:
+            return

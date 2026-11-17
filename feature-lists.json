@@ -468,21 +468,21 @@
             "tests/test_backend_session.py (26 tests, 2026-11-17)",
             "tests/test_backend_sessions.py (12 tests, 2026-11-17)"
           ],
-          "commit": null
+          "commit": "1b6d932"
         },
         {
           "n": 2,
           "title": "backend/server.py: session API + SSE, serves built frontend from webui/dist",
-          "status": "in_progress",
+          "status": "done",
           "tests": [
-            "tests/test_backend_server.py"
+            "tests/test_backend_server.py (43 tests, 2026-11-17)"
           ],
           "commit": null
         },
         {
           "n": 3,
           "title": "python -m backend entry point",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [
             "tests/test_backend_main.py"
           ],
