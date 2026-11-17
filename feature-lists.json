@@ -790,6 +790,66 @@
         }
       ],
       "notes": "Branched from feature/F020-webui-handshake (26c45e5): main lacks the memory test commit. Multilingual memory embeddings (plan step 5) not approved yet. Step 4 accidentally committed an unrelated import cleanup in tests/test_hardening.py; reverted in 15469dc (the working copy keeps it). Reopened 2026-11-17 for step 5 (user approved)."
+    },
+    {
+      "id": "F022",
+      "name": "Wispr Flow-style voice",
+      "description": "Wispr Flow-style voice: hold a key to talk, cleaned-up transcripts, and a hands-free mode that keeps taking prompts until stopped (CLI and web).",
+      "status": "in_progress",
+      "created": "2026-11-17",
+      "completed": null,
+      "branch": "feature/F022-wispr-flow-voice",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {
+          "n": 1,
+          "title": "Dictation cleanup (fillers, stutters, explicit corrections, punctuation)",
+          "status": "done",
+          "tests": [
+            "tests/test_dictation.py (20 tests)"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
+        },
+        {
+          "n": 2,
+          "title": "Push-to-talk key reader and voice trigger settings",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "Assistant: hold-to-talk, hands-free mode across prompts, barge-in",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 4,
+          "title": "Web transcripts cleaned",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 5,
+          "title": "Web UI: hold-to-talk, hands-free toggle with silence endpointing",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 6,
+          "title": "Docs",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        }
+      ],
+      "notes": "User asked (2026-11-17) for hands-free across multiple prompts; plan amended accordingly. No new dependencies (ctypes GetAsyncKeyState; browser Web Audio)."
     }
   ]
 }
