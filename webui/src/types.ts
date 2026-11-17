@@ -35,6 +35,7 @@ export interface ToolCall {
 // the session was deleted and the stream ends.
 export type ChatEvent =
   | { id: number; type: "user"; text: string }
+  | { id: number; type: "notice"; text: string } // a finished background job starts a turn
   | { id: number; type: "waiting" }
   | { id: number; type: "token"; text: string }
   | { id: number; type: "approval"; calls: ToolCall[] }

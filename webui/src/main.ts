@@ -162,6 +162,13 @@ function renderHeader(): void {
 }
 
 function renderMessage(item: Item): HTMLElement {
+  if (item.kind === "notice") {
+    const notice = document.createElement("p");
+    notice.className = "job-notice";
+    notice.textContent = item.text;
+    return notice;
+  }
+
   if (item.kind === "note") {
     const note = document.createElement("p");
     note.className = item.error ? "note error" : "note";

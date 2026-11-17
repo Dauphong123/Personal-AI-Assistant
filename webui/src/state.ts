@@ -5,6 +5,7 @@ import type { ChatEvent, SessionInfo, SessionState, ToolCall } from "./types.ts"
 
 export type Item =
   | { kind: "user"; text: string }
+  | { kind: "notice"; text: string } // what a finished background job reported
   | { kind: "assistant"; text: string }
   | { kind: "note"; text: string; error: boolean };
 
@@ -37,6 +38,8 @@ export function apply(conv: Conversation, event: ChatEvent): Conversation {
   switch (event.type) {
     case "user":
       return { ...next, items: [...conv.items, { kind: "user", text: event.text }], busy: true, waiting: false };
+    case "notice":
+      return { ...next, items: [...conv.items, { kind: "notice", text: event.text }], busy: true, waiting: false };
     case "waiting":
       return { ...next, waiting: true };
     case "token": {
@@ -118,6 +121,7 @@ export function isChatEvent(value: unknown): value is ChatEvent {
 
   switch (value["type"]) {
     case "user":
+    case "notice":
     case "token":
     case "error":
       return typeof value["text"] === "string";

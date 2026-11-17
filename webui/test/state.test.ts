@@ -112,6 +112,25 @@ test("gone marks the conversation as deleted", () => {
   assert.equal(conv.lastEventId, 4);
 });
 
+test("a notice starts a turn of its own, shown as a notice item", () => {
+  const conv = applyAll(emptyConversation(), [
+    ...turn,
+    { id: 5, type: "notice", text: "Background job 2 ended: pytest" },
+    { id: 6, type: "token", text: "Tests passed." },
+  ]);
+  assert.deepEqual(conv.items.slice(2), [
+    { kind: "notice", text: "Background job 2 ended: pytest" },
+    { kind: "assistant", text: "Tests passed." },
+  ]);
+  assert.equal(conv.busy, true);
+  assert.equal(apply(conv, { id: 7, type: "done" }).busy, false);
+});
+
+test("isChatEvent accepts a notice with text only", () => {
+  assert.equal(isChatEvent({ id: 1, type: "notice", text: "x" }), true);
+  assert.equal(isChatEvent({ id: 1, type: "notice" }), false);
+});
+
 test("blocks split fenced code from prose", () => {
   assert.deepEqual(blocks("Look:\n```python\nprint(1)\n```\nDone."), [
     { kind: "prose", text: "Look:" },

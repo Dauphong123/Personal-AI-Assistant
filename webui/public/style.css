@@ -202,7 +202,15 @@ button.danger { color: var(--danger); }
 }
 
 .note { margin: 0 0 1.6rem; color: var(--muted); font-size: 0.92rem; }
-.note.error { color: var(--danger); border-left: 3px solid var(--danger); padding-left: 0.9rem; }
+
+.job-notice {
+  margin: 0 0 1rem;
+  padding: 0.35rem 0.8rem;
+  border-left: 3px solid var(--run);
+  color: var(--muted);
+  font: 0.86rem/1.5 var(--mono);
+  overflow-wrap: anywhere;
+}.note.error { color: var(--danger); border-left: 3px solid var(--danger); padding-left: 0.9rem; }
 
 .alert {
   width: calc(100% - 2rem);

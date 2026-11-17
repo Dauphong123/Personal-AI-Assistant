@@ -597,19 +597,21 @@
             "tests/test_backend_main.py::test_job_notices_are_connected_to_the_sessions",
             "tests/test_backend_server.py::SecurityTests::test_refused_post_is_answered_not_reset (fix: refused POST bodies are drained; was a 1-in-150 ConnectionAbortedError)"
           ],
-          "commit": null
+          "commit": "5878d13"
         },
         {
           "n": 4,
           "title": "Frontend notices: notice items in the reducer and the log",
-          "status": "in_progress",
-          "tests": [],
+          "status": "done",
+          "tests": [
+            "webui/test/state.test.ts notice tests (2)"
+          ],
           "commit": null
         },
         {
           "n": 5,
           "title": "Backend voice (--voice): transcribe browser audio (faster-whisper), speak text (Piper WAV)",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [],
           "commit": null
         },
