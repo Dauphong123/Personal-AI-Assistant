@@ -10,8 +10,8 @@ from tests import stubs
 
 stubs.install()
 
-import jobs  # noqa: E402
-import tools  # noqa: E402
+import jobs
+import tools
 
 
 class ToolTestCase(unittest.TestCase):
@@ -84,6 +84,24 @@ class EditTests(ToolTestCase):
         self.call("edit_file", path="f.txt", old="a", new="X", occurrence=2)
         self.assertEqual((self.root / "f.txt").read_text(), "a b X")
         self.assertIn("must not be empty", self.call("edit_file", path="f.txt", old="", new="X"))
+
+    def test_edit_keeps_lf_line_endings(self):
+        (self.root / "f.txt").write_bytes(b"one\ntwo\nthree\n")
+        self.call("edit_file", path="f.txt", old="two", new="2")
+        self.assertEqual((self.root / "f.txt").read_bytes(), b"one\n2\nthree\n")
+
+    def test_edit_keeps_crlf_line_endings_and_matches_multiline_text(self):
+        (self.root / "f.txt").write_bytes(b"one\r\ntwo\r\nthree\r\n")
+        result = self.call("edit_file", path="f.txt", old="one\ntwo", new="1\n2")
+        self.assertIn("SUCCESS", result)
+        self.assertEqual((self.root / "f.txt").read_bytes(), b"1\r\n2\r\nthree\r\n")
+        self.call("edit_file", path="f.txt", old="three\r\n", new="3\r\n")
+        self.assertEqual((self.root / "f.txt").read_bytes(), b"1\r\n2\r\n3\r\n")
+
+    def test_edit_leaves_mixed_line_endings_alone(self):
+        (self.root / "f.txt").write_bytes(b"one\r\ntwo\nthree\r\n")
+        self.call("edit_file", path="f.txt", old="two", new="2")
+        self.assertEqual((self.root / "f.txt").read_bytes(), b"one\r\n2\nthree\r\n")
 
 
 class CommandTests(ToolTestCase):

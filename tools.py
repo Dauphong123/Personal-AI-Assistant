@@ -6,15 +6,17 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from dependency import dependency
 import web
+from dependency import dependency
 from jobs import JobManager
 
 # Every file/directory argument must resolve inside this directory.
 PROJECT_ROOT = Path(os.environ.get("PROJECT_ROOT", Path(__file__).parent)).resolve()
 
 COMMAND_TIMEOUT = 60  # seconds (git, ripgrep)
-FOREGROUND_WAIT = 5  # seconds a terminal command may block the turn before it goes to the background
+FOREGROUND_WAIT = (
+    5  # seconds a terminal command may block the turn before it goes to the background
+)
 
 JOBS = JobManager()
 MAX_LISTED_FILES = 500
@@ -320,10 +322,20 @@ def edit_file(
     if not old:
         return "ERROR: The text to replace must not be empty."
 
+    # newline="" keeps the file's line endings exactly; the model writes "\n".
     try:
-        content = file_path.read_text(encoding="utf-8")
+        with open(file_path, encoding="utf-8", newline="") as handle:
+            content = handle.read()
     except UnicodeDecodeError:
         return f"ERROR: Could not decode file as UTF-8: {path}"
+
+    # A file that is CRLF throughout is edited as LF text and written back as CRLF.
+    crlf = "\r\n" in content and "\n" not in content.replace("\r\n", "")
+
+    if crlf:
+        content = content.replace("\r\n", "\n")
+        old = old.replace("\r\n", "\n")
+        new = new.replace("\r\n", "\n")
 
     count = content.count(old)
 
@@ -355,8 +367,12 @@ def edit_file(
     # Replace only that occurrence
     new_content = content[:index] + new + content[index + len(old) :]
 
+    if crlf:
+        new_content = new_content.replace("\n", "\r\n")
+
     try:
-        file_path.write_text(new_content, encoding="utf-8")
+        with open(file_path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(new_content)
     except OSError as e:
         return f"ERROR: Failed to write file: {e}"
 

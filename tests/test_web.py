@@ -9,8 +9,8 @@ from tests import stubs
 
 stubs.install()
 
-import tools  # noqa: E402
-import web  # noqa: E402
+import tools
+import web
 
 HOSTS = {  # what the fake DNS knows
     "example.com": ["93.184.216.34"],
@@ -325,6 +325,18 @@ class HtmlToTextTests(unittest.TestCase):
     def test_a_page_without_an_article_uses_the_body(self):
         _, text = web.html_to_text(b"<html><body><div>plain body text</div></body></html>")
         self.assertEqual(text, "plain body text")
+
+    def test_a_page_wrapped_in_one_form_keeps_its_text(self):
+        body = "<p>" + "Real server rendered content. " * 30 + "</p>"
+        html = f'<html><body><form id="aspnetForm"><input type="hidden">{body}<select><option>x</option></select></form></body></html>'
+        _, text = web.html_to_text(html.encode())
+        self.assertIn("Real server rendered content.", text)
+        self.assertNotIn("x\n", text + "\n")
+
+    def test_small_forms_are_still_dropped(self):
+        html = b"<body><p>article text</p><form><label>Search</label><input></form></body>"
+        _, text = web.html_to_text(html)
+        self.assertEqual(text, "article text")
 
     def test_garbage_does_not_crash(self):
         self.assertEqual(web.html_to_text(b""), ("", ""))
