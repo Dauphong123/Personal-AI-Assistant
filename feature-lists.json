@@ -576,19 +576,22 @@
             "tests/test_backend_handshake.py (8 tests)",
             "webui/test/api.test.ts handshake (2 tests)"
           ],
-          "commit": null
+          "commit": "c03fd1b"
         },
         {
           "n": 2,
           "title": "Job ownership: jobs.JOB_OWNER context variable, Job.owner, shared finished_notice()",
-          "status": "in_progress",
-          "tests": [],
+          "status": "done",
+          "tests": [
+            "tests/test_job_owner.py (7 tests)",
+            "tests/test_chat_loop.py, tests/test_hardening.py still green"
+          ],
           "commit": null
         },
         {
           "n": 3,
           "title": "Backend notices: ChatSession.notify queue + 'notice' event; SessionManager routes JOBS.on_finish",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [],
           "commit": null
         },
