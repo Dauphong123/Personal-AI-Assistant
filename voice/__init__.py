@@ -1,7 +1,27 @@
-"""Wake-word voice interface. Heavy audio/ML libraries are imported only when voice mode starts."""
+"""Voice interface: wake word and/or push-to-talk. Heavy audio/ML libraries are imported only
+when voice mode starts."""
 
 import threading
 from collections.abc import Callable
+
+
+def build_key(config, show: Callable[[str], None] = print, reader=None):
+    """The push-to-talk key watcher, or None when push-to-talk is off or cannot work here."""
+    if not config.uses_push_to_talk:
+        return None
+
+    from voice.hotkey import KeyWatcher, windows_key_reader
+
+    try:
+        is_down = (reader or windows_key_reader)(config.push_to_talk_key)
+    except (OSError, AttributeError) as e:  # ctypes.WinDLL does not exist off Windows
+        if not config.uses_wake_word:
+            raise RuntimeError(f"Push-to-talk needs Windows ({e}); set VOICE_TRIGGER=wake_word.") from e
+
+        show(f"Push-to-talk is not available here ({e}); using the wake word only.")
+        return None
+
+    return KeyWatcher(is_down)
 
 
 def build_assistant(config, chat, show: Callable[[str], None] = print):
@@ -28,12 +48,16 @@ def build_assistant(config, chat, show: Callable[[str], None] = print):
     stop = threading.Event()
     show("Loading voice models (the first run downloads them)...")
 
-    detector = WakeWordDetector(
-        OpenWakeWordEngine(config.wake_word),
-        threshold=config.wake_word_threshold,
-        min_frames=config.wake_word_min_frames,
-        cooldown=config.wake_word_cooldown,
-    )
+    key = build_key(config, show)
+    detector = None  # push-to-talk only: the wake-word model is not loaded
+
+    if config.uses_wake_word:
+        detector = WakeWordDetector(
+            OpenWakeWordEngine(config.wake_word),
+            threshold=config.wake_word_threshold,
+            min_frames=config.wake_word_min_frames,
+            cooldown=config.wake_word_cooldown,
+        )
     recorder = CommandRecorder(
         SileroVAD(config.vad_threshold),
         end_silence=config.end_silence,
@@ -75,4 +99,5 @@ def build_assistant(config, chat, show: Callable[[str], None] = print):
         show=show,
         stop_event=stop,
         verifier=verifier,
+        key=key,
     )

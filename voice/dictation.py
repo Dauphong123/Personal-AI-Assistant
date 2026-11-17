@@ -118,3 +118,48 @@ def clean_dictation(text: str) -> str:
     text = _correct(text)
     text = _unstutter(text)
     return _tidy(text)
+
+
+HANDS_FREE_ON_RE = re.compile(
+    r"^(?:(?:turn on|start|enable|go)\s+)?hands\s*free(?:\s+mode)?(?:\s+(?:on|please))?$"
+    r"|^(?:bật\s+)?(?:chế\s+độ\s+)?rảnh\s+tay(?:\s+(?:đi|nhé))?$"
+)
+HANDS_FREE_OFF_RE = re.compile(
+    r"^(?:stop|done|quit)\s+listening(?:\s+please)?$"
+    r"|^(?:(?:turn off|stop|end|exit)\s+)?hands\s*free(?:\s+mode)?\s*(?:off)?$"
+    r"|^(?:dừng|thôi|ngừng)\s+nghe(?:\s+(?:đi|nhé|nữa))?$"
+    r"|^tắt\s+(?:chế\s+độ\s+)?rảnh\s+tay$"
+)
+
+
+def _command_words(text: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", normalize(text).lower()).split())
+
+
+def hands_free_command(text: str) -> str | None:
+    """"on" for "hands free" / "rảnh tay", "off" for "stop listening" / "dừng nghe", else None."""
+    words = _command_words(text)
+
+    if HANDS_FREE_OFF_RE.match(words) and not HANDS_FREE_ON_RE.match(words):
+        return "off"
+
+    if HANDS_FREE_ON_RE.match(words):
+        return "on"
+
+    return None
+
+
+def dictated_prompt(text: str) -> str:
+    """What to send for dictated speech: chat commands stay plain ("stop", "exit") so ChatLoop
+    recognizes them; anything else is cleaned up."""
+    from turns import is_stop_request  # imported late: turns pulls in LangChain
+
+    words = _command_words(text)
+
+    if is_stop_request(text):
+        return "stop"
+
+    if words in ("exit", "quit"):
+        return words
+
+    return clean_dictation(text)

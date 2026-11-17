@@ -7,6 +7,11 @@ Everything audio-related runs on the thread that calls `run()`; the agent runs o
 ChatLoop's worker thread. While the agent works the wake word is still monitored, so
 "Jarvis, stop" cancels a running turn and "Jarvis, <request>" queues one. The wake
 word is never monitored while the assistant is speaking.
+
+Push-to-talk (optional `key`, a voice.hotkey.KeyWatcher) works like Wispr Flow: hold the
+key to talk (released = sent, cleaned up by voice.dictation), double tap for hands-free
+(every pause ends a prompt, answers are spoken in between, until a tap, "stop listening"
+or HANDS_FREE_IDLE_TIMEOUT of silence). Pressing the key cuts off speech.
 """
 
 import logging
@@ -23,12 +28,14 @@ import numpy as np
 from language import detect_language, say
 from voice.audio import MicDisconnected
 from voice.config import VoiceConfig
+from voice.dictation import dictated_prompt, hands_free_command
 from voice.text import is_filler, normalize_answer, strip_wake_word, wake_word_phrases
 
 logger = logging.getLogger(__name__)
 
 PREROLL_FRAMES = 3  # about 240 ms kept from before the detection fired
 MIC_RETRIES = 5
+KEY_RELEASE_WAIT = 0.5  # seconds to wait for the key watcher to report how the key was let go
 
 
 class VoiceState(Enum):
@@ -45,15 +52,18 @@ class VoiceState(Enum):
 S = VoiceState
 
 TRANSITIONS: dict[VoiceState, set[VoiceState]] = {
-    S.WAITING_FOR_WAKE_WORD: {S.WAKE_WORD_DETECTED, S.PROCESSING, S.STOPPING},
+    # The push-to-talk key goes straight to listening.
+    S.WAITING_FOR_WAKE_WORD: {S.WAKE_WORD_DETECTED, S.LISTENING_FOR_COMMAND, S.PROCESSING, S.STOPPING},
     S.WAKE_WORD_DETECTED: {S.LISTENING_FOR_COMMAND, S.RETURN_TO_STANDBY, S.STOPPING},
-    S.LISTENING_FOR_COMMAND: {S.TRANSCRIBING, S.RETURN_TO_STANDBY, S.STOPPING},
+    # Hands-free listening stops to speak answers and approval questions.
+    S.LISTENING_FOR_COMMAND: {S.TRANSCRIBING, S.SPEAKING, S.RETURN_TO_STANDBY, S.STOPPING},
     S.TRANSCRIBING: {S.LISTENING_FOR_COMMAND, S.PROCESSING, S.RETURN_TO_STANDBY, S.STOPPING},
     # Wake word monitoring stays on while the agent works.
-    S.PROCESSING: {S.WAKE_WORD_DETECTED, S.SPEAKING, S.RETURN_TO_STANDBY, S.STOPPING},
+    S.PROCESSING: {S.WAKE_WORD_DETECTED, S.LISTENING_FOR_COMMAND, S.SPEAKING, S.RETURN_TO_STANDBY, S.STOPPING},
     # After an approval prompt the assistant listens for the answer straight away.
     S.SPEAKING: {S.LISTENING_FOR_COMMAND, S.RETURN_TO_STANDBY, S.STOPPING},
-    S.RETURN_TO_STANDBY: {S.WAITING_FOR_WAKE_WORD, S.PROCESSING, S.STOPPING},
+    # Hands-free goes back to listening instead of standby.
+    S.RETURN_TO_STANDBY: {S.WAITING_FOR_WAKE_WORD, S.LISTENING_FOR_COMMAND, S.PROCESSING, S.STOPPING},
     S.STOPPING: set(),
 }
 
@@ -105,6 +115,8 @@ class VoiceAssistant:
         playback_grace: float = 0.3,
         stop_event: threading.Event | None = None,
         verifier=None,
+        key=None,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.chat = chat
         self.mic = mic
@@ -114,6 +126,12 @@ class VoiceAssistant:
         self.speaker = speaker
         self.config = config
         self.verifier = verifier  # None: any voice is accepted
+        self.key = key  # None: no push-to-talk key (a None detector means no wake word)
+        self._clock = clock
+        self.hands_free = False
+        self._held = False  # the next recording lasts while the key is held
+        self._dictating = False  # the recording being transcribed is a dictated prompt
+        self._last_heard = 0.0  # hands-free: when the last prompt (or the start) was
         self._show = show
         self._sleep = sleep
         self._grace = playback_grace
@@ -146,6 +164,10 @@ class VoiceAssistant:
 
         phrases = wake_word_phrases(config.wake_word)
         self._phrase = phrases[0] if phrases else config.wake_word
+        self._key_label = config.push_to_talk_key.replace("_", " ").title()
+
+        if key is not None:
+            key.on_event = self._on_key_event
 
     # --- lifecycle ---------------------------------------------------------------
 
@@ -159,6 +181,9 @@ class VoiceAssistant:
             if not self._open_mic():
                 self._transition(S.STOPPING)
                 return
+
+            if self.key is not None:
+                self.key.start()
 
             self._banner_standby()
 
@@ -186,7 +211,9 @@ class VoiceAssistant:
         self._show("[STOPPING] Shutting down voice mode.")
 
         # One failing close must not stop the other: an open microphone can keep the process alive.
-        for release in (self.speaker.close, self.mic.close):
+        releases = [self.speaker.close, self.mic.close] + ([self.key.close] if self.key is not None else [])
+
+        for release in releases:
             try:
                 release()
             except Exception:
@@ -213,7 +240,15 @@ class VoiceAssistant:
             self._show(message)
 
     def _banner_standby(self) -> None:
-        self._show(f"[STANDBY] Waiting for {self._phrase.title()}...")
+        if self.key is None:
+            self._show(f"[STANDBY] Waiting for {self._phrase.title()}...")
+        elif self.detector is None:
+            self._show(f"[STANDBY] Hold {self._key_label} to talk (double tap: hands-free).")
+        else:
+            self._show(
+                f"[STANDBY] Waiting for {self._phrase.title()}, or hold {self._key_label} to talk "
+                "(double tap: hands-free)..."
+            )
 
     @property
     def _handlers(self) -> dict[VoiceState, Callable[[], None]]:
@@ -277,12 +312,16 @@ class VoiceAssistant:
     # --- WAITING_FOR_WAKE_WORD / PROCESSING ---------------------------------------
 
     def _watch(self) -> None:
+        if self._key_down():
+            self._start_held()
+            return
+
         frame = self.mic.read(timeout=0.1)
 
         if frame is not None:
             self._ring.append(frame)
 
-            if self.detector.process(frame):
+            if self.detector is not None and self.detector.process(frame):
                 self._preroll = list(self._ring)
                 self._heard = []
                 self._attempt = 0
@@ -317,6 +356,14 @@ class VoiceAssistant:
     # --- LISTENING_FOR_COMMAND ----------------------------------------------------
 
     def _listen(self) -> None:
+        if self._held:
+            self._listen_held()
+            return
+
+        if self.hands_free and not self._expecting_answer:
+            self._listen_hands_free()
+            return
+
         use_preroll = self._attempt == 0 and not self._expecting_answer
         audio = self.recorder.record(
             self.mic,
@@ -340,6 +387,7 @@ class VoiceAssistant:
 
     def _transcribe(self) -> None:
         audio, self._audio = self._audio, None
+        dictating, self._dictating = self._dictating, False
 
         if audio is None:  # nothing was recorded; there is nothing to recognize
             self._to_standby()
@@ -359,7 +407,9 @@ class VoiceAssistant:
             text = strip_wake_word(text, self.config.wake_word)
 
         if not any(ch.isalnum() for ch in text) or (not self._expecting_answer and is_filler(text)):
-            if self._attempt == 0 and not self._expecting_answer:
+            if dictating:
+                self._listen_again()
+            elif self._attempt == 0 and not self._expecting_answer:
                 # Only the wake word was heard: signal readiness and wait for the command.
                 self._attempt = 1
                 self._play_beep()
@@ -395,15 +445,26 @@ class VoiceAssistant:
 
         if self._expecting_answer or self.chat.pending_approval is not None:
             text = normalize_answer(text)
+        elif (command := hands_free_command(text)) is not None:
+            self._set_hands_free(command == "on")
+            return
+        elif dictating:
+            text = dictated_prompt(text)
+
+            if not text:
+                self._listen_again()
+                return
 
         self._expecting_answer = False
+        self._last_heard = self._clock()
 
         if not self.chat.submit(text):
             self.request_stop()  # the user said "exit" or "quit"
             self._transition(S.STOPPING)
             return
 
-        self._transition(S.PROCESSING)
+        # Hands-free: listen for the next prompt now; ChatLoop queues it behind the running turn.
+        self._transition(S.LISTENING_FOR_COMMAND if self.hands_free else S.PROCESSING)
 
     # --- SPEAKING -----------------------------------------------------------------
 
@@ -446,7 +507,7 @@ class VoiceAssistant:
         self._sleep(self._grace)
         self.mic.flush()
         self._ring.clear()
-        self.detector.reset()
+        self._reset_detector()
 
     # --- RETURN_TO_STANDBY --------------------------------------------------------
 
@@ -457,11 +518,15 @@ class VoiceAssistant:
         self._heard = []
         self._attempt = 0
         self._expecting_answer = False
+        self._held = False
+        self._dictating = False
         self.mic.flush()
-        self.detector.reset()
+        self._reset_detector()
         self.cycles += 1
 
-        if self._has_background_work():
+        if self.hands_free:
+            self._transition(S.LISTENING_FOR_COMMAND)
+        elif self._has_background_work():
             self._transition(S.PROCESSING)
         else:
             self._transition(S.WAITING_FOR_WAKE_WORD)
@@ -495,5 +560,159 @@ class VoiceAssistant:
             self.state = S.STOPPING
             return
 
-        self.detector.reset()
+        self._reset_detector()
+        self._to_standby()
+
+    def _reset_detector(self) -> None:
+        if self.detector is not None:
+            self.detector.reset()
+
+    # --- push-to-talk and hands-free ---------------------------------------------
+
+    def _on_key_event(self, event: str) -> None:
+        """Runs on the key watcher's thread: pressing the key cuts off the assistant's speech."""
+        if event == "down" and self.state is S.SPEAKING:
+            self._drop_pending_speech()
+
+    def _key_down(self) -> bool:
+        """True if the key was pressed (events before the press are stale and dropped)."""
+        if self.key is None:
+            return False
+
+        while (event := self.key.poll()) is not None:
+            if event == "down":
+                return True
+
+        return False
+
+    def _key_release(self) -> str | None:
+        """How the key was let go: "hold", "tap", "double_tap", or None if not reported yet."""
+        if self.key is None:
+            return None
+
+        deadline = time.monotonic() + KEY_RELEASE_WAIT
+
+        while True:
+            event = self.key.poll()
+
+            if event in ("hold", "tap", "double_tap"):
+                return event
+
+            if event is None:
+                if time.monotonic() >= deadline or self._stop.is_set():
+                    return None
+
+                time.sleep(0.01)
+
+    def _start_held(self) -> None:
+        self._held = True
+        self._preroll = list(self._ring)
+        self._heard = []
+        self._attempt = 0
+
+        if self.state is not S.LISTENING_FOR_COMMAND:
+            self._transition(S.LISTENING_FOR_COMMAND)
+
+    def _listen_held(self) -> None:
+        key = self.key
+        self._held = False
+
+        if key is None:
+            self._to_standby()
+            return
+
+        audio = self.recorder.record_held(
+            self.mic, lambda: key.held, preroll=self._preroll, max_duration=self.config.max_recording_duration
+        )
+        self._preroll = []
+
+        if self._stop.is_set():
+            return
+
+        release = self._key_release()
+
+        if release == "double_tap":
+            self._set_hands_free(True)
+        elif release == "tap":  # a tap is a switch, not a recording
+            if self.hands_free:
+                self._set_hands_free(False)
+            else:
+                self._to_standby()
+        elif audio is None:
+            self._show("[STANDBY] No speech heard.")
+            self._to_standby()
+        else:  # held (or still held at the length limit)
+            self._audio = audio
+            self._dictating = True
+            self._transition(S.TRANSCRIBING)
+
+    def _wants_attention(self) -> bool:
+        """Hands-free: stop waiting for speech when the key is used or something must be said."""
+        request = self.chat.pending_approval
+        return (
+            (self.key is not None and (self.key.held or self.key.pending))
+            or not self._replies.empty()
+            or (request is not None and request is not self._asked)
+        )
+
+    def _listen_hands_free(self) -> None:
+        timeout = self.config.hands_free_idle_timeout
+
+        if self._clock() - self._last_heard >= timeout:
+            self._set_hands_free(False, f" (no speech for {timeout:.0f} s)")
+            return
+
+        self._heard = []
+        audio = self.recorder.record(
+            self.mic,
+            listen_timeout=timeout - (self._clock() - self._last_heard),
+            max_duration=self.config.max_recording_duration,
+            give_up=self._wants_attention,
+        )
+
+        if audio is not None:
+            self._audio = audio
+            self._dictating = True
+            self._transition(S.TRANSCRIBING)
+            return
+
+        if self._stop.is_set():
+            return
+
+        if self._key_down():
+            self._start_held()
+            return
+
+        request = self.chat.pending_approval
+
+        if request is not None and request is not self._asked:
+            self._asked = request
+            self._speech = (describe_approval(request, self._lang), True, self._speech_epoch)
+            self._transition(S.SPEAKING)
+        elif not self._replies.empty():
+            self._speech = (self._take_pending_speech(), False, self._speech_epoch)
+            self._transition(S.SPEAKING)
+
+    def _listen_again(self) -> None:
+        """Nothing usable was said: hands-free keeps listening, otherwise back to standby."""
+        if self.hands_free and self.state is S.TRANSCRIBING:
+            self._transition(S.LISTENING_FOR_COMMAND)
+            return
+
+        if not self.hands_free:
+            self._show("[STANDBY] Nothing recognized.")
+
+        self._to_standby()
+
+    def _set_hands_free(self, on: bool, reason: str = "") -> None:
+        self.hands_free = on
+        self._last_heard = self._clock()
+
+        if on:
+            how = f"tap {self._key_label} or say" if self.key is not None else "say"
+            self._show(f'[HANDS-FREE] On: just talk, prompt after prompt; {how} "stop listening" to end.')
+        else:
+            self._show(f"[HANDS-FREE] Off{reason}.")
+
+        self._play_beep()
         self._to_standby()

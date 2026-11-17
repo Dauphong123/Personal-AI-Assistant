@@ -820,15 +820,18 @@
           "tests": [
             "tests/test_hotkey.py (15 tests)"
           ],
-          "commit": null,
+          "commit": "a974c6e",
           "done": "2026-11-17"
         },
         {
           "n": 3,
           "title": "Assistant: hold-to-talk, hands-free mode across prompts, barge-in",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_voice_push_to_talk.py (29 tests: HoldToTalkTests, HandsFreeTests, DictationCommandTests, RecorderTests, BuildKeyTests)"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
         },
         {
           "n": 4,

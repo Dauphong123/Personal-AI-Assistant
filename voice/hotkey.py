@@ -97,6 +97,11 @@ class KeyWatcher:
     def held(self) -> bool:
         return self._key.down
 
+    @property
+    def pending(self) -> bool:
+        """Events are waiting (a tap can be over before anyone looks at `held`)."""
+        return not self._events.empty()
+
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name="push-to-talk", daemon=True)
         self._thread.start()

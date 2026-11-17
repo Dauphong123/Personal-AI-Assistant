@@ -73,10 +73,13 @@ class CommandRecorder:
         preroll: list[np.ndarray] | None = None,
         listen_timeout: float = 10.0,
         max_duration: float = 60.0,
+        give_up: Callable[[], bool] | None = None,
     ) -> np.ndarray | None:
         """Return the audio of one utterance, or None if nobody spoke before the timeout.
 
-        `preroll` frames come first, so speech that began just before this call is kept."""
+        `preroll` frames come first, so speech that began just before this call is kept.
+        `give_up()` is asked while nobody is speaking yet; True ends the wait with None
+        (hands-free mode stops listening to speak an answer or follow the push-to-talk key)."""
         self.vad.reset()
         frames: list[np.ndarray] = []
         waited = 0.0
@@ -112,6 +115,9 @@ class CommandRecorder:
         stalled = 0.0
 
         while not self._should_stop():
+            if not started and give_up is not None and give_up():
+                return None
+
             frame = mic.read(timeout=0.5)
 
             if frame is None:
@@ -131,3 +137,23 @@ class CommandRecorder:
                 return None
 
         return None
+
+    def record_held(
+        self,
+        mic: MicrophoneLike,
+        held: Callable[[], bool],
+        preroll: list[np.ndarray] | None = None,
+        max_duration: float = 60.0,
+    ) -> np.ndarray | None:
+        """Push-to-talk: everything from the press until `held()` turns false, pauses included
+        (no silence cut-off). None if no audio arrived."""
+        frames = list(preroll or [])
+        limit = len(frames) + round(max_duration / FRAME_SECONDS)
+
+        while not self._should_stop() and held() and len(frames) < limit:
+            frame = mic.read(timeout=0.1)
+
+            if frame is not None:
+                frames.append(frame)
+
+        return np.concatenate(frames) if frames else None
