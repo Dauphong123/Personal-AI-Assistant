@@ -9,6 +9,8 @@ RUN_VOICE_ENGINE_TESTS=1 python -m unittest tests.test_voice_engines   # real-mo
 ```
 
 ## Design
+The web chat reuses only `stt.py`, `tts.py` (Piper synthesizer), `text.clean_for_speech` and `config.py`, through `backend/voice.py` (push-to-talk from the browser, no wake word); see `backend/CLAUDE.md`. Keep those interfaces stable.
+
 Voice is only another input/output for `ChatLoop`: transcripts go to `chat.submit()` (same path as keyboard, which keeps working); each finished turn's final answer returns via `chat.on_reply`. Tools, memory, checkpointer and thread are shared. Streamed sentences come from `turns.SpeechStream` (see root CLAUDE.md); the assistant queues them and speaks in bursts from `PROCESSING`, so the wake word is still checked between bursts.
 
 `assistant.py` is the state machine (`VoiceState`, explicit `TRANSITIONS`). All audio runs on its one thread, except the PortAudio callback and a TTS synthesis helper thread. Components are injected, so tests use fakes: `wakeword.py` (openWakeWord ONNX behind `WakeWordDetector`: consecutive-frame hits + cooldown), `vad.py` (Silero VAD + `CommandRecorder`), `stt.py` (faster-whisper, only after wake word), `tts.py` (Piper; `Speaker` synthesizes the next sentence during playback), `audio.py` (sounddevice), `text.py` (wake-word stripping, filler/yes-no, markdown cleanup), `config.py` (`VoiceConfig.from_env`, validated).

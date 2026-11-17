@@ -120,7 +120,13 @@ Only one turn runs on the model at a time; a session that sends while another is
 
 Because the assistant can run commands and edit files, the server is locked down: it listens on loopback only, every request needs the random token printed at launch (a new one each time; the page keeps it for the tab, out of the address bar), requests with a foreign `Host` or `Origin` are refused, and the page runs under a CSP that forbids inline script. Model output is inserted as text, never as HTML. `--port N` changes the port; `--allow-remote` is required to listen on any other address (do that only on a network you trust). If the port is taken the launch fails instead of sharing it.
 
-Limits: background-job completion notices and voice are not shown in the browser (the assistant can still check a job with `job_status`); raw tool output streams into the answer, as it does in the keyboard chat.
+When a command the assistant started moves to the background and later finishes, its session gets a **job notice** (shown in the conversation) and the assistant reports the outcome, as in the keyboard chat. The notice goes to the session that started the job; if that session is busy, it runs right after the current turn.
+
+**Voice** (`python -m backend --voice`, needs `requirements_voice.txt`): a **Talk** button records from the browser's microphone (click to start, click **Done** to finish, 60 s max); the backend transcribes it with faster-whisper and sends it as your message. **Read answers aloud** speaks each new answer with Piper (code is skipped; Vietnamese answers use the Vietnamese voice). The models load on the first use, so the first recording or answer takes longer. Settings are the same `.env` voice settings as the keyboard voice mode. There is no wake word or speaker verification in the browser. The browser only allows the microphone on `localhost`/`127.0.0.1` (or HTTPS), so with `--allow-remote` over plain HTTP the Talk button stays hidden.
+
+When the page opens, it first does a **handshake** with the backend: they agree on the protocol version and the backend says which features it offers (job notices, voice), so the page shows only what works. If the page was built for a different backend version, it says to rebuild the frontend (`npm --prefix webui run build`) and reload.
+
+Limits: raw tool output streams into the answer, as it does in the keyboard chat.
 
 ---
 

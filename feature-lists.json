@@ -560,13 +560,45 @@
       "id": "F020",
       "name": "Web handshake: capabilities, job notices, voice",
       "description": "Frontend and backend agree on a protocol version and features at connect; background-job completion notices reach the session that started the job; push-to-talk and spoken answers through the backend's voice engines.",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-17",
-      "completed": null,
+      "completed": "2026-11-17",
       "branch": "feature/F020-webui-handshake",
       "commit": null,
-      "files": [],
-      "tests": [],
+      "files": [
+        "backend/server.py",
+        "backend/session.py",
+        "backend/sessions.py",
+        "backend/voice.py",
+        "backend/__main__.py",
+        "backend/CLAUDE.md",
+        "jobs.py",
+        "chat_loop.py",
+        "webui/src/types.ts",
+        "webui/src/api.ts",
+        "webui/src/state.ts",
+        "webui/src/voice.ts",
+        "webui/src/main.ts",
+        "webui/public/index.html",
+        "webui/public/style.css",
+        "webui/CLAUDE.md",
+        "voice/CLAUDE.md",
+        "README.md",
+        "CLAUDE.md",
+        "docs/PROJECT.md"
+      ],
+      "tests": [
+        "tests/test_backend_handshake.py",
+        "tests/test_job_owner.py",
+        "tests/test_backend_notices.py",
+        "tests/test_backend_voice.py",
+        "tests/test_backend_main.py",
+        "tests/test_backend_server.py",
+        "tests/test_webui_frontend.py",
+        "webui/test/api.test.ts",
+        "webui/test/state.test.ts",
+        "webui/test/voice.test.ts"
+      ],
       "steps": [
         {
           "n": 1,
@@ -628,17 +660,19 @@
             "tests/test_webui_frontend.py controls",
             "headless Chrome + fake mic: handshake, job notice routed via JOB_OWNER, webm recording decoded for real (40320 samples), auto-send, only the live answer spoken, no console errors"
           ],
-          "commit": null
+          "commit": "e954241"
         },
         {
           "n": 7,
           "title": "Docs",
-          "status": "in_progress",
-          "tests": [],
+          "status": "done",
+          "tests": [
+            "full suite 576 OK, 11 skipped (2026-11-17)"
+          ],
           "commit": null
         }
       ],
-      "notes": "Opened at the user's request right after F019 in the same session (user asked to continue). Branched from feature/F019-webui-typescript-sessions (main has no backend/ yet)."
+      "notes": "Opened at the user's request right after F019 in the same session (user asked to continue). Branched from feature/F019-webui-typescript-sessions (main has no backend/ yet). Browser-verified in headless Chrome with a fake mic and fake STT/TTS engines (real PyAV decoding). Not run with real faster-whisper/Piper models or the real Ollama graph in this session. Also fixed: refused POSTs lost to a Windows connection reset; faster_whisper.decode_audio incompatible with PyAV 19."
     }
   ]
 }

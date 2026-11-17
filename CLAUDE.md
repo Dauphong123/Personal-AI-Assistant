@@ -8,7 +8,7 @@ Local LLM agent: LangChain + LangGraph on Ollama (default `qwen3:8b`). Interacti
 .\.venv\Scripts\Activate.ps1
 python main.py                              # interactive chat; "exit" or "quit" stops
 npm --prefix webui install; npm --prefix webui run build   # once: build the TypeScript web frontend
-python -m backend                           # browser chat on 127.0.0.1:8000, many sessions (link with token is printed)
+python -m backend [--voice]                 # browser chat on 127.0.0.1:8000, many sessions, job notices, optional voice (link with token is printed)
 python -m unittest discover -s tests -t .   # tests (Postgres test skipped if DB unreachable)
 docker compose up -d                        # pgvector Postgres 17 (db agent_memory, user agent)
 ```
@@ -34,7 +34,7 @@ Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama wit
 - `tool_execute` never raises: unknown tools/errors become `ERROR:` tool messages, output capped, max 30 tool calls per turn. Tools in `NEEDS_APPROVAL` (`tools.py`: terminal, write/edit/delete/move) pause via `interrupt()`; `ChatLoop` asks y/N (voice asks aloud) and resumes with `Command(resume=bool)`.
 - `main.py` uses `InMemorySaver` (thread_id `"1"`); `turns.py` streams chunks from `direct`, `code_tools`, `tool_execute`.
 
-**Live input / jobs.** `main.py` only reads the keyboard; `chat_loop.py` (`ChatLoop`) runs turns one at a time on a worker thread. Mid-turn messages are queued; a short stop message (`is_stop_request` in `turns.py`: "stop", "cancel that", `/stop`, Vietnamese phrases) cancels the turn and drops the queue (job notices kept). Approval answers use the same input line. `/jobs`, `/cancel <id>` work any time. `turns.py` holds UI-independent `run_turn`; a cancelled turn's unanswered tool calls get `ERROR: cancelled` before the next turn. `terminal` runs via `jobs.py` (`JobManager`, global `tools.JOBS`): past `FOREGROUND_WAIT` (5 s) it goes to background, the tool returns a job id, completion queues a `[system notice]` turn; `job_status` / `cancel_job` tools; jobs killed after 10 min.
+**Live input / jobs.** `main.py` only reads the keyboard; `chat_loop.py` (`ChatLoop`) runs turns one at a time on a worker thread. Mid-turn messages are queued; a short stop message (`is_stop_request` in `turns.py`: "stop", "cancel that", `/stop`, Vietnamese phrases) cancels the turn and drops the queue (job notices kept). Approval answers use the same input line. `/jobs`, `/cancel <id>` work any time. `turns.py` holds UI-independent `run_turn`; a cancelled turn's unanswered tool calls get `ERROR: cancelled` before the next turn. `terminal` runs via `jobs.py` (`JobManager`, global `tools.JOBS`): past `FOREGROUND_WAIT` (5 s) it goes to background, the tool returns a job id, completion queues a `[system notice]` turn (text from `jobs.finished_notice`; jobs carry `owner` = `jobs.JOB_OWNER`, which the web backend uses to route the notice to its session); `job_status` / `cancel_job` tools; jobs killed after 10 min.
 
 **Streaming speech.** `turns.SpeechStream` turns streamed answers (nodes `direct`, `code_tools` only) into sentences: tool-calling messages muted, `code_tools` holds its newest sentence until the next starts (tool call arrives after narration), code blocks become "(code omitted)", stops at `speech_limit`. `run_turn(on_speech=...)` returns whether anything streamed; then `ChatLoop` skips `on_reply` (no double speech). `ChatLoop.on_cancel` drops queued speech.
 
