@@ -25,6 +25,7 @@
       <button id="toggle-sidebar" type="button" class="quiet narrow-only" aria-controls="sidebar" aria-expanded="false">Sessions</button>
       <h2 id="session-title" class="title"></h2>
       <span id="status" class="status" role="status"></span>
+      <label id="speak-label" class="speak-toggle" hidden><input id="speak-answers" type="checkbox"> Read answers aloud</label>
       <div class="bar-actions">
         <button id="rename" type="button" class="quiet">Rename</button>
         <button id="clear-chat" type="button" class="quiet">Clear</button>
@@ -51,6 +52,7 @@
     <form id="form" class="composer" autocomplete="off">
       <label class="sr" for="input">Message</label>
       <textarea id="input" rows="1" placeholder="Message the assistant" enterkeyhint="send"></textarea>
+      <button id="mic" type="button" class="quiet mic" aria-pressed="false" hidden>Talk</button>
       <button id="stop" type="button" class="quiet" disabled>Stop</button>
       <button id="send" type="submit" class="primary">Send</button>
     </form>

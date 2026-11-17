@@ -116,6 +116,45 @@ test("handshake mismatch passes the server's message on", async () => {
   assert.deepEqual(await api.handshake(), { ok: false, status: 409, error: "rebuild with npm" });
 });
 
+test("transcribe uploads the recording with its audio type", async () => {
+  const calls: Call[] = [];
+  const api = new Api("tok", fakeFetch(200, { text: "hello" }, calls));
+  const blob = new Blob([new Uint8Array([1, 2, 3])], { type: "audio/webm;codecs=opus" });
+  assert.deepEqual(await api.transcribe(blob), { ok: true, data: "hello" });
+  assert.equal(calls[0]?.url, "/api/voice/transcribe");
+  assert.equal(calls[0]?.init?.method, "POST");
+  const headers = new Headers(calls[0]?.init?.headers);
+  assert.equal(headers.get("Content-Type"), "audio/webm;codecs=opus");
+  assert.equal(headers.get("X-Token"), "tok");
+  assert.equal(calls[0]?.init?.body, blob);
+});
+
+test("transcribe of a typeless blob says webm", async () => {
+  const calls: Call[] = [];
+  await new Api("tok", fakeFetch(200, { text: "" }, calls)).transcribe(new Blob([new Uint8Array([1])]));
+  assert.equal(new Headers(calls[0]?.init?.headers).get("Content-Type"), "audio/webm");
+});
+
+test("speak returns the audio, or null when there is nothing to say", async () => {
+  const wav = (async () =>
+    new Response(new Uint8Array([82, 73, 70, 70]), { status: 200, headers: { "Content-Type": "audio/wav" } })) as typeof fetch;
+  const result = await new Api("tok", wav).speak("Done.");
+  assert.equal(result.ok, true);
+  assert.equal(result.ok && result.data?.type, "audio/wav");
+  assert.equal(result.ok && result.data?.size, 4);
+
+  const empty = (async () => new Response(null, { status: 204 })) as typeof fetch;
+  assert.deepEqual(await new Api("tok", empty).speak("***"), { ok: true, data: null });
+});
+
+test("speak posts JSON text and reports errors", async () => {
+  const calls: Call[] = [];
+  const result = await new Api("tok", fakeFetch(503, { error: "voice off" }, calls)).speak("hi");
+  assert.deepEqual(result, { ok: false, status: 503, error: "voice off" });
+  assert.equal(calls[0]?.url, "/api/voice/speak");
+  assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), { text: "hi" });
+});
+
 test("eventsUrl carries token and resume point", () => {
   const api = new Api("t k", fakeFetch(200, {}, []));
   assert.equal(api.eventsUrl("abcdef012345", 7), "/api/sessions/abcdef012345/events?token=t+k&after=7");

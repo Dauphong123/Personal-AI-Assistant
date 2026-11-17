@@ -36,7 +36,7 @@ class SourceTests(unittest.TestCase):
 
     def test_sources_are_typescript(self):
         names = set(self.sources())
-        self.assertTrue({"api.ts", "state.ts", "types.ts"} <= names, names)
+        self.assertTrue({"api.ts", "state.ts", "types.ts", "url.ts", "voice.ts", "main.ts"} <= names, names)
         self.assertEqual(list(SRC.glob("*.js")), [])
 
     def test_never_writes_html(self):
@@ -69,7 +69,7 @@ MAIN = (SRC / "main.ts").read_text(encoding="utf-8") if (SRC / "main.ts").exists
 CONTROLS = [
     "sidebar", "sessions", "new-session", "toggle-sidebar", "session-title", "status", "rename", "clear-chat",
     "delete-session", "scroll", "empty", "log", "alert", "approval", "approval-calls", "allow", "deny",
-    "form", "input", "send", "stop",
+    "form", "input", "send", "stop", "mic", "speak-label", "speak-answers",
 ]
 
 
@@ -152,7 +152,7 @@ class BuildTests(unittest.TestCase):
         dist = WEBUI / "dist"
         self.assertEqual(STATIC_DIR, dist)
 
-        for name in ("index.html", "style.css", "main.js", "api.js", "state.js", "url.js"):
+        for name in ("index.html", "style.css", "main.js", "api.js", "state.js", "url.js", "voice.js"):
             self.assertTrue((dist / name).is_file(), name)
 
         main_js = (dist / "main.js").read_text(encoding="utf-8")

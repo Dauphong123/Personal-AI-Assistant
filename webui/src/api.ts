@@ -58,6 +58,25 @@ export class Api {
     return `${sessionPath(id)}/events?${query.toString()}`;
   }
 
+  /** Speech to text: one push-to-talk recording (needs the handshake's voice.transcribe). */
+  async transcribe(recording: Blob): Promise<Result<string>> {
+    const sent = await this.#request("POST", "/api/voice/transcribe", recording, recording.type || "audio/webm");
+
+    if (!sent.ok) return sent;
+
+    const record = await jsonRecord(sent.data);
+    return { ok: true, data: typeof record["text"] === "string" ? record["text"] : "" };
+  }
+
+  /** Text to speech: a WAV to play, or null when nothing in the text is worth saying. */
+  async speak(text: string): Promise<Result<Blob | null>> {
+    const sent = await this.#request("POST", "/api/voice/speak", JSON.stringify({ text }), "application/json");
+
+    if (!sent.ok) return sent;
+
+    return { ok: true, data: sent.data.status === 204 ? null : await sent.data.blob() };
+  }
+
   #action(id: string, action: string, body: object): Promise<Result<SessionInfo>> {
     return this.#call("POST", `${sessionPath(id)}/${action}`, body, sessionOf);
   }
@@ -68,12 +87,34 @@ export class Api {
     body: object | undefined,
     pick: (body: Record<string, unknown>) => T,
   ): Promise<Result<T>> {
+    const sent = await this.#request(
+      method,
+      path,
+      body === undefined ? undefined : JSON.stringify(body),
+      body === undefined ? undefined : "application/json",
+    );
+
+    if (!sent.ok) return sent;
+
+    return { ok: true, data: pick(await jsonRecord(sent.data)) };
+  }
+
+  /** Send with the token; a non-2xx answer or a network failure becomes an error result. */
+  async #request(
+    method: "GET" | "POST",
+    path: string,
+    body: BodyInit | undefined,
+    contentType: string | undefined,
+  ): Promise<Result<Response>> {
     const headers: Record<string, string> = { "X-Token": this.#token };
     const init: RequestInit = { method, headers };
 
     if (body !== undefined) {
-      headers["Content-Type"] = "application/json";
-      init.body = JSON.stringify(body);
+      init.body = body;
+    }
+
+    if (contentType !== undefined) {
+      headers["Content-Type"] = contentType;
     }
 
     let response: Response;
@@ -84,22 +125,23 @@ export class Api {
       return { ok: false, status: 0, error: "Cannot reach the server." };
     }
 
-    let parsed: unknown = null;
-
-    try {
-      parsed = await response.json();
-    } catch {
-      parsed = null;
-    }
-
-    const record = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
-
     if (!response.ok) {
+      const record = await jsonRecord(response);
       const message = typeof record["error"] === "string" ? record["error"] : `Request failed (${response.status}).`;
       return { ok: false, status: response.status, error: message };
     }
 
-    return { ok: true, data: pick(record) };
+    return { ok: true, data: response };
+  }
+}
+
+/** The JSON object in a response, or {} when there is none. */
+async function jsonRecord(response: Response): Promise<Record<string, unknown>> {
+  try {
+    const parsed: unknown = await response.json();
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
   }
 }
 

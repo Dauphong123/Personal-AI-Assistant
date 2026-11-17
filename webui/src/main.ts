@@ -16,8 +16,10 @@ import {
 import type { Conversation, Item } from "./state.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
 import { sessionFromHash, tokenFrom } from "./url.ts";
+import { Player, Recorder, canRecord, replyToSpeak } from "./voice.ts";
 
 const TOKEN_KEY = "coding-assistant-token";
+const SPEAK_KEY = "coding-assistant-speak";
 const POLL_MS = 2000;
 const NEAR_BOTTOM_PX = 80;
 
@@ -53,6 +55,9 @@ const ui = {
   input: byId<HTMLTextAreaElement>("input"),
   send: byId<HTMLButtonElement>("send"),
   stop: byId<HTMLButtonElement>("stop"),
+  mic: byId<HTMLButtonElement>("mic"),
+  speakLabel: byId("speak-label"),
+  speakAnswers: byId<HTMLInputElement>("speak-answers"),
 };
 
 // --- token ---------------------------------------------------------------------
@@ -95,6 +100,10 @@ let connection = ""; // stream trouble shown in the status line
 let rendered: { item: Item; node: HTMLElement }[] = [];
 let shownApproval: Conversation["approval"] = null;
 const drafts = new Map<string, string>();
+const recorder = new Recorder();
+const player = new Player();
+let voiceStatus = ""; // "Listening…" / "Transcribing…"
+let replayEnd = 0; // events up to here were history when the session was opened: never spoken
 
 function active(): SessionInfo | undefined {
   return sessions.find((session) => session.id === activeId);
@@ -147,9 +156,12 @@ function renderHeader(): void {
   ui.remove.disabled = none || conv.busy;
   ui.send.disabled = none || conv.busy;
   ui.stop.disabled = none || !conv.busy;
+  ui.mic.disabled = none || (conv.busy && !recorder.recording) || voiceStatus === "Transcribing…";
 
   if (connection) {
     ui.status.textContent = connection;
+  } else if (voiceStatus) {
+    ui.status.textContent = voiceStatus;
   } else if (conv.waiting) {
     ui.status.textContent = "Waiting for another session";
   } else if (conv.approval) {
@@ -278,6 +290,12 @@ function openStream(id: string): void {
     renderConversation();
     syncActiveState();
 
+    const reply = ui.speakAnswers.checked ? replyToSpeak(conv, data, replayEnd) : null;
+
+    if (reply) {
+      void speakReply(id, reply);
+    }
+
     if (conv.gone) {
       closeStream();
       void sessionGone();
@@ -326,7 +344,13 @@ function select(id: string): void {
   }
 
   closeStream();
+  recorder.cancel();
+  player.stop();
+  voiceStatus = "";
+  ui.mic.setAttribute("aria-pressed", "false");
+  ui.mic.textContent = "Talk";
   activeId = id;
+  replayEnd = active()?.last_event ?? 0;
   conv = emptyConversation();
   rendered = [];
   shownApproval = null;
@@ -441,6 +465,81 @@ async function run(action: (id: string) => Promise<{ ok: boolean; error?: string
   await refreshSessions();
 }
 
+// --- voice ------------------------------------------------------------------------
+
+async function speakReply(sessionId: string, text: string): Promise<void> {
+  const result = await api.speak(text);
+
+  // The user may have moved on (another session, a new recording) while it was synthesized.
+  if (!result.ok || !result.data || sessionId !== activeId || recorder.recording) return;
+
+  player.play(result.data);
+}
+
+async function startTalking(): Promise<void> {
+  player.stop();
+  showAlert(null);
+
+  try {
+    await recorder.start();
+  } catch (error) {
+    const denied = error instanceof DOMException && error.name === "NotAllowedError";
+    showAlert(denied ? "Microphone access was refused." : "Could not use the microphone.");
+    return;
+  }
+
+  ui.mic.setAttribute("aria-pressed", "true");
+  ui.mic.textContent = "Done";
+  voiceStatus = "Listening…";
+  renderHeader();
+}
+
+async function finishTalking(): Promise<void> {
+  if (!recorder.recording) return;
+
+  const sessionId = activeId;
+  const recording = await recorder.stop();
+  ui.mic.setAttribute("aria-pressed", "false");
+  ui.mic.textContent = "Talk";
+  voiceStatus = recording.size > 0 ? "Transcribing…" : "";
+  renderHeader();
+
+  if (recording.size === 0) return;
+
+  const maxAudio = server?.limits.max_audio ?? 0;
+  const result =
+    maxAudio > 0 && recording.size > maxAudio
+      ? { ok: false as const, status: 413, error: "That recording is too long." }
+      : await api.transcribe(recording);
+  voiceStatus = "";
+  renderHeader();
+
+  if (sessionId !== activeId) return; // switched sessions meanwhile: drop it
+
+  if (!result.ok) {
+    showAlert(result.error);
+  } else if (!result.data.trim()) {
+    showAlert("Didn't catch that. Try again.");
+  } else {
+    ui.input.value = result.data;
+    autosize();
+    await send();
+  }
+}
+
+function setUpVoice(info: ServerInfo): void {
+  ui.mic.hidden = !(info.features.voice.transcribe && canRecord());
+  ui.speakLabel.hidden = !info.features.voice.speak;
+
+  try {
+    ui.speakAnswers.checked = localStorage.getItem(SPEAK_KEY) === "on";
+  } catch {
+    ui.speakAnswers.checked = false;
+  }
+
+  recorder.onAutoStop = () => void finishTalking();
+}
+
 function autosize(): void {
   ui.input.style.height = "auto";
   // scrollHeight leaves out the border, and the box is border-box sized.
@@ -481,6 +580,17 @@ ui.input.addEventListener("keydown", (event) => {
 });
 
 ui.input.addEventListener("input", autosize);
+ui.mic.addEventListener("click", () => void (recorder.recording ? finishTalking() : startTalking()));
+
+ui.speakAnswers.addEventListener("change", () => {
+  if (!ui.speakAnswers.checked) player.stop();
+
+  try {
+    localStorage.setItem(SPEAK_KEY, ui.speakAnswers.checked ? "on" : "off");
+  } catch {
+    // storage blocked: the choice lasts until reload
+  }
+});
 ui.stop.addEventListener("click", () => void run((id) => api.stop(id)));
 ui.allow.addEventListener("click", () => void run((id) => api.approve(id, true)));
 ui.deny.addEventListener("click", () => void run((id) => api.approve(id, false)));
@@ -552,6 +662,7 @@ async function start(): Promise<void> {
   }
 
   server = hello.data;
+  setUpVoice(server);
 
   if (await refreshSessions()) {
     await openDefault();

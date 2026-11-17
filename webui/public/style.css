@@ -175,6 +175,25 @@ button.danger { color: var(--danger); }
 
 .status { color: var(--muted); font-size: 0.9rem; white-space: nowrap; }
 
+.speak-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.speak-toggle input { width: 1.1rem; height: 1.1rem; margin: 0; accent-color: var(--user); }
+
+.mic[aria-pressed="true"] {
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .bar-actions { display: flex; gap: 0.25rem; }
 .bar-actions button { padding: 0 0.75rem; }
 
@@ -297,6 +316,14 @@ button.danger { color: var(--danger); }
   .composer textarea { flex-basis: 100%; }
   .composer button { flex: 1; }
   .actions button { flex: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mic[aria-pressed="true"] { animation: listening 1.2s ease-in-out infinite; }
+}
+
+@keyframes listening {
+  50% { box-shadow: 0 0 0 4px rgb(163 38 42 / 0.25); }
 }
 
 @media (prefers-reduced-motion: reduce) {
