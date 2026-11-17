@@ -46,7 +46,7 @@ Each message you send is routed either to a plain chat answer or to a **coding a
 - **RAG** over `./documents/` (Chroma, BAAI/bge-small-en-v1.5 embeddings), synced idempotently at startup.
 - **Long-term memory** in Postgres/pgvector: episodic, semantic (facts) and procedural memories, recalled before each turn and extracted after it.
 - **History summarization** when the conversation grows past 5000 tokens.
-- **Voice mode** (optional): wake word, voice activity detection, local speech-to-text, local text-to-speech, spoken tool approvals, speaker verification, all offline.
+- **Voice mode** (optional): wake word or hold-a-key push-to-talk, hands-free mode for prompt after prompt, cleaned-up dictation, voice activity detection, local speech-to-text, local text-to-speech, spoken tool approvals, speaker verification, all offline.
 - **Vietnamese and English**: type or speak Vietnamese; the assistant answers in the language you used, in text and in a Vietnamese voice (see [Vietnamese](#vietnamese-tiếng-việt)).
 
 ---
@@ -122,7 +122,7 @@ Because the assistant can run commands and edit files, the server is locked down
 
 When a command the assistant started moves to the background and later finishes, its session gets a **job notice** (shown in the conversation) and the assistant reports the outcome, as in the keyboard chat. The notice goes to the session that started the job; if that session is busy, it runs right after the current turn.
 
-**Voice** (`python -m backend --voice`, needs `requirements_voice.txt`): a **Talk** button records from the browser's microphone (click to start, click **Done** to finish, 60 s max); the backend transcribes it with faster-whisper and sends it as your message. **Read answers aloud** speaks each new answer with Piper (code is skipped; Vietnamese answers use the Vietnamese voice). The models load on the first use, so the first recording or answer takes longer. Settings are the same `.env` voice settings as the keyboard voice mode. There is no wake word or speaker verification in the browser. The browser only allows the microphone on `localhost`/`127.0.0.1` (or HTTPS), so with `--allow-remote` over plain HTTP the Talk button stays hidden.
+**Voice** (`python -m backend --voice`, needs `requirements_voice.txt`): **hold Talk** (or hold Right Ctrl) and speak; when you let go, the cleaned-up text (fillers and stutters removed, "no wait" corrections applied) is typed into the message box for you to check and send. A short click on Talk records until you click again (60 s max). **Hands-free** (the button, or double tap Right Ctrl) listens prompt after prompt: every pause sends one (queued while the assistant works), you can answer approvals with "yes"/"no", and it ends when you click it, say "stop listening", or stay quiet for two minutes. Turn on **Read answers aloud** to hear the answers between prompts (listening pauses while one plays). **Read answers aloud** speaks each new answer with Piper (code is skipped; Vietnamese answers use the Vietnamese voice). The models load on the first use, so the first recording or answer takes longer. Settings are the same `.env` voice settings as the keyboard voice mode. There is no wake word or speaker verification in the browser. The browser only allows the microphone on `localhost`/`127.0.0.1` (or HTTPS), so with `--allow-remote` over plain HTTP the Talk button stays hidden.
 
 When the page opens, it first does a **handshake** with the backend: they agree on the protocol version and the backend says which features it offers (job notices, voice), so the page shows only what works. If the page was built for a different backend version, it says to rebuild the frontend (`npm --prefix webui run build`) and reload.
 
@@ -421,9 +421,16 @@ Transitions are an explicit table (`TRANSITIONS` in `voice/assistant.py`); an il
 
 **While the agent works**, the wake word is still monitored: "Hey Jarvis, stop" cancels the running turn and "Hey Jarvis, <request>" queues one. It is **never** monitored while the assistant is speaking.
 
+### Push-to-talk and hands-free (like Wispr Flow)
+
+- **Hold Right Ctrl, speak, let go**: the prompt is sent. Pauses while you hold are fine. It works whichever window has focus (Windows). Pressing the key while the assistant talks cuts it off.
+- **Double tap Right Ctrl** (or say "Hey Jarvis, hands free"): **hands-free**. Just talk, prompt after prompt; every pause ends one. Prompts said while the assistant works are queued, answers are read out in between, and approvals are answered by voice. **Tap** the key, say **"stop listening"** ("dừng nghe"), or stay quiet for `HANDS_FREE_IDLE_TIMEOUT` (120 s) to end it.
+- **Cleanup**: dictated prompts lose "um"/"uh"/"ờ" and stutters ("the the"), get a capital and a period, and corrections are applied: "meet at 2, no wait, 3" → "Meet at 3.", "scratch that" drops the sentence before. Rule-based and local; wake-word prompts are left as they are.
+- `VOICE_TRIGGER=push_to_talk` skips the wake word (its model is not loaded); `PUSH_TO_TALK_KEY` picks another key (`.env.example`).
+
 ### Self-activation, approvals, privacy
 
-- **No self-activation**: speech output never reaches the detector. After every playback the microphone queue is flushed and the detector reset. There is no echo cancellation, and no barge-in (you cannot talk over a reply).
+- **No self-activation**: speech output never reaches the detector. After every playback the microphone queue is flushed and the detector reset. There is no echo cancellation, so you cannot talk over a reply, but pressing the push-to-talk key cuts it off.
 - **Spoken approvals**: the assistant reads out the pending action and listens for the answer ("Yes, allow it" to approve). Silence, an unclear answer or an unrecognized voice **declines**. "Stop" cancels the turn.
 - **Speech runs in parallel with the streamed text.** The answer is spoken sentence by sentence *while it is still being generated*, so speech starts after the first sentence, not after the last. Sentences are spoken in short bursts, and the wake word is still checked between bursts, so "Hey Jarvis, stop" works mid-answer and drops whatever has not been spoken yet (typing `stop` does the same). Nothing is spoken twice.
 - **What is spoken**: only the answer. Tool output, the assistant's notes before a tool call (the coding agent's newest sentence is held back until the next one starts, in case a tool call follows), code blocks ("code omitted"), `<think>` blocks, links and markdown are left out. Speech stops after `VOICE_MAX_SPOKEN_CHARS` characters with "The rest is on screen." (in Vietnamese when the answer is Vietnamese).

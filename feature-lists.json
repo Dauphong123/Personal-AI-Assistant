@@ -795,13 +795,34 @@
       "id": "F022",
       "name": "Wispr Flow-style voice",
       "description": "Wispr Flow-style voice: hold a key to talk, cleaned-up transcripts, and a hands-free mode that keeps taking prompts until stopped (CLI and web).",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-17",
-      "completed": null,
+      "completed": "2026-11-17",
       "branch": "feature/F022-wispr-flow-voice",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "9667d68",
+      "files": [
+        "voice/dictation.py",
+        "voice/hotkey.py",
+        "voice/assistant.py",
+        "voice/__init__.py",
+        "voice/vad.py",
+        "voice/config.py",
+        "backend/voice.py",
+        "backend/server.py",
+        "webui/src/handsfree.ts",
+        "webui/src/voice.ts",
+        "webui/src/api.ts",
+        "webui/src/main.ts",
+        "webui/public/index.html"
+      ],
+      "tests": [
+        "tests/test_dictation.py",
+        "tests/test_hotkey.py",
+        "tests/test_voice_push_to_talk.py",
+        "tests/test_backend_dictation.py",
+        "webui/test/handsfree.test.ts",
+        "webui/test/api.test.ts"
+      ],
       "steps": [
         {
           "n": 1,
@@ -853,18 +874,21 @@
             "tests/test_backend_dictation.py::test_approval_answers",
             "headless Chrome smoke test with fake mic + fake STT (scratchpad, not in repo)"
           ],
-          "commit": null,
+          "commit": "9667d68",
           "done": "2026-11-17"
         },
         {
           "n": 6,
           "title": "Docs",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "docs only"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
         }
       ],
-      "notes": "User asked (2026-11-17) for hands-free across multiple prompts; plan amended accordingly. No new dependencies (ctypes GetAsyncKeyState; browser Web Audio)."
+      "notes": "User asked (2026-11-17) for hands-free across multiple prompts; plan amended accordingly. No new dependencies (ctypes GetAsyncKeyState; browser Web Audio). Not verified with real faster-whisper/Piper models, a real microphone or the real Ollama graph: unit tests use fakes; the web loop was smoke-tested in headless Chrome with a synthetic tone file. Wake-word prompts are not cleaned (preserves behavior/tests). voice/vad.py, README.md, docs/PROJECT.md committed with only F022 hunks (pre-existing uncommitted edits left in the working copy)."
     }
   ]
 }
