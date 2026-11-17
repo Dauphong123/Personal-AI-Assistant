@@ -333,6 +333,20 @@ class HtmlToTextTests(unittest.TestCase):
         self.assertIn("Real server rendered content.", text)
         self.assertNotIn("x\n", text + "\n")
 
+    def test_a_long_form_beside_a_bigger_article_is_still_dropped(self):
+        menu = "<ul>" + "".join(f"<li>Menu item {i}</li>" for i in range(80)) + "</ul>"
+        article = "<p>" + "Article sentence here. " * 200 + "</p>"
+        _, text = web.html_to_text(f"<body>{article}<form>{menu}</form></body>".encode())
+        self.assertIn("Article sentence here.", text)
+        self.assertNotIn("Menu item", text)
+
+    def test_a_small_form_inside_a_page_form_is_dropped(self):
+        body = "<p>" + "Body content sentence. " * 40 + "</p>"
+        html = f"<body><form>{body}<form><label>Search box</label></form></form></body>"
+        _, text = web.html_to_text(html.encode())
+        self.assertIn("Body content", text)
+        self.assertNotIn("Search box", text)
+
     def test_small_forms_are_still_dropped(self):
         html = b"<body><p>article text</p><form><label>Search</label><input></form></body>"
         _, text = web.html_to_text(html)
