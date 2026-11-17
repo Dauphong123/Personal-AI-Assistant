@@ -129,6 +129,21 @@ test("transcribe uploads the recording with its audio type", async () => {
   assert.equal(calls[0]?.init?.body, blob);
 });
 
+test("dictate asks for the cleaned prompt and reads every field", async () => {
+  const calls: Call[] = [];
+  const body = { text: "um open it", prompt: "Open it.", hands_free: "off", answer: "y" };
+  const api = new Api("tok", fakeFetch(200, body, calls));
+  const result = await api.dictate(new Blob([new Uint8Array([1])], { type: "audio/webm" }));
+  assert.deepEqual(result, { ok: true, data: body });
+  assert.equal(calls[0]?.url, "/api/voice/transcribe?dictate=1");
+});
+
+test("dictate against an older backend falls back to the raw text", async () => {
+  const api = new Api("tok", fakeFetch(200, { text: " open it " }, []));
+  const result = await api.dictate(new Blob([new Uint8Array([1])]));
+  assert.deepEqual(result, { ok: true, data: { text: " open it ", prompt: "open it", hands_free: null, answer: "n" } });
+});
+
 test("transcribe of a typeless blob says webm", async () => {
   const calls: Call[] = [];
   await new Api("tok", fakeFetch(200, { text: "" }, calls)).transcribe(new Blob([new Uint8Array([1])]));

@@ -840,15 +840,21 @@
           "tests": [
             "tests/test_backend_dictation.py (6 tests)"
           ],
-          "commit": null,
+          "commit": "41fba0c",
           "done": "2026-11-17"
         },
         {
           "n": 5,
           "title": "Web UI: hold-to-talk, hands-free toggle with silence endpointing",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "webui/test/handsfree.test.ts (PressTracker, Endpointer, rms, handsFreeAction, insertDictation)",
+            "webui/test/api.test.ts dictate tests",
+            "tests/test_backend_dictation.py::test_approval_answers",
+            "headless Chrome smoke test with fake mic + fake STT (scratchpad, not in repo)"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
         },
         {
           "n": 6,

@@ -20,7 +20,7 @@ API (JSON bodies, token in X-Token or Authorization: Bearer):
     POST /api/sessions/<id>/rename  {title}
     POST /api/sessions/<id>/delete
     POST /api/voice/transcribe  audio/*     {"text"}; 503 unless started with --voice;
-                                            ?dictate=1 adds {"prompt", "hands_free"} (backend.voice.dictation)
+                                            ?dictate=1 adds {"prompt", "hands_free", "answer"} (backend.voice.dictation)
     POST /api/voice/speak       {text}      audio/wav (204: nothing speakable)
 """
 

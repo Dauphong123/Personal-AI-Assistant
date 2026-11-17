@@ -2,8 +2,8 @@
 
 Push-to-talk replaces the wake word: the page uploads one recording (webm/ogg/wav, decoded with
 PyAV through faster-whisper), gets the text back and sends it like a typed message. With
-?dictate=1 the answer also carries the cleaned-up prompt and any hands-free command
-(`dictation`, from voice.dictation), as the keyboard voice mode uses them. Answers are
+?dictate=1 the answer also carries the cleaned-up prompt, any hands-free command and the
+approval answer (`dictation`, from voice.dictation / voice.text), as the keyboard voice mode uses them. Answers are
 cleaned for speech (voice.text) and synthesized with Piper into a WAV the page plays. Models
 come from voice/ (settings in .env, see voice/CLAUDE.md) and load on first use.
 """
@@ -149,10 +149,12 @@ class WebVoice:
 
 
 def dictation(text: str) -> dict:
-    """The prompt to send for a dictated recording, and "on"/"off" if it was a hands-free command."""
+    """For a dictated recording: the prompt to send, "on"/"off" if it was a hands-free command,
+    and the approval answer it would be ("y", "n" or "stop"; doubt means "n")."""
     from voice.dictation import dictated_prompt, hands_free_command
+    from voice.text import normalize_answer
 
     if not text.strip():
-        return {"prompt": "", "hands_free": None}
+        return {"prompt": "", "hands_free": None, "answer": "n"}
 
-    return {"prompt": dictated_prompt(text), "hands_free": hands_free_command(text)}
+    return {"prompt": dictated_prompt(text), "hands_free": hands_free_command(text), "answer": normalize_answer(text)}

@@ -1,5 +1,5 @@
-"""Web dictation (F022): ?dictate=1 on /api/voice/transcribe adds the cleaned prompt and any
-hands-free command; without it the answer is unchanged."""
+"""Web dictation (F022): ?dictate=1 on /api/voice/transcribe adds the cleaned prompt, any
+hands-free command and the approval answer it would be; without it the answer is unchanged."""
 
 import json
 import unittest
@@ -15,7 +15,7 @@ from tests.test_backend_voice import make_voice  # noqa: E402
 
 class DictationTests(unittest.TestCase):
     def test_prompt_is_cleaned(self):
-        self.assertEqual(dictation("um, open the the readme"), {"prompt": "Open the readme.", "hands_free": None})
+        self.assertEqual(dictation("um, open the the readme"), {"prompt": "Open the readme.", "hands_free": None, "answer": "n"})
 
     def test_hands_free_commands(self):
         self.assertEqual(dictation("hands free")["hands_free"], "on")
@@ -24,8 +24,14 @@ class DictationTests(unittest.TestCase):
     def test_chat_commands_stay_plain(self):
         self.assertEqual(dictation("Stop.")["prompt"], "stop")
 
+    def test_approval_answers(self):
+        self.assertEqual(dictation("Yes.")["answer"], "y")
+        self.assertEqual(dictation("vâng")["answer"], "y")
+        self.assertEqual(dictation("yes, no wait")["answer"], "n")
+        self.assertEqual(dictation("stop")["answer"], "stop")
+
     def test_nothing_heard(self):
-        self.assertEqual(dictation(""), {"prompt": "", "hands_free": None})
+        self.assertEqual(dictation(""), {"prompt": "", "hands_free": None, "answer": "n"})
 
 
 class DictateRouteTests(ServerCase):
@@ -41,7 +47,7 @@ class DictateRouteTests(ServerCase):
         status, _, body = self.post("/api/voice/transcribe?dictate=1")
         self.assertEqual(status, 200)
         self.assertEqual(
-            json.loads(body), {"text": "hello from the mic", "prompt": "Hello from the mic.", "hands_free": None}
+            json.loads(body), {"text": "hello from the mic", "prompt": "Hello from the mic.", "hands_free": None, "answer": "n"}
         )
 
     def test_plain_transcribe_is_unchanged(self):

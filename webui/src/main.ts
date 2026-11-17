@@ -16,7 +16,8 @@ import {
 import type { Conversation, Item } from "./state.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
 import { sessionFromHash, tokenFrom } from "./url.ts";
-import { Player, Recorder, canRecord, replyToSpeak } from "./voice.ts";
+import { PressTracker, TAP_MAX_MS, handsFreeAction, insertDictation } from "./handsfree.ts";
+import { HandsFreeListener, Player, Recorder, canListen, canRecord, replyToSpeak } from "./voice.ts";
 
 const TOKEN_KEY = "coding-assistant-token";
 const SPEAK_KEY = "coding-assistant-speak";
@@ -56,6 +57,7 @@ const ui = {
   send: byId<HTMLButtonElement>("send"),
   stop: byId<HTMLButtonElement>("stop"),
   mic: byId<HTMLButtonElement>("mic"),
+  handsFree: byId<HTMLButtonElement>("hands-free"),
   speakLabel: byId("speak-label"),
   speakAnswers: byId<HTMLInputElement>("speak-answers"),
 };
@@ -103,6 +105,18 @@ const drafts = new Map<string, string>();
 const recorder = new Recorder();
 const player = new Player();
 let voiceStatus = ""; // "Listening…" / "Transcribing…"
+// Push-to-talk: hold the Talk button or Right Ctrl (a short click on Talk records until the next).
+const rightCtrl = new PressTracker();
+let ctrlDown = false; // Right Ctrl is held and its press started a recording
+let buttonPressedAt: number | null = null; // the Talk button is held down
+let talkAttempt = 0; // bumped by cancelTalking, so a microphone that opens late is closed again
+// Hands-free: every pause ends a prompt; prompts wait here until the session is idle.
+const listener = new HandsFreeListener();
+let handsFree = false;
+const handsFreeQueue: string[] = [];
+let handsFreeWork: Promise<void> = Promise.resolve(); // utterances are handled in order
+let transcribing = 0; // hands-free recordings at the backend
+let sending = false; // a queued prompt was sent and its turn has not shown up yet
 let replayEnd = 0; // events up to here were history when the session was opened: never spoken
 
 function active(): SessionInfo | undefined {
@@ -156,21 +170,34 @@ function renderHeader(): void {
   ui.remove.disabled = none || conv.busy;
   ui.send.disabled = none || conv.busy;
   ui.stop.disabled = none || !conv.busy;
-  ui.mic.disabled = none || (conv.busy && !recorder.recording) || voiceStatus === "Transcribing…";
+  // Dictation goes into the message box, so it works while a turn runs.
+  ui.mic.disabled = none || handsFree || voiceStatus === "Transcribing…";
+  ui.handsFree.disabled = none;
+
+  let status = "";
 
   if (connection) {
-    ui.status.textContent = connection;
+    status = connection;
   } else if (voiceStatus) {
-    ui.status.textContent = voiceStatus;
+    status = voiceStatus;
   } else if (conv.waiting) {
-    ui.status.textContent = "Waiting for another session";
+    status = "Waiting for another session";
   } else if (conv.approval) {
-    ui.status.textContent = "Needs approval";
+    status = handsFree ? "Needs approval: say yes or no" : "Needs approval";
   } else if (conv.busy) {
-    ui.status.textContent = "Working…";
-  } else {
-    ui.status.textContent = "";
+    status = "Working…";
   }
+
+  const queued = handsFreeQueue.length ? ` · ${handsFreeQueue.length} queued` : "";
+
+  if (handsFree && !connection) {
+    const hearing = transcribing ? "Transcribing…" : "Listening…";
+    status = `Hands-free: ${status || hearing}${queued}`;
+  } else if (queued && !connection) {
+    status = `${status || "Sending…"}${queued}`;
+  }
+
+  ui.status.textContent = status;
 }
 
 function renderMessage(item: Item): HTMLElement {
@@ -296,6 +323,14 @@ function openStream(id: string): void {
       void speakReply(id, reply);
     }
 
+    if (data.type === "user") sending = false; // a sent prompt's turn has begun
+
+    if (handsFree && data.type === "approval" && data.id > replayEnd && ui.speakAnswers.checked && conv.approval) {
+      void speakReply(id, `May I run ${formatCalls(conv.approval)}? Say yes or no.`);
+    }
+
+    void sendQueued();
+
     if (conv.gone) {
       closeStream();
       void sessionGone();
@@ -344,7 +379,11 @@ function select(id: string): void {
   }
 
   closeStream();
+  stopHandsFree();
+  handsFreeQueue.length = 0; // spoken for the session we are leaving
   recorder.cancel();
+  ctrlDown = false;
+  buttonPressedAt = null;
   player.stop();
   voiceStatus = "";
   ui.mic.setAttribute("aria-pressed", "false");
@@ -479,9 +518,15 @@ async function speakReply(sessionId: string, text: string): Promise<void> {
 async function startTalking(): Promise<void> {
   player.stop();
   showAlert(null);
+  const attempt = ++talkAttempt;
 
   try {
     await recorder.start();
+
+    if (attempt !== talkAttempt) {
+      recorder.cancel(); // let go (or cancelled) before the microphone was open
+      return;
+    }
   } catch (error) {
     const denied = error instanceof DOMException && error.name === "NotAllowedError";
     showAlert(denied ? "Microphone access was refused." : "Could not use the microphone.");
@@ -494,6 +539,22 @@ async function startTalking(): Promise<void> {
   renderHeader();
 }
 
+function cancelTalking(): void {
+  talkAttempt += 1;
+  recorder.cancel();
+  ui.mic.setAttribute("aria-pressed", "false");
+  ui.mic.textContent = "Talk";
+  voiceStatus = "";
+  renderHeader();
+}
+
+function tooLong(recording: Blob): boolean {
+  const maxAudio = server?.limits.max_audio ?? 0;
+  return maxAudio > 0 && recording.size > maxAudio;
+}
+
+/** Push-to-talk ended: the cleaned-up text goes into the message box (as Wispr Flow types it
+ * where you are), so it can be checked or added to before Enter sends it. */
 async function finishTalking(): Promise<void> {
   if (!recorder.recording) return;
 
@@ -506,11 +567,9 @@ async function finishTalking(): Promise<void> {
 
   if (recording.size === 0) return;
 
-  const maxAudio = server?.limits.max_audio ?? 0;
-  const result =
-    maxAudio > 0 && recording.size > maxAudio
-      ? { ok: false as const, status: 413, error: "That recording is too long." }
-      : await api.transcribe(recording);
+  const result = tooLong(recording)
+    ? { ok: false as const, status: 413, error: "That recording is too long." }
+    : await api.dictate(recording);
   voiceStatus = "";
   renderHeader();
 
@@ -518,18 +577,182 @@ async function finishTalking(): Promise<void> {
 
   if (!result.ok) {
     showAlert(result.error);
-  } else if (!result.data.trim()) {
+  } else if (result.data.hands_free === "on") {
+    await startHandsFree();
+  } else if (result.data.hands_free === "off") {
+    stopHandsFree();
+  } else if (!result.data.prompt) {
     showAlert("Didn't catch that. Try again.");
   } else {
-    ui.input.value = result.data;
+    const box = ui.input;
+    const next = insertDictation(box.value, box.selectionStart ?? box.value.length, box.selectionEnd ?? box.value.length, result.data.prompt);
+    box.value = next.value;
     autosize();
-    await send();
+    box.focus();
+    box.setSelectionRange(next.cursor, next.cursor);
+  }
+}
+
+// --- hands-free -------------------------------------------------------------------
+
+async function startHandsFree(): Promise<void> {
+  if (handsFree || !activeId || ui.handsFree.hidden) return;
+
+  cancelTalking();
+  player.stop();
+
+  try {
+    await listener.start();
+  } catch (error) {
+    const denied = error instanceof DOMException && error.name === "NotAllowedError";
+    showAlert(denied ? "Microphone access was refused." : "Could not use the microphone.");
+    return;
+  }
+
+  handsFree = true;
+  showAlert(null);
+  ui.handsFree.setAttribute("aria-pressed", "true");
+  ui.handsFree.textContent = "Stop hands-free";
+  renderHeader();
+}
+
+function stopHandsFree(message: string | null = null): void {
+  if (!handsFree) return;
+
+  // Prompts already spoken stay queued and are still sent (as the CLI's ChatLoop does).
+  listener.stop();
+  handsFree = false;
+  transcribing = 0;
+  ui.handsFree.setAttribute("aria-pressed", "false");
+  ui.handsFree.textContent = "Hands-free";
+
+  if (message) showAlert(message);
+
+  renderHeader();
+}
+
+async function handleUtterance(sessionId: string | null, recording: Blob): Promise<void> {
+  if (!handsFree || sessionId !== activeId || !sessionId || tooLong(recording)) return;
+
+  transcribing += 1;
+  renderHeader();
+  const result = await api.dictate(recording);
+  transcribing = Math.max(0, transcribing - 1);
+
+  if (!handsFree || sessionId !== activeId) return;
+
+  if (!result.ok) {
+    showAlert(result.error);
+    renderHeader();
+    return;
+  }
+
+  const action = handsFreeAction(result.data, conv.approval !== null);
+
+  switch (action.kind) {
+    case "off":
+      stopHandsFree();
+      return;
+    case "stop":
+      handsFreeQueue.length = 0;
+      await run((id) => api.stop(id));
+      break;
+    case "approve":
+      await run((id) => api.approve(id, action.allow));
+      break;
+    case "send":
+      handsFreeQueue.push(action.text);
+      break;
+    case "ignore":
+      break;
+  }
+
+  renderHeader();
+  await sendQueued();
+}
+
+/** Send the next spoken prompt once the session can take it (one turn at a time). */
+async function sendQueued(): Promise<void> {
+  if (sending || !activeId || conv.busy || conv.approval || handsFreeQueue.length === 0) return;
+
+  const id = activeId;
+  const text = handsFreeQueue.shift() ?? "";
+  sending = true;
+  renderHeader();
+  const result = await api.send(id, text);
+
+  if (!result.ok) {
+    sending = false;
+
+    if (result.status === 409) {
+      handsFreeQueue.unshift(text); // a turn started meanwhile: try again when it ends
+    } else {
+      showAlert(result.error);
+    }
+  }
+
+  renderHeader();
+}
+
+// --- push-to-talk keys --------------------------------------------------------------
+
+function voiceUsable(): boolean {
+  return !ui.mic.hidden && !ui.mic.disabled;
+}
+
+function onKeyDown(event: KeyboardEvent): void {
+  if (event.code === "ControlRight") {
+    if (event.repeat) return;
+
+    rightCtrl.down(performance.now());
+
+    if (!handsFree && voiceUsable() && !recorder.recording) {
+      ctrlDown = true;
+      void startTalking();
+    }
+
+    return;
+  }
+
+  if (ctrlDown && event.ctrlKey) {
+    // Right Ctrl + another key is a shortcut (copy, paste...), not talking.
+    ctrlDown = false;
+    cancelTalking();
+  }
+}
+
+function onKeyUp(event: KeyboardEvent): void {
+  if (event.code !== "ControlRight") return;
+
+  const release = rightCtrl.up(performance.now());
+  const wasTalking = ctrlDown;
+  ctrlDown = false;
+
+  if (release === "hold") {
+    if (wasTalking) void finishTalking();
+    return;
+  }
+
+  if (wasTalking) cancelTalking(); // a tap is a switch, not a recording
+
+  if (release === "double_tap") {
+    if (handsFree) stopHandsFree();
+    else void startHandsFree();
+  } else if (handsFree) {
+    stopHandsFree();
   }
 }
 
 function setUpVoice(info: ServerInfo): void {
   ui.mic.hidden = !(info.features.voice.transcribe && canRecord());
+  ui.handsFree.hidden = !(info.features.voice.transcribe && canListen());
   ui.speakLabel.hidden = !info.features.voice.speak;
+  player.onChange = (playing) => listener.pause(playing);
+  listener.onUtterance = (recording) => {
+    const sessionId = activeId;
+    handsFreeWork = handsFreeWork.then(() => handleUtterance(sessionId, recording));
+  };
+  listener.onIdle = () => stopHandsFree("Hands-free stopped after two minutes without speech.");
 
   try {
     ui.speakAnswers.checked = localStorage.getItem(SPEAK_KEY) === "on";
@@ -559,6 +782,7 @@ function needLink(): void {
 /** The page cannot work (no token, wrong protocol, no server): say why and disable it. */
 function stopPage(message: string): void {
   closeStream();
+  stopHandsFree();
   ui.empty.textContent = message;
   ui.empty.hidden = false;
   ui.input.disabled = true;
@@ -580,7 +804,44 @@ ui.input.addEventListener("keydown", (event) => {
 });
 
 ui.input.addEventListener("input", autosize);
-ui.mic.addEventListener("click", () => void (recorder.recording ? finishTalking() : startTalking()));
+// Talk: hold to talk (released = into the message box); a short click records until the next.
+ui.mic.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 || ui.mic.disabled) return;
+
+  if (recorder.recording) {
+    void finishTalking();
+    return;
+  }
+
+  buttonPressedAt = performance.now();
+  void startTalking();
+});
+
+const releaseTalk = (): void => {
+  if (buttonPressedAt === null) return;
+
+  const held = performance.now() - buttonPressedAt > TAP_MAX_MS;
+  buttonPressedAt = null;
+
+  if (held) void finishTalking();
+};
+
+ui.mic.addEventListener("pointerup", releaseTalk);
+ui.mic.addEventListener("pointercancel", releaseTalk);
+ui.mic.addEventListener("click", (event) => {
+  // Pointer presses are handled above; this is Enter/Space on the focused button.
+  if (event.detail === 0) void (recorder.recording ? finishTalking() : startTalking());
+});
+ui.handsFree.addEventListener("click", () => void (handsFree ? stopHandsFree() : startHandsFree()));
+document.addEventListener("keydown", onKeyDown);
+document.addEventListener("keyup", onKeyUp);
+window.addEventListener("blur", () => {
+  // The key-up would be lost while another window has focus.
+  if (ctrlDown) {
+    ctrlDown = false;
+    cancelTalking();
+  }
+});
 
 ui.speakAnswers.addEventListener("change", () => {
   if (!ui.speakAnswers.checked) player.stop();

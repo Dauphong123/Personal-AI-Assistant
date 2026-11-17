@@ -52,7 +52,8 @@
     <form id="form" class="composer" autocomplete="off">
       <label class="sr" for="input">Message</label>
       <textarea id="input" rows="1" placeholder="Message the assistant" enterkeyhint="send"></textarea>
-      <button id="mic" type="button" class="quiet mic" aria-pressed="false" hidden>Talk</button>
+      <button id="mic" type="button" class="quiet mic" aria-pressed="false" title="Hold to talk (or hold Right Ctrl); the text goes into the message box. A short click records until the next click." hidden>Talk</button>
+      <button id="hands-free" type="button" class="quiet mic" aria-pressed="false" title="Talk prompt after prompt: every pause sends one. Double tap Right Ctrl to start or stop; say &quot;stop listening&quot; to end." hidden>Hands-free</button>
       <button id="stop" type="button" class="quiet" disabled>Stop</button>
       <button id="send" type="submit" class="primary">Send</button>
     </form>

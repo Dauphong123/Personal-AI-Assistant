@@ -1,6 +1,7 @@
 // Typed client for the backend API (backend/server.py). Calls never throw: failures come back
 // as { ok: false, status, error } so the page can show them.
 
+import type { Dictation } from "./handsfree.ts";
 import { PROTOCOL } from "./types.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
 
@@ -66,6 +67,28 @@ export class Api {
 
     const record = await jsonRecord(sent.data);
     return { ok: true, data: typeof record["text"] === "string" ? record["text"] : "" };
+  }
+
+  /** Speech to text for dictation (?dictate=1): the cleaned prompt, any hands-free command and the
+   * approval answer too. An older backend sends only the text, which then stands in as the prompt. */
+  async dictate(recording: Blob): Promise<Result<Dictation>> {
+    const sent = await this.#request("POST", "/api/voice/transcribe?dictate=1", recording, recording.type || "audio/webm");
+
+    if (!sent.ok) return sent;
+
+    const record = await jsonRecord(sent.data);
+    const text = typeof record["text"] === "string" ? record["text"] : "";
+    const handsFree = record["hands_free"];
+    const answer = record["answer"];
+    return {
+      ok: true,
+      data: {
+        text,
+        prompt: typeof record["prompt"] === "string" ? record["prompt"] : text.trim(),
+        hands_free: handsFree === "on" || handsFree === "off" ? handsFree : null,
+        answer: answer === "y" || answer === "stop" ? answer : "n",
+      },
+    };
   }
 
   /** Text to speech: a WAV to play, or null when nothing in the text is worth saying. */
