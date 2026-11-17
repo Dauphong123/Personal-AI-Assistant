@@ -128,6 +128,23 @@ class MainTests(unittest.TestCase):
         result.connect_jobs.assert_called_once_with(manager)
         self.assertEqual(result.make.call_args.kwargs["notices"], True)
 
+    def test_voice_is_off_by_default(self):
+        result = self.run_main([], server=FakeServer())
+        self.assertIsNone(result.make.call_args.kwargs["voice"])
+
+    def test_voice_flag_gives_the_server_a_web_voice(self):
+        fake = SimpleNamespace(can_transcribe=True, can_speak=True)
+        with mock.patch.object(entry, "build_voice", mock.Mock(return_value=fake)) as build_voice:
+            result = self.run_main(["--voice"], server=FakeServer())
+        build_voice.assert_called_once()
+        self.assertIs(result.make.call_args.kwargs["voice"], fake)
+
+    def test_voice_flag_without_packages_says_so(self):
+        fake = SimpleNamespace(can_transcribe=False, can_speak=False)
+        with mock.patch.object(entry, "build_voice", mock.Mock(return_value=fake)):
+            result = self.run_main(["--voice"], server=FakeServer())
+        self.assertIn("requirements_voice.txt", result.out)
+
     def test_max_turns_below_one_is_refused(self):
         result = self.run_main(["--max-turns", "0"])
         self.assertIsNotNone(result.error)

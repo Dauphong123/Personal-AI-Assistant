@@ -22,6 +22,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="listen on a non-loopback address; the assistant can run commands, so only on a network you trust",
     )
     parser.add_argument(
+        "--voice",
+        action="store_true",
+        help="talk to the assistant from the browser (push-to-talk) and hear its answers; needs requirements_voice.txt",
+    )
+    parser.add_argument(
         "--max-turns",
         type=int,
         default=1,
@@ -46,6 +51,12 @@ def build_app():
     from graph import ModelGraph
 
     return ModelGraph.compile(checkpointer=InMemorySaver())
+
+
+def build_voice():
+    from .voice import WebVoice
+
+    return WebVoice.from_env()
 
 
 def connect_jobs(manager: SessionManager) -> None:
@@ -82,13 +93,28 @@ def main(argv: list[str] | None = None) -> None:
     print("Loading models...", flush=True)
     manager = SessionManager(build_app(), max_turns=args.max_turns)
     connect_jobs(manager)
+    voice = build_voice() if args.voice else None
+
+    if voice is not None and not (voice.can_transcribe and voice.can_speak):
+        print(
+            "Voice: some packages are missing (pip install -r requirements_voice.txt); "
+            f"speech input {'on' if voice.can_transcribe else 'off'}, output {'on' if voice.can_speak else 'off'}.",
+            flush=True,
+        )
+
     token = new_token()
     server = None
 
     try:
         try:
             server = make_server(
-                manager, token, host=args.host, port=args.port, allow_remote=args.allow_remote, notices=True
+                manager,
+                token,
+                host=args.host,
+                port=args.port,
+                allow_remote=args.allow_remote,
+                notices=True,
+                voice=voice,
             )
         except OSError as exc:
             sys.exit(f"Could not listen on {args.host}:{args.port} ({exc}). Try another --port.")

@@ -606,19 +606,22 @@
           "tests": [
             "webui/test/state.test.ts notice tests (2)"
           ],
-          "commit": null
+          "commit": "01f2caf"
         },
         {
           "n": 5,
           "title": "Backend voice (--voice): transcribe browser audio (faster-whisper), speak text (Piper WAV)",
-          "status": "in_progress",
-          "tests": [],
+          "status": "done",
+          "tests": [
+            "tests/test_backend_voice.py (26 tests: fakes + real PyAV decode of wav and webm/opus)",
+            "tests/test_backend_main.py voice flag (3 tests)"
+          ],
           "commit": null
         },
         {
           "n": 6,
           "title": "Frontend voice: hold-to-talk mic, speak-answers toggle, gated by the handshake",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [],
           "commit": null
         },

@@ -19,10 +19,13 @@ API (JSON bodies, token in X-Token or Authorization: Bearer):
     POST /api/sessions/<id>/reset
     POST /api/sessions/<id>/rename  {title}
     POST /api/sessions/<id>/delete
+    POST /api/voice/transcribe  audio/*     {"text"}; 503 unless started with --voice
+    POST /api/voice/speak       {text}      audio/wav (204: nothing speakable)
 """
 
 import hmac
 import json
+import logging
 import re
 import secrets
 import time
@@ -32,6 +35,8 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from .session import ChatSession
 from .sessions import SessionManager
+
+logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "webui" / "dist"
 BUILD_HINT = "The web frontend is not built. Run: npm --prefix webui install && npm --prefix webui run build"
@@ -57,7 +62,8 @@ CONTENT_TYPES = {
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
         "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
-        "img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        "img-src 'self' data:; media-src 'self' blob:; base-uri 'none'; form-action 'none'; "
+        "frame-ancestors 'none'"
     ),
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "no-store",
@@ -65,6 +71,7 @@ SECURITY_HEADERS = {
 }
 
 HANDSHAKE_PATH = "/api/handshake"
+VOICE_PATHS = {"/api/voice/transcribe", "/api/voice/speak"}
 API_ROUTE = re.compile(r"^/api/sessions(?:/(?P<id>[0-9a-f]{12})(?:/(?P<action>[a-z]+))?)?$")
 POST_ACTIONS = {"send", "approve", "stop", "reset", "rename", "delete"}
 
@@ -315,7 +322,7 @@ class Handler(BaseHTTPRequestHandler):
         if not url.path.startswith("/api/"):
             return self._static(url.path)
 
-        if url.path == HANDSHAKE_PATH:
+        if url.path == HANDSHAKE_PATH or url.path in VOICE_PATHS:
             return self._fail(405, "Use POST")
 
         route = API_ROUTE.match(url.path)
@@ -363,6 +370,12 @@ class Handler(BaseHTTPRequestHandler):
 
             data = self._read_json()
             return None if data is None else self._handshake(data)
+
+        if url.path in VOICE_PATHS:
+            if not self._authorized(parse_qs(url.query)):
+                return
+
+            return self._transcribe() if url.path.endswith("/transcribe") else self._speak()
 
         route = API_ROUTE.match(url.path)
 
@@ -429,6 +442,76 @@ class Handler(BaseHTTPRequestHandler):
             )
 
         self._json(200, self.server.describe())
+
+    def _transcribe(self) -> None:
+        """POST /api/voice/transcribe: raw browser audio in, {"text"} out."""
+        voice = self.server.voice
+
+        if voice is None or not voice.can_transcribe:
+            return self._fail(503, "Speech recognition is not enabled (start the backend with --voice)")
+
+        content_type = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+
+        if not content_type.startswith("audio/"):
+            return self._fail(415, "Content-Type must be audio/*")
+
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            return self._fail(411, "Content-Length required")
+
+        self._body_read = True
+
+        if length > MAX_AUDIO or length < 0:
+            self._discard(length)
+            return self._fail(413, "Recording too long")
+
+        data = self.rfile.read(length)
+
+        if not data:
+            return self._fail(400, "Empty recording")
+
+        try:
+            text = voice.transcribe(data)
+        except Exception as exc:
+            logger.warning("Could not transcribe a recording: %s", exc)
+            return self._fail(422, "Could not understand the recording")
+
+        self._json(200, {"text": text})
+
+    def _speak(self) -> None:
+        """POST /api/voice/speak {text}: a WAV reading it aloud (204 when nothing is speakable)."""
+        voice = self.server.voice
+
+        if voice is None or not voice.can_speak:
+            return self._fail(503, "Speech output is not enabled (start the backend with --voice)")
+
+        data = self._read_json()
+
+        if data is None:
+            return
+
+        text = data.get("text")
+
+        if not isinstance(text, str) or not text.strip():
+            return self._fail(400, "text must be a non-empty string")
+
+        try:
+            audio = voice.speak(text)
+        except Exception:
+            logger.exception("Speech synthesis failed")
+            return self._fail(500, "Speech synthesis failed")
+
+        if not audio:
+            self.send_response(204)
+
+            for name, value in SECURITY_HEADERS.items():
+                self.send_header(name, value)
+
+            self.end_headers()
+            return
+
+        self._send(200, audio, "audio/wav")
 
     def _create(self, data: dict) -> None:
         title = data.get("title")
