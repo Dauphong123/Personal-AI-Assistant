@@ -102,7 +102,7 @@ python main.py --voice      # keyboard + wake-word voice mode
 python -m backend           # chat in the browser (see Web chat below; build the frontend once first)
 ```
 
-**First run downloads models**: the Qwen3-8B tokenizer and bge-small embeddings (Hugging Face). Voice mode additionally downloads about 250 MB (see [Voice mode](#voice-mode)). Importing almost any module loads the models and syncs `./documents/`, so startup takes a moment.
+**First run downloads models**: the Qwen3-8B tokenizer, the bge-small embeddings (documents) and multilingual-e5-small (memory) (Hugging Face). Voice mode additionally downloads about 250 MB (see [Voice mode](#voice-mode)). Importing almost any module loads the models and syncs `./documents/`, so startup takes a moment.
 
 ### Web chat
 
@@ -339,29 +339,29 @@ Three memory types in Postgres with 384-dimension pgvector columns and **HNSW co
 | Table | Holds | Dedup rule |
 |---|---|---|
 | `episodic_memories` | What happened: event, task, outcome, importance (0 to 1), thread id | None (each turn can add one) |
-| `semantic_memories` | Durable facts with category and confidence | A near-duplicate (cosine distance ≤ 0.08) is **overwritten with the newest wording** |
-| `procedural_memories` | A task and the ordered steps that worked, with a success count | A similar task (distance ≤ 0.2) gets its steps replaced and its count bumped |
+| `semantic_memories` | Durable facts with category and confidence | A near-duplicate (cosine distance ≤ 0.045) is **overwritten with the newest wording** |
+| `procedural_memories` | A task and the ordered steps that worked, with a success count | A similar task (distance ≤ 0.12) gets its steps replaced and its count bumped |
 
-**Why facts are overwritten.** A fact and its negation ("uses tabs" / "uses spaces") embed almost identically (distance about 0.004), so keeping the old text would silently discard a correction.
+**Why facts are overwritten.** A fact and its negation ("uses tabs" / "uses spaces") embed almost identically (distance about 0.002), so keeping the old text would silently discard a correction.
 
 **Recall** (`recall_memory`, `MemoryManager.recall`), formatted into the system prompt:
 
 - **Profile:** facts in the categories `user_profile`, `user_preference` and `environment` (up to 12, newest first) are listed under "About the user" on every turn, whatever the question.
-- **Search:** the newest message finds up to 3 of each type within distance 0.4. Facts are also matched by words: BM25 over all fact texts fused with the vector ranking (`rank_facts`), so ports, names and model tags are found.
+- **Search:** the newest message finds up to 3 of each type within distance 0.20. Facts are also matched by words: BM25 over all fact texts fused with the vector ranking (`rank_facts`), so ports, names and model tags are found.
 - **Follow-ups:** a second search with the previous question, the last answer (first 300 characters) and the newest message adds up to 2 more of each type (`memory_query`), so "what's its name?" still finds the cat.
 
 **Remembering** (`save_memory`), after a finished turn:
 1. Skip unless the turn ends in a plain-text answer.
 2. Skip trivial turns (only greeting or thanks words, no tool use). "I'm Dat" is not trivial.
-3. Search known facts related to the question (up to 5, distance ≤ 0.45, by meaning only).
+3. Search known facts related to the question (up to 5, distance ≤ 0.18, by meaning only).
 4. An LLM structured-extraction call (temperature 0) returns an optional episode, facts, procedures and the ids of known facts that this turn **supersedes**. Facts are written in English as "The user's <subject> is <value>." with one of five categories (`FactCategory`), so a later change lands next to the old fact.
 5. Memories holding a key-like value (`sk-…`, `ghp_…`, long random strings) and facts about credentials are dropped (`looks_secret`).
-6. Stored facts within distance 0.25 of a new fact that the extractor did not see are shown to the model once more (`find_superseded`). This catches a Vietnamese turn whose question did not find the old English fact. Superseded facts are deleted first.
+6. Stored facts within distance 0.15 of a new fact that the extractor did not see are shown to the model once more (`find_superseded`). This catches a Vietnamese turn whose question did not find the old English fact. Superseded facts are deleted first.
 7. Everything is stored; failures are logged and never break the conversation.
 
-**Eval.** `RUN_MEMORY_EVAL=1` runs `tests/test_memory_eval.py`: 15 facts and 35 questions (English, Vietnamese, vague, keyword, follow-up) against the real embeddings and Postgres, inside a transaction that is rolled back. Hit rate 33/35 (15/30 before F021); the two misses need a multilingual embedding or inference.
+**Eval.** `RUN_MEMORY_EVAL=1` runs `tests/test_memory_eval.py`: 15 facts and 40 questions (English, Vietnamese, vague, keyword, follow-up) against the real embeddings and Postgres, inside a transaction that is rolled back. Hit rate 40/40 (bge-small: 36/40; 15/30 before F021). It also checks the cutoffs below against calibration pairs.
 
-The distance thresholds were calibrated against bge-small; re-check them if you change the embedding model (and `EMBEDDING_DIM`, which also fixes the table schema).
+**Embeddings.** Memory has its own model, `intfloat/multilingual-e5-small` (`memories/embeddings.py`, on the CPU, every text prefixed with `query: `), so a Vietnamese question finds an English fact; the documents keep bge-small. The cutoffs above were calibrated for it. When the model changes, every stored row is re-embedded once at startup (`ensure_embedding_model`; the model name is kept in the `memory_settings` table). `EMBEDDING_DIM` (384) fixes the table schema.
 
 The database URL comes from `DATABASE_URL` or `DB_URL`. A plain `postgresql://` is rewritten to `postgresql+psycopg://` because only psycopg 3 is installed.
 
@@ -555,7 +555,7 @@ SPEECH_LANGUAGE=vi        # Vietnamese only
 **Measured** with Piper-generated Vietnamese speech (not real voices): Whisper `small` recognized most sentences with one or two wrong words, `base` was clearly worse. Vietnamese and English commands both reached the agent correctly under `vi,en`, and Vietnamese replies used the Vietnamese voice.
 
 **Limits.**
-- **Memory and the knowledge base are English-oriented.** Both use the English `bge-small-en-v1.5` embedding model, so recalling Vietnamese memories, or searching the English documents with Vietnamese words, works poorly. For documents the agent is told to search in English. A multilingual embedding model would fix this, but changing it means re-indexing the knowledge base and re-checking the memory distance thresholds, so it is not done.
+- **The knowledge base is English-oriented.** It uses the English `bge-small-en-v1.5` embedding model, so searching the English documents with Vietnamese words works poorly, and the agent is told to search in English. Memory uses the multilingual `intfloat/multilingual-e5-small`, so Vietnamese questions recall English facts.
 - **Text typed without accents** ("xin chao") cannot be told apart from English, so replies to it, spoken apologies and spoken prompts use English.
 - **Accuracy on real speech** (accents, noise, fast speech) was not measured. If a word is misheard, say it again, or try `SPEECH_RECOGNITION_MODEL=medium` (slower).
 - The `qwen3` model's Vietnamese is decent but weaker than its English; the prompts do not change that.
@@ -682,7 +682,7 @@ Not covered by automated tests: real human voices, real accuracy and false-activ
 - **Stop is cooperative.** Cancelling is checked between streamed chunks, so a single tool call that is already running finishes first (at most about 5 s for `terminal`, up to 60 s for git and search).
 - **`terminal` is powerful.** It runs whatever you approve.
 - **`transformers`** is loaded only to count tokens for the summarize trigger.
-- **Vietnamese** memory and document search are weak (English-only embeddings); see [Vietnamese](#vietnamese-tiếng-việt).
+- **Vietnamese** document search is weak (English-only embeddings); see [Vietnamese](#vietnamese-tiếng-việt). Memory recall is multilingual.
 - **Voice**: tested with synthetic speech and an idle microphone, not with a range of real voices. There is no barge-in and no echo cancellation. No plain "jarvis" model ships with openWakeWord. Speaker verification is not strong authentication.
 - **Platform**: tested on Windows only.
 

@@ -678,11 +678,11 @@
       "id": "F021",
       "name": "Better semantic memory retrieval",
       "description": "Store facts more reliably and find them better: always-on profile facts, hybrid vector+BM25 fact search, follow-up aware query, measured by an eval.",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-17",
-      "completed": null,
+      "completed": "2026-11-17",
       "branch": "feature/F021-memory-retrieval",
-      "commit": "15469dc",
+      "commit": "b9762d3",
       "files": [
         "memories/extractor.py",
         "memories/manager.py",
@@ -693,11 +693,15 @@
         "tests/test_hardening.py",
         "README.md",
         "memories/CLAUDE.md",
-        "docs/PROJECT.md"
+        "docs/PROJECT.md",
+        "memories/embeddings.py",
+        "memories/table.py",
+        "dependency.py",
+        "CLAUDE.md"
       ],
       "tests": [
         "tests/test_memory.py",
-        "tests/test_memory_eval.py (opt-in, 33/35)",
+        "tests/test_memory_eval.py (opt-in, 40/40)",
         "tests/test_hardening.py::NoticeMessageTests.test_memory_is_not_searched_for_a_notice"
       ],
       "steps": [
@@ -781,7 +785,7 @@
             "tests/test_memory_eval.py::test_recall_hit_rate (40/40)",
             "test_cutoffs_separate_the_calibration_pairs"
           ],
-          "commit": null,
+          "commit": "b9762d3",
           "done": "2026-11-17"
         }
       ],

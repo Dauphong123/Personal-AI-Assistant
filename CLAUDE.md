@@ -15,7 +15,7 @@ docker compose up -d                        # pgvector Postgres 17 (db agent_mem
 
 Voice commands (`--voice`, `voice.enroll`, `voice.check`, voice engine tests): `voice/CLAUDE.md`.
 
-Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama with `qwen3:8b` (main) and `qwen3:4b` (summaries; `SUMMARY_MODEL`), and `rg` (ripgrep) for `search_code`. First run downloads the `Qwen/Qwen3-8B` tokenizer and `BAAI/bge-small-en-v1.5` embeddings.
+Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama with `qwen3:8b` (main) and `qwen3:4b` (summaries; `SUMMARY_MODEL`), and `rg` (ripgrep) for `search_code`. First run downloads the `Qwen/Qwen3-8B` tokenizer, `BAAI/bge-small-en-v1.5` (RAG) and `intfloat/multilingual-e5-small` (memory) embeddings.
 
 `.env` (gitignored; copy `.env.example`): `MODEL` must be a key in `TOKENIZER_MAP` (`llm_options.py`; `model_name()` fails at startup with a clear message otherwise). DB URL from `DATABASE_URL` or `DB_URL`; `postgresql://` is rewritten to `postgresql+psycopg://` (only psycopg 3 installed). `PROJECT_ROOT` changes the directory the coding tools may touch.
 
@@ -40,7 +40,7 @@ Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama wit
 
 **Search.** `retrieval.py`: shared BM25 (stop words, common-word filter, accent folding), weighted reciprocal rank fusion, passage splitting. `RAG.search_hybrid` fuses vector + BM25, drops vector hits beyond `MAX_VECTOR_DISTANCE` (0.9; bge-small: related <= 0.70, unrelated >= 1.06), max 2 passages per file, empty for unrelated queries. `web.py`: `web_search` (ddgs, cached), `read_webpage` (SSRF-guarded: public addresses only, redirects re-checked, DNS pinned to checked addresses, size/time/type limits; `focus` = BM25 passages); output labelled untrusted; `WEB_SEARCH_ENABLED=false` disables both.
 
-**Vietnamese.** `language.py` (`detect_language`, `say`, NFC `normalize`) is shared by `chat_loop.py`, `turns.py`, `voice/`. Prompts say to answer in the user's language. Memory/RAG embeddings are English-only (weak Vietnamese recall), so the code prompt says to search documents in English. Speech-language settings: `voice/CLAUDE.md`.
+**Vietnamese.** `language.py` (`detect_language`, `say`, NFC `normalize`) is shared by `chat_loop.py`, `turns.py`, `voice/`. Prompts say to answer in the user's language. RAG embeddings are English-only (weak Vietnamese recall), so the code prompt says to search documents in English; memory embeddings are multilingual (`memories/CLAUDE.md`). Speech-language settings: `voice/CLAUDE.md`.
 
 **Hardening.** Job notices reach the model as a flagged, fenced message (`additional_kwargs["notice"]`); memory neither recalls for nor learns from them. `ChatLoop.close()` cancels; `wait_idle()` lets piped input finish. `JobManager.close()` kills running jobs; job output is a bounded tail. `save_memory` runs in a one-worker background pool (`wait_for_memory()` at exit). `read_file`/`search_code` refuse credential files (`SECRET_FILE_PATTERNS`).
 
