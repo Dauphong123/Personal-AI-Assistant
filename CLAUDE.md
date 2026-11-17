@@ -7,6 +7,8 @@ Local LLM agent: LangChain + LangGraph on Ollama (default `qwen3:8b`). Interacti
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python main.py                              # interactive chat; "exit" or "quit" stops
+npm --prefix webui install; npm --prefix webui run build   # once: build the TypeScript web frontend
+python -m backend                           # browser chat on 127.0.0.1:8000, many sessions (link with token is printed)
 python -m unittest discover -s tests -t .   # tests (Postgres test skipped if DB unreachable)
 docker compose up -d                        # pgvector Postgres 17 (db agent_memory, user agent)
 ```
@@ -63,9 +65,10 @@ Improve the existing project; do not rebuild it. Respect reasonable existing des
 ## Workflow and shared context
 
 Solo project: roles are skills (`architect`, `implement`, `test`, `debug`, `docs-sync`), loaded on demand. Read the roster and project knowledge below at session start; run `docs-sync` at session end so the next session resumes without rediscovery.
+
 - Label claims verified (cite code/test/doc), assumed, or unknown. Investigate uncertainty; surface what stays unresolved to the user rather than guessing.
 - Verify important findings against source, tests, or authoritative docs.
-- Directory notes: `voice/CLAUDE.md`, `memories/CLAUDE.md`.
+- Directory notes: `voice/CLAUDE.md`, `memories/CLAUDE.md`, `backend/CLAUDE.md` (web API, Python), `webui/CLAUDE.md` (web frontend, TypeScript).
 
 @docs/ROSTER.md
 @docs/PROJECT.md

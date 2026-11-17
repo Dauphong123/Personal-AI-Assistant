@@ -1,0 +1,10 @@
+# Web chat backend (`backend/`)
+
+`python -m backend [--host H] [--port N] [--allow-remote] [--max-turns N]`: HTTP API over the same graph as `main.py` (does not touch `main.py`/`ChatLoop`); also serves the built frontend from `webui/dist` (see `webui/CLAUDE.md`). Refuses to start until the frontend is built.
+
+- `session.py`: `ChatSession` = one conversation (own `id`, LangGraph `thread_id`, title). Runs `turns.run_turn` on a worker thread and records an id-numbered event log (`user`, `waiting`, `token`, `approval`, `done`, `cancelled`, `error`, `reset`); `events_after(id)` lets a client resume. One turn at a time per session. Title = first message unless renamed. `info()` → `{id, title, state: idle|waiting|running|approval, created, last_event}`.
+- `sessions.py`: `SessionManager` holds sessions (max 50, in memory: a restart forgets them) and one shared semaphore: at most `--max-turns` (default 1) turns run at once; a session that must wait emits `waiting` and can be stopped while waiting. `delete` refused while busy.
+- `server.py`: stdlib `ThreadingHTTPServer`. Routes listed in its docstring (`/api/sessions`, `/api/sessions/<id>/{send,approve,stop,reset,rename,delete,events}`). SSE ends with `{"type":"gone"}` when the session is deleted. Security (keep when editing): loopback only unless `allow_remote`; token (`X-Token` / `Bearer`; `?token=` only for `/events`) via `hmac.compare_digest`; Host and Origin must be ours; JSON-only POST, 64 KB cap; static files only from the build dir, known extensions, no hidden names / `..` / backslashes, resolved path must stay inside; CSP forbids inline script/style; no access log (URLs carry the token); `allow_reuse_address = False`.
+- `__main__.py`: refuses a non-loopback host, bad `--max-turns` or a missing build before loading models; heavy imports in `build_app()` / `cleanup()` so tests patch them.
+
+Tests (`tests/test_backend_*.py`) stub `dependency` (`tests/stubs.py`) and inject a fake `run`; no Ollama, DB or browser. Known gaps: no job-completion notices, no voice, sessions not persisted, tool output streams into the answer text.

@@ -507,13 +507,15 @@
             "tests/test_webui_frontend.py (21 tests incl. build + serve, 2026-11-17)",
             "headless Chrome smoke test via DevTools against a fake-model backend: sessions, approval, stream, clear, delete, reload, no console errors"
           ],
-          "commit": null
+          "commit": "9075bab"
         },
         {
           "n": 6,
           "title": "Remove old Python webui, docs",
-          "status": "in_progress",
-          "tests": [],
+          "status": "done",
+          "tests": [
+            "full suite 520 OK, 11 skipped (2026-11-17)"
+          ],
           "commit": null
         }
       ],

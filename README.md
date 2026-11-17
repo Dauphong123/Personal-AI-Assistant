@@ -99,9 +99,28 @@ Without Postgres the app still runs. A warning is logged and memory is simply of
 ```powershell
 python main.py              # keyboard chat; type exit or quit to leave
 python main.py --voice      # keyboard + wake-word voice mode
+python -m backend           # chat in the browser (see Web chat below; build the frontend once first)
 ```
 
 **First run downloads models**: the Qwen3-8B tokenizer and bge-small embeddings (Hugging Face). Voice mode additionally downloads about 250 MB (see [Voice mode](#voice-mode)). Importing almost any module loads the models and syncs `./documents/`, so startup takes a moment.
+
+### Web chat
+
+The web chat has two parts: a **TypeScript frontend** in `webui/` and the Python app as its **backend** (`backend/`, an HTTP API that also serves the built frontend). Build the frontend once (needs Node.js; after that only when `webui/` changes):
+
+```powershell
+npm --prefix webui install
+npm --prefix webui run build
+python -m backend
+```
+
+`python -m backend` loads the models, then prints a link such as `http://127.0.0.1:8000/?token=...`. Open it in a browser. The sidebar holds **sessions**: each is a separate conversation with its own history, named after its first message (**Rename** to change). **New session** starts another; switching keeps each session's draft, and a session keeps running while you look at another one. Answers stream in, a panel asks Allow or Deny before the assistant runs a command or edits a file, **Stop** cancels the current turn, **Clear** empties the session and **Delete** removes it. The sidebar marks sessions that are working, waiting or need approval. All sessions use the same graph, tools and long-term memory as the keyboard chat.
+
+Only one turn runs on the model at a time; a session that sends while another is working shows "Waiting" and starts when the model is free (`--max-turns N` allows N at once, which mostly makes each slower on a small GPU). Sessions live in memory: restarting the backend forgets them. At most 50 sessions.
+
+Because the assistant can run commands and edit files, the server is locked down: it listens on loopback only, every request needs the random token printed at launch (a new one each time; the page keeps it for the tab, out of the address bar), requests with a foreign `Host` or `Origin` are refused, and the page runs under a CSP that forbids inline script. Model output is inserted as text, never as HTML. `--port N` changes the port; `--allow-remote` is required to listen on any other address (do that only on a network you trust). If the port is taken the launch fails instead of sharing it.
+
+Limits: background-job completion notices and voice are not shown in the browser (the assistant can still check a job with `job_status`); raw tool output streams into the answer, as it does in the keyboard chat.
 
 ---
 
@@ -147,6 +166,8 @@ A cancelled turn can leave a tool call without a result, which models reject. Th
 
 ```
 main.py              Entry point: reads the keyboard, optionally starts voice mode
+backend/             Web chat API: session.py (one conversation as events), sessions.py (many sessions, turn limit), server.py (HTTP + SSE, security checks), __main__.py
+webui/               Web chat frontend (TypeScript): src/ (api, state, main), public/ (html, css), test/ (node --test); builds to dist/
 chat_loop.py         ChatLoop: worker thread, input queue, stop handling, approvals, job notices
 turns.py             One conversation turn (UI-independent), cancellation, stop phrases, sentence streaming for speech
 jobs.py              Background shell jobs (JobManager)
