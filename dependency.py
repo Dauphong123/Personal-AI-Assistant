@@ -31,16 +31,22 @@ def db_init():
     init_db()
 
 
-def memory_init(model, rag):
+def memory_init(model):
     """Build the long-term memory manager, or return None if Postgres is unavailable."""
     try:
+        from memories.embeddings import MEMORY_EMBEDDING_MODEL, memory_embeddings
         from memories.extractor import MemoryExtractor
         from memories.manager import MemoryManager
         from memories.store import MemoryStore
 
         db_init()
 
-        return MemoryManager(MemoryStore(rag.embeddings), MemoryExtractor(model))
+        store = MemoryStore(memory_embeddings())
+        changed = store.ensure_embedding_model(MEMORY_EMBEDDING_MODEL)
+        if changed:
+            logger.info("Re-embedded %d memories with %s", changed, MEMORY_EMBEDDING_MODEL)
+
+        return MemoryManager(store, MemoryExtractor(model))
     except Exception as exc:
         try:
             from memories.check import explain_failure
@@ -61,7 +67,7 @@ def dependency_init():
     model = model_init()
     rag = rag_init()
     tokenizer = tokenizer_init()
-    memory = memory_init(model, rag)
+    memory = memory_init(model)
 
     return {"model": model, "rag": rag, "tokenizer": tokenizer, "memory": memory}
 

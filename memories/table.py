@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
 
-# Output size of BAAI/bge-small-en-v1.5, the embedding model used by rag/rag.py.
+# Output size of the memory embedding model (memories/embeddings.py, multilingual-e5-small).
 EMBEDDING_DIM = 384
 CATEGORY_LENGTH = 64  # width of the fact category column
 
@@ -79,3 +79,12 @@ class ProceduralMemory(Base):
         DateTime(timezone=True), default=_now, nullable=False
     )
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM))
+
+
+class MemorySetting(Base):
+    """Key/value settings of the memory store, e.g. which model embedded the stored rows."""
+
+    __tablename__ = "memory_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)

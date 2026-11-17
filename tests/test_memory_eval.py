@@ -68,6 +68,12 @@ CASES = [
     ("kw-port", [("user", "something else is already listening on 15432")], ["15432"]),
     ("kw-qwen", [("user", "qwen3:8b feels slow today")], ["qwen3:8b"]),
     ("kw-vi-miu", [("user", "Miu bị ốm rồi")], ["Miu"]),
+    # Vietnamese questions about facts outside the profile (added after calibrating step 5's cutoff).
+    ("vi-food", [("user", "món ăn tôi thích là gì?")], ["pho"]),
+    ("vi-model", [("user", "dự án dùng model nào?")], ["qwen3:8b"]),
+    ("vi-frontend", [("user", "frontend viết bằng ngôn ngữ gì?")], ["TypeScript"]),
+    ("vi-tests", [("user", "chạy test của dự án thế nào?")], ["unittest"]),
+    ("vi-port", [("user", "postgres chạy ở cổng nào?")], ["15432"]),
     ("follow-up-db", [("user", "tell me about the project's database"), ("assistant", "It is Postgres."),
                       ("user", "which port again?")], ["15432"]),
     ("follow-up-cat", [("user", "do I have pets?"), ("assistant", "You have a cat."),
@@ -77,7 +83,33 @@ CASES = [
 ]
 
 # Recall must find at least this share of cases. Raised by each step of F021 as retrieval improves.
-MIN_HIT_RATE = 0.94  # step 4: 33/35 with follow-up context (step 3: 32/35, step 1 baseline: 15/30)
+# step 5: 40/40 with multilingual-e5-small (bge-small: 36/40); step 4: 33/35; step 1 baseline: 15/30
+MIN_HIT_RATE = 0.97
+
+# Pairs the cutoffs in memories/store.py and memories/manager.py were calibrated on.
+MERGE_PAIRS = [  # paraphrases and corrections: stored as one fact
+    ("The user's name is Dat.", "The user's name is Dat"),
+    ("The user's code editor is Vim.", "The user uses Vim as their code editor."),
+    ("The user's city is Hanoi.", "The user lives in Hanoi."),
+    ("The user prefers tabs over spaces", "The user prefers spaces over tabs"),
+    ("The user uses Python 3.12", "The user uses Python 3.11"),
+]
+REVIEW_PAIRS = [  # same subject, new value: shown to the model to decide
+    ("The user's code editor is VS Code.", "The user's code editor is Vim."),
+    ("The user's name is Dat.", "The user's name is Bob."),
+    ("The user's city is Ho Chi Minh City.", "The user's city is Hanoi."),
+    ("The user's role is backend developer.", "The user is a student."),
+]
+KEEP_PAIRS = [  # different subjects: never merged
+    ("The user's name is Dat.", "The user's city is Hanoi."),
+    ("The user's code editor is Vim.", "The user is a student."),
+    ("The user's cat is named Miu.", "The user's favourite food is pho."),
+    ("The project's database is Postgres 17.", "The user's name is Dat."),
+]
+SAME_TASKS = [("run the tests", "run the test suite"), ("start the web chat", "launch the browser chat"),
+              ("add a new tool", "add a tool to the agent"), ("fix the database connection", "fix a failing Postgres connection")]
+OTHER_TASKS = [("run the tests", "start the web chat"), ("add a new tool", "fix the database connection"),
+               ("create a hello file", "deploy the backend"), ("enroll my voice", "run the tests")]
 
 
 def as_messages(turns):
@@ -88,15 +120,14 @@ def as_messages(turns):
 class MemoryRetrievalEval(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from langchain_huggingface import HuggingFaceEmbeddings
         from sqlalchemy import delete
         from sqlalchemy.orm import sessionmaker
 
         from memories.database import get_engine, init_db
+        from memories.embeddings import memory_embeddings
         from memories.manager import MemoryManager
         from memories.store import MemoryStore
         from memories.table import EpisodicMemory, ProceduralMemory, SemanticMemory
-        from rag.rag import EMBEDDING_MODEL
 
         init_db()
         cls.connection = get_engine().connect()
@@ -107,7 +138,8 @@ class MemoryRetrievalEval(unittest.TestCase):
             for table in (EpisodicMemory, SemanticMemory, ProceduralMemory):
                 session.execute(delete(table))
 
-        store = MemoryStore(HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL), session_factory=sessions)
+        cls.embeddings = memory_embeddings()
+        store = MemoryStore(cls.embeddings, session_factory=sessions)
         for fact, category in FACTS:
             store.add_fact(fact, category)
         cls.manager = MemoryManager(store, SimpleNamespace())  # type: ignore[arg-type]  (recall only)
@@ -133,6 +165,28 @@ class MemoryRetrievalEval(unittest.TestCase):
         rate = hits / len(CASES)
         print("\n" + "\n".join(report) + f"\nhit rate {hits}/{len(CASES)} = {rate:.2f}")
         self.assertGreaterEqual(rate, MIN_HIT_RATE)
+
+    def distance(self, a, b):
+        x, y = self.embeddings.embed_query(a), self.embeddings.embed_query(b)
+        dot = sum(p * q for p, q in zip(x, y))
+        norm = (sum(p * p for p in x) * sum(q * q for q in y)) ** 0.5
+        return 1 - dot / norm
+
+    def test_cutoffs_separate_the_calibration_pairs(self):
+        from memories.manager import REVIEW_DISTANCE
+        from memories.store import FACT_DUPLICATE_DISTANCE, PROCEDURE_DUPLICATE_DISTANCE
+
+        checks = (
+            [(a, b, "<=", FACT_DUPLICATE_DISTANCE) for a, b in MERGE_PAIRS]
+            + [(a, b, ">", FACT_DUPLICATE_DISTANCE) for a, b in REVIEW_PAIRS + KEEP_PAIRS]
+            + [(a, b, "<=", REVIEW_DISTANCE) for a, b in REVIEW_PAIRS]
+            + [(a, b, "<=", PROCEDURE_DUPLICATE_DISTANCE) for a, b in SAME_TASKS]
+            + [(a, b, ">", PROCEDURE_DUPLICATE_DISTANCE) for a, b in OTHER_TASKS]
+        )
+        for a, b, op, cutoff in checks:
+            d = self.distance(a, b)
+            with self.subTest(a=a, b=b, distance=round(d, 3)):
+                self.assertTrue(d <= cutoff if op == "<=" else d > cutoff, f"{d:.3f} {op} {cutoff}")
 
 
 if __name__ == "__main__":

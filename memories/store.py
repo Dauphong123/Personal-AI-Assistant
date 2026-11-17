@@ -7,13 +7,25 @@ from sqlalchemy.orm import Session, sessionmaker
 from retrieval import BM25, reciprocal_rank_fusion
 
 from .database import get_session_factory
-from .table import EMBEDDING_DIM, EpisodicMemory, ProceduralMemory, SemanticMemory
+from .table import EMBEDDING_DIM, EpisodicMemory, MemorySetting, ProceduralMemory, SemanticMemory
 
-# Cosine distance: 0 = identical, 2 = opposite. Calibrated with bge-small-en-v1.5:
-# paraphrases are ~0.03, relevant query/fact pairs 0.2-0.3, unrelated text ~0.45-0.5.
-# A fact and its negation also land near 0 (~0.004), which is why add_fact overwrites.
-FACT_DUPLICATE_DISTANCE = 0.08
-PROCEDURE_DUPLICATE_DISTANCE = 0.2
+# Cosine distance: 0 = identical, 2 = opposite. Calibrated with multilingual-e5-small, which packs
+# everything close together (tests/test_memory_eval.py checks these against its pairs):
+# paraphrases <= 0.034, a fact and its negation ~0.002 (which is why add_fact overwrites),
+# same subject with a new value 0.05-0.14, different subjects >= 0.14; same task <= 0.083,
+# different tasks >= 0.18; relevant question/fact 0.13-0.24 (Vietnamese included).
+FACT_DUPLICATE_DISTANCE = 0.045
+PROCEDURE_DUPLICATE_DISTANCE = 0.12
+# Recall cutoff: 40/40 eval cases at 0.20 with 0.3 unrequested facts a question (0.22: 0.6).
+RECALL_DISTANCE = 0.20
+# Facts offered to the extractor as "known", so it can mark them superseded. Kept tight: at 0.24
+# a Vietnamese turn pulled in unrelated facts (0.21-0.23) and qwen3:8b then missed the new fact.
+# Outdated facts the question does not reach ("Mình chuyển sang dùng Vim rồi" -> "The user's
+# code editor is VS Code" is 0.229) are caught by the review of facts near the new one
+# (manager.REVIEW_DISTANCE, fact to fact 0.054).
+KNOWN_FACT_DISTANCE = 0.18
+
+EMBEDDING_MODEL_KEY = "embedding_model"
 
 # Recalled on every turn whatever the question. About 12 tokens a fact, so the cap keeps the
 # block near 150 tokens of the MAX_HISTORY_TOKENS budget.
@@ -33,6 +45,11 @@ class MemoryHits:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _episode_text(event: str, task: str | None) -> str:
+    """What an episode is embedded from (also when re-embedding)."""
+    return " ".join(p for p in (event, task) if p)
 
 
 def rank_facts(
@@ -91,7 +108,7 @@ class MemoryStore:
             task=task,
             outcome=outcome,
             importance=importance,
-            embedding=self._embed(" ".join(p for p in (event, task) if p)),
+            embedding=self._embed(_episode_text(event, task)),
         )
 
         with self._session_factory() as session, session.begin():
@@ -165,6 +182,37 @@ class MemoryStore:
 
         return result.rowcount
 
+    # ---- embedding model -----------------------------------------------
+
+    def embedding_model(self) -> str | None:
+        """Name of the model the stored rows were embedded with (None before it was recorded)."""
+        with self._session_factory() as session:
+            setting = session.get(MemorySetting, EMBEDDING_MODEL_KEY)
+            return setting.value if setting else None
+
+    def ensure_embedding_model(self, name: str) -> int:
+        """Re-embed every stored row if they were embedded by another model; record `name`.
+
+        Vectors from two models are not comparable, so a model change without this would make
+        every search silently miss. Returns the number of rows re-embedded."""
+        if self.embedding_model() == name:
+            return 0
+
+        count = 0
+        with self._session_factory() as session, session.begin():
+            for episode in session.scalars(select(EpisodicMemory)):
+                episode.embedding = self._embed(_episode_text(episode.event, episode.task))
+                count += 1
+            for fact in session.scalars(select(SemanticMemory)):
+                fact.embedding = self._embed(fact.fact)
+                count += 1
+            for procedure in session.scalars(select(ProceduralMemory)):
+                procedure.embedding = self._embed(procedure.task)
+                count += 1
+            session.merge(MemorySetting(key=EMBEDDING_MODEL_KEY, value=name))
+
+        return count
+
     # ---- reads ----------------------------------------------------------
 
     def profile_facts(self, limit: int = PROFILE_LIMIT) -> list[SemanticMemory]:
@@ -183,7 +231,7 @@ class MemoryStore:
         self,
         query: str,
         limit: int = 3,
-        max_distance: float = 0.4,
+        max_distance: float = RECALL_DISTANCE,
         keywords: bool = True,
     ) -> MemoryHits:
         """Return the closest memories of each type (the query is embedded once).

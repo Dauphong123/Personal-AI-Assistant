@@ -547,6 +547,107 @@ def _database_available():
         return False
 
 
+class EmbeddingsTests(unittest.TestCase):
+    def test_every_text_gets_the_e5_query_prefix(self):
+        from memories.embeddings import PrefixedEmbeddings
+
+        seen = []
+        base = SimpleNamespace(embed_query=lambda text: seen.append(text) or [0.0])
+        PrefixedEmbeddings(base).embed_query("The user's name is Dat.")
+        self.assertEqual(seen, ["query: The user's name is Dat."])
+
+    def test_memory_embeddings_load_the_multilingual_model_on_cpu(self):
+        from memories import embeddings
+
+        with patch("langchain_huggingface.HuggingFaceEmbeddings") as hf:
+            result = embeddings.memory_embeddings()
+
+        hf.assert_called_once_with(model_name="intfloat/multilingual-e5-small", model_kwargs={"device": "cpu"})
+        self.assertIsInstance(result, embeddings.PrefixedEmbeddings)
+        self.assertEqual(embeddings.MEMORY_EMBEDDING_MODEL, "intfloat/multilingual-e5-small")
+
+
+class CutoffTests(unittest.TestCase):
+    """Cutoffs calibrated for multilingual-e5-small (tests/test_memory_eval.py checks them)."""
+
+    def test_recall_uses_the_recall_cutoff(self):
+        import inspect
+
+        from memories.store import RECALL_DISTANCE
+
+        default = inspect.signature(MemoryStore.search).parameters["max_distance"].default
+        self.assertEqual(default, RECALL_DISTANCE)
+
+    def test_remember_offers_known_facts_within_the_known_fact_cutoff(self):
+        from memories.store import KNOWN_FACT_DISTANCE
+
+        calls = []
+
+        class Store(FakeStore):
+            def search(self, query, limit=3, max_distance=0.5, keywords=True):
+                calls.append((query, max_distance))
+                return MemoryHits()
+
+        MemoryManager(Store(), SimpleNamespace(extract=lambda messages, known=(): MemoryExtraction())).remember(
+            [HumanMessage(content="I use Vim now")])
+        self.assertEqual(calls, [("I use Vim now", KNOWN_FACT_DISTANCE)])
+
+
+def _rolled_back_sessions(test):
+    """Sessions inside one transaction that is rolled back after `test`, with the memory tables
+    emptied inside it: tests see only their own rows and never change stored memories."""
+    from sqlalchemy.orm import sessionmaker
+
+    from memories.database import get_engine
+    from memories.table import EpisodicMemory, MemorySetting, ProceduralMemory, SemanticMemory
+
+    connection = get_engine().connect()
+    transaction = connection.begin()
+    test.addCleanup(connection.close)
+    test.addCleanup(transaction.rollback)
+    sessions = sessionmaker(bind=connection, join_transaction_mode="create_savepoint", expire_on_commit=False)
+    with sessions() as session, session.begin():
+        for table in (EpisodicMemory, SemanticMemory, ProceduralMemory, MemorySetting):
+            session.execute(delete(table))
+    return sessions
+
+
+@unittest.skipUnless(_database_available(), "Postgres/pgvector not reachable (docker compose up -d)")
+class EmbeddingModelChangeTests(unittest.TestCase):
+    class Other(FakeEmbeddings):
+        def embed_query(self, text):
+            return super().embed_query("other model: " + text)
+
+    def test_rows_are_re_embedded_when_the_model_changes(self):
+        sessions = _rolled_back_sessions(self)
+        old = MemoryStore(FakeEmbeddings(), session_factory=sessions)
+        episode = old.add_episode("ran the tests", task="test")
+        fact, _ = old.add_fact("The user's name is Dat.")
+        procedure, _ = old.add_procedure("run the tests", ["python -m unittest"])
+
+        new = MemoryStore(self.Other(), session_factory=sessions)
+        self.assertEqual(new.ensure_embedding_model("model-b"), 3)
+        self.assertEqual(new.embedding_model(), "model-b")
+
+        # Each row is now found by the new model's vector for its own text.
+        self.assertEqual([e.id for e in new.search("ran the tests test", max_distance=0.01).episodes], [episode.id])
+        self.assertEqual([f.id for f in new.search("The user's name is Dat.", max_distance=0.01, keywords=False).facts], [fact.id])
+        self.assertEqual([p.id for p in new.search("run the tests", max_distance=0.01).procedures], [procedure.id])
+
+    def test_same_model_does_nothing(self):
+        sessions = _rolled_back_sessions(self)
+        store = MemoryStore(FakeEmbeddings(), session_factory=sessions)
+        store.add_fact("The user's name is Dat.")
+        self.assertEqual(store.ensure_embedding_model("model-a"), 1)
+        self.assertEqual(store.ensure_embedding_model("model-a"), 0)
+
+    def test_empty_tables_just_record_the_model(self):
+        store = MemoryStore(FakeEmbeddings(), session_factory=_rolled_back_sessions(self))
+        self.assertIsNone(store.embedding_model())
+        self.assertEqual(store.ensure_embedding_model("model-a"), 0)
+        self.assertEqual(store.embedding_model(), "model-a")
+
+
 @unittest.skipUnless(_database_available(), "Postgres/pgvector not reachable (docker compose up -d)")
 class StoreIntegrationTests(unittest.TestCase):
     def setUp(self):

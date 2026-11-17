@@ -3,13 +3,13 @@ import re
 from langchain_core.messages import AIMessage, HumanMessage
 
 from .extractor import MemoryExtraction, MemoryExtractor
-from .store import MemoryHits, MemoryStore
+from .store import KNOWN_FACT_DISTANCE, MemoryHits, MemoryStore
 
 # Stored facts this close to a new fact are shown to the model to check for outdated ones.
-# bge-small, fact to fact: same subject 0.09-0.23 ("editor is VS Code" / "editor is Vim" 0.09,
-# "name is Dat" / "name is Bob" 0.18); a different subject is usually further, and the model
+# multilingual-e5-small, fact to fact: same subject 0.05-0.14 ("editor is VS Code" / "editor is
+# Vim" 0.054, "name is Dat" / "name is Bob" 0.11); different subjects from 0.14, and the model
 # keeps unrelated facts anyway.
-REVIEW_DISTANCE = 0.25
+REVIEW_DISTANCE = 0.15
 
 # The prompt says never to store secrets, but qwen3:8b once stored "The user's OpenAI key is sk-...".
 # Key-like values: known prefixes, or a long run of letters and digits (hashes, tokens, UUIDs).
@@ -156,7 +156,7 @@ class MemoryManager:
         question = next(
             (str(m.content) for m in reversed(messages) if isinstance(m, HumanMessage)), ""
         )
-        known = self._store.search(question, limit=5, max_distance=0.45, keywords=False).facts if question else []
+        known = self._store.search(question, limit=5, max_distance=KNOWN_FACT_DISTANCE, keywords=False).facts if question else []
         extraction = _without_secrets(self._extractor.extract(messages, known))
 
         known_ids = {f.id for f in known}
