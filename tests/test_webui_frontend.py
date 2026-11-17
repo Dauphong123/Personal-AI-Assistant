@@ -61,5 +61,122 @@ class SourceTests(unittest.TestCase):
         self.assertTrue((WEBUI / "package-lock.json").is_file())
 
 
+PUBLIC = WEBUI / "public"
+HTML = (PUBLIC / "index.html").read_text(encoding="utf-8") if (PUBLIC / "index.html").exists() else ""
+CSS = (PUBLIC / "style.css").read_text(encoding="utf-8") if (PUBLIC / "style.css").exists() else ""
+MAIN = (SRC / "main.ts").read_text(encoding="utf-8") if (SRC / "main.ts").exists() else ""
+
+CONTROLS = [
+    "sidebar", "sessions", "new-session", "toggle-sidebar", "session-title", "status", "rename", "clear-chat",
+    "delete-session", "scroll", "empty", "log", "alert", "approval", "approval-calls", "allow", "deny",
+    "form", "input", "send", "stop",
+]
+
+
+class PageTests(unittest.TestCase):
+    def test_files_exist(self):
+        for path in (PUBLIC / "index.html", PUBLIC / "style.css", SRC / "main.ts", SRC / "url.ts"):
+            self.assertTrue(path.exists(), path)
+
+    def test_has_every_control(self):
+        for control in CONTROLS:
+            self.assertIn(f'id="{control}"', HTML, control)
+
+    def test_is_a_complete_document(self):
+        self.assertTrue(HTML.lstrip().lower().startswith("<!doctype html>"))
+        self.assertIn('<meta charset="utf-8">', HTML.lower())
+        self.assertIn('name="viewport"', HTML)
+        self.assertIn('<html lang="en">', HTML)
+
+    def test_loads_the_built_module_and_style_from_own_origin(self):
+        self.assertIn('<script type="module" src="/main.js"></script>', HTML)
+        self.assertIn('href="/style.css"', HTML)
+
+    def test_works_under_a_strict_csp(self):
+        # The server forbids inline script and style, so none may be used.
+        self.assertIsNone(re.search(r"<script(?![^>]*\bsrc=)", HTML), "inline <script>")
+        self.assertIsNone(re.search(r"<style", HTML, re.I), "inline <style>")
+        self.assertIsNone(re.search(r"\sstyle\s*=", HTML, re.I), "style attribute")
+        self.assertIsNone(re.search(r"\son[a-z]+\s*=", HTML, re.I), "inline event handler")
+
+    def test_no_external_resources(self):
+        self.assertIsNone(re.search(r"(?:src|href)\s*=\s*[\"']https?:", HTML))
+        self.assertNotIn("@import", CSS)
+        self.assertNotIn("url(http", CSS)
+
+    def test_every_element_main_looks_up_exists_in_the_page(self):
+        used = set(re.findall(r"""byId(?:<[^>]+>)?\(\s*["']([\w-]+)["']""", MAIN))
+        self.assertTrue(used)
+        for element in used:
+            self.assertIn(f'id="{element}"', HTML, element)
+
+    def test_session_state_classes_do_not_reuse_panel_classes(self):
+        # A badge with class "approval" picked up the approval panel's box styles.
+        self.assertIn("state-${session.state}", MAIN)
+        for state in ("running", "waiting", "approval"):
+            self.assertIn(f".session-state.state-{state}", CSS)
+
+    def test_token_is_kept_out_of_the_address_bar(self):
+        self.assertIn("history.replaceState", MAIN)
+
+
+class StyleTests(unittest.TestCase):
+    def test_supports_dark_mode_and_reduced_motion(self):
+        self.assertIn("prefers-color-scheme: dark", CSS)
+        self.assertIn("prefers-reduced-motion", CSS)
+
+    def test_keyboard_focus_is_visible(self):
+        self.assertIn(":focus-visible", CSS)
+
+    def test_adapts_to_narrow_screens(self):
+        self.assertIn("@media (max-width", CSS)
+
+    def test_hidden_attribute_is_honoured(self):
+        self.assertIn("[hidden]", CSS)
+
+
+@unittest.skipUnless(NPM and INSTALLED, "needs npm and `npm --prefix webui install`")
+class BuildTests(unittest.TestCase):
+    def test_build_makes_a_page_the_backend_serves(self):
+        import http.client
+        import threading
+
+        from tests import stubs
+
+        stubs.install()
+        from backend.server import STATIC_DIR, make_server
+        from backend.sessions import SessionManager
+
+        result = npm("run", "build")
+        self.assertEqual(result.returncode, 0, result.stdout[-3000:] + result.stderr[-2000:])
+        dist = WEBUI / "dist"
+        self.assertEqual(STATIC_DIR, dist)
+
+        for name in ("index.html", "style.css", "main.js", "api.js", "state.js", "url.js"):
+            self.assertTrue((dist / name).is_file(), name)
+
+        main_js = (dist / "main.js").read_text(encoding="utf-8")
+        self.assertIn('from "./state.js"', main_js)  # rewritten from .ts for the browser
+        self.assertNotIn('.ts"', main_js)
+
+        server = make_server(SessionManager(app=None, run=lambda *a, **k: False), "t", port=0)
+        port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
+        try:
+            for path, needle in (("/", b'id="log"'), ("/main.js", b"/api/"), ("/style.css", b"focus-visible")):
+                conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+                conn.request("GET", path, headers={"Host": f"127.0.0.1:{port}"})
+                resp = conn.getresponse()
+                body = resp.read()
+                conn.close()
+                self.assertEqual(resp.status, 200, path)
+                if path == "/main.js":
+                    body = (dist / "api.js").read_bytes()  # routes live in the api module
+                self.assertIn(needle, body, path)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
 if __name__ == "__main__":
     unittest.main()

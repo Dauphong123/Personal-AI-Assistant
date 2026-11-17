@@ -496,22 +496,23 @@
             "webui/test/state.test.ts + api.test.ts (26 tests, node --test, 2026-11-17)",
             "tests/test_webui_frontend.py (6 tests)"
           ],
-          "commit": null
+          "commit": "acb2470"
         },
         {
           "n": 5,
           "title": "webui/ multi-session UI: main.ts, index.html, style.css",
-          "status": "in_progress",
+          "status": "done",
           "tests": [
-            "tests/test_webui_frontend.py",
-            "webui/test/*.test.ts"
+            "webui/test/url.test.ts (5 tests)",
+            "tests/test_webui_frontend.py (21 tests incl. build + serve, 2026-11-17)",
+            "headless Chrome smoke test via DevTools against a fake-model backend: sessions, approval, stream, clear, delete, reload, no console errors"
           ],
           "commit": null
         },
         {
           "n": 6,
           "title": "Remove old Python webui, docs",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [],
           "commit": null
         }
