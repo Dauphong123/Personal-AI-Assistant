@@ -1,0 +1,175 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import {
+  apply,
+  applyAll,
+  blocks,
+  emptyConversation,
+  formatCalls,
+  isChatEvent,
+  sortSessions,
+  stateLabel,
+} from "../src/state.ts";
+import type { ChatEvent, SessionInfo } from "../src/types.ts";
+
+const turn: ChatEvent[] = [
+  { id: 1, type: "user", text: "hi" },
+  { id: 2, type: "token", text: "Hel" },
+  { id: 3, type: "token", text: "lo" },
+  { id: 4, type: "done" },
+];
+
+test("a turn becomes a user and an assistant message", () => {
+  const conv = applyAll(emptyConversation(), turn);
+  assert.deepEqual(conv.items, [
+    { kind: "user", text: "hi" },
+    { kind: "assistant", text: "Hello" },
+  ]);
+  assert.equal(conv.busy, false);
+  assert.equal(conv.lastEventId, 4);
+});
+
+test("user message marks the conversation busy until done", () => {
+  const conv = apply(emptyConversation(), { id: 1, type: "user", text: "hi" });
+  assert.equal(conv.busy, true);
+});
+
+test("apply does not change its input", () => {
+  const start = emptyConversation();
+  const next = apply(start, { id: 1, type: "user", text: "hi" });
+  assert.notEqual(next, start);
+  assert.deepEqual(start.items, []);
+  const more = apply(next, { id: 2, type: "token", text: "a" });
+  apply(more, { id: 3, type: "token", text: "b" });
+  assert.deepEqual(more.items.at(-1), { kind: "assistant", text: "a" });
+});
+
+test("tokens after a new user message start a new assistant message", () => {
+  const conv = applyAll(emptyConversation(), [
+    ...turn,
+    { id: 5, type: "user", text: "again" },
+    { id: 6, type: "token", text: "Sure" },
+  ]);
+  assert.deepEqual(
+    conv.items.map((item) => item.kind),
+    ["user", "assistant", "user", "assistant"],
+  );
+  assert.equal(conv.items.at(-1)?.text, "Sure");
+});
+
+test("events already applied are ignored (reconnect replay)", () => {
+  const once = applyAll(emptyConversation(), turn);
+  const twice = applyAll(once, turn);
+  assert.deepEqual(twice, once);
+});
+
+test("waiting is shown until the turn starts streaming", () => {
+  let conv = applyAll(emptyConversation(), [
+    { id: 1, type: "user", text: "hi" },
+    { id: 2, type: "waiting" },
+  ]);
+  assert.equal(conv.waiting, true);
+  conv = apply(conv, { id: 3, type: "token", text: "x" });
+  assert.equal(conv.waiting, false);
+});
+
+test("approval is pending until the next event", () => {
+  const calls = [{ name: "write_file", args: { path: "a.txt" } }];
+  let conv = applyAll(emptyConversation(), [
+    { id: 1, type: "user", text: "go" },
+    { id: 2, type: "approval", calls },
+  ]);
+  assert.deepEqual(conv.approval, calls);
+  conv = apply(conv, { id: 3, type: "token", text: "ok" });
+  assert.equal(conv.approval, null);
+});
+
+test("cancelled and error add notes and end the turn", () => {
+  const conv = applyAll(emptyConversation(), [
+    { id: 1, type: "user", text: "a" },
+    { id: 2, type: "cancelled" },
+    { id: 3, type: "user", text: "b" },
+    { id: 4, type: "error", text: "model down" },
+  ]);
+  assert.deepEqual(conv.items.filter((item) => item.kind === "note"), [
+    { kind: "note", text: "Stopped.", error: false },
+    { kind: "note", text: "model down", error: true },
+  ]);
+  assert.equal(conv.busy, false);
+});
+
+test("reset clears the conversation but keeps the event cursor", () => {
+  const conv = applyAll(emptyConversation(), [...turn, { id: 5, type: "reset" }]);
+  assert.deepEqual(conv.items, []);
+  assert.equal(conv.lastEventId, 5);
+  assert.equal(conv.busy, false);
+});
+
+test("gone marks the conversation as deleted", () => {
+  const conv = apply(applyAll(emptyConversation(), turn), { type: "gone" });
+  assert.equal(conv.gone, true);
+  assert.equal(conv.lastEventId, 4);
+});
+
+test("blocks split fenced code from prose", () => {
+  assert.deepEqual(blocks("Look:\n```python\nprint(1)\n```\nDone."), [
+    { kind: "prose", text: "Look:" },
+    { kind: "code", text: "print(1)\n" },
+    { kind: "prose", text: "Done." },
+  ]);
+});
+
+test("blocks keep an unfinished code fence as code while streaming", () => {
+  assert.deepEqual(blocks("a\n```js\nlet x"), [
+    { kind: "prose", text: "a" },
+    { kind: "code", text: "let x" },
+  ]);
+});
+
+test("blocks drop blank prose", () => {
+  assert.deepEqual(blocks("   "), []);
+});
+
+test("formatCalls shows one call per line", () => {
+  assert.equal(
+    formatCalls([
+      { name: "terminal", args: { command: "ls" } },
+      { name: "delete_file", args: { path: "x" } },
+    ]),
+    'terminal({"command":"ls"})\ndelete_file({"path":"x"})',
+  );
+});
+
+test("isChatEvent accepts known events and rejects junk", () => {
+  assert.equal(isChatEvent({ id: 1, type: "token", text: "a" }), true);
+  assert.equal(isChatEvent({ type: "gone" }), true);
+  assert.equal(isChatEvent({ id: 1, type: "token" }), false);
+  assert.equal(isChatEvent({ id: 1, type: "approval", calls: "x" }), false);
+  assert.equal(isChatEvent({ id: 1, type: "nope" }), false);
+  assert.equal(isChatEvent({ type: "done" }), false);
+  assert.equal(isChatEvent(null), false);
+  assert.equal(isChatEvent("token"), false);
+});
+
+test("sortSessions puts the newest first", () => {
+  const make = (id: string, created: number): SessionInfo => ({
+    id,
+    title: id,
+    state: "idle",
+    created,
+    last_event: 0,
+  });
+  const sorted = sortSessions([make("a", 1), make("c", 3), make("b", 2)]);
+  assert.deepEqual(
+    sorted.map((s) => s.id),
+    ["c", "b", "a"],
+  );
+});
+
+test("stateLabel names every busy state and nothing for idle", () => {
+  assert.equal(stateLabel("idle"), "");
+  assert.equal(stateLabel("running"), "Working");
+  assert.equal(stateLabel("waiting"), "Waiting");
+  assert.equal(stateLabel("approval"), "Needs approval");
+});

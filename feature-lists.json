@@ -486,21 +486,22 @@
           "tests": [
             "tests/test_backend_main.py (14 tests, 2026-11-17)"
           ],
-          "commit": null
+          "commit": "3fa8c61"
         },
         {
           "n": 4,
           "title": "webui/ TypeScript core: package.json, tsconfig, api.ts, state.ts, build script",
-          "status": "in_progress",
+          "status": "done",
           "tests": [
-            "webui/test/*.test.ts (node --test)"
+            "webui/test/state.test.ts + api.test.ts (26 tests, node --test, 2026-11-17)",
+            "tests/test_webui_frontend.py (6 tests)"
           ],
           "commit": null
         },
         {
           "n": 5,
           "title": "webui/ multi-session UI: main.ts, index.html, style.css",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [
             "tests/test_webui_frontend.py",
             "webui/test/*.test.ts"

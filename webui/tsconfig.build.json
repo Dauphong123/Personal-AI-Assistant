@@ -1,0 +1,12 @@
+{
+  // Browser build: src/*.ts -> dist/*.js (ES modules, imports rewritten from .ts to .js).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": false
+  },
+  "include": ["src"]
+}
