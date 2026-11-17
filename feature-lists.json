@@ -738,15 +738,22 @@
             "ManagerTests.test_recall_searches_by_meaning_and_words",
             "tests/test_memory_eval.py (32/35)"
           ],
-          "commit": null,
+          "commit": "7fd6721",
           "done": "2026-11-17"
         },
         {
           "n": 4,
           "title": "Search with the last two user messages",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_memory.py::MemoryQueryTests",
+            "ManagerTests.test_follow_up_context_adds_a_few_hits_after_the_direct_ones",
+            "ManagerTests.test_without_follow_up_context_there_is_one_search",
+            "tests/test_hardening.py::test_memory_is_not_searched_for_a_notice",
+            "tests/test_memory_eval.py (33/35)"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
         }
       ],
       "notes": "Branched from feature/F020-webui-handshake (26c45e5): main lacks the memory test commit. Multilingual memory embeddings (plan step 5) not approved yet."

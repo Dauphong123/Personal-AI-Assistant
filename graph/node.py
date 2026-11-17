@@ -66,7 +66,7 @@ def recall_memory(state: State):
 
     if manager is not None and not last.additional_kwargs.get("notice"):
         try:
-            context = manager.recall(memory_query(state["messages"]))
+            context = manager.recall(*memory_query(state["messages"]))
         except Exception:
             logger.warning("Memory recall failed", exc_info=True)
 

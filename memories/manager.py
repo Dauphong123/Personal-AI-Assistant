@@ -1,6 +1,6 @@
 import re
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from .extractor import MemoryExtraction, MemoryExtractor
 from .store import MemoryHits, MemoryStore
@@ -49,9 +49,40 @@ def _without_secrets(extraction: MemoryExtraction) -> MemoryExtraction:
     })
 
 
-def memory_query(messages: list) -> str:
-    """The text long-term memory is searched with before a turn: the latest message."""
-    return str(messages[-1].content) if messages else ""
+# A follow-up ("what's its name?") names nothing; the previous question and answer do.
+FOLLOW_UP_ANSWER_CHARS = 300
+FOLLOW_UP_EXTRA = 2  # hits per memory type the follow-up context may add
+
+
+def memory_query(messages: list) -> tuple[str, str]:
+    """What long-term memory is searched with before a turn: (latest message, follow-up context).
+
+    The context is the previous user question, the assistant's last text answer (clipped) and
+    the latest message; "" on the first turn. Tool steps and job notices are skipped."""
+    if not messages:
+        return "", ""
+
+    latest = str(messages[-1].content)
+    question = answer = None
+
+    for message in reversed(messages[:-1]):
+        if isinstance(message, HumanMessage):
+            if message.additional_kwargs.get("notice"):
+                continue
+            question = str(message.content)
+            break
+        if answer is None and isinstance(message, AIMessage) and str(message.content).strip():
+            answer = str(message.content)[:FOLLOW_UP_ANSWER_CHARS]
+
+    if question is None and answer is None:
+        return latest, ""
+
+    return latest, "\n".join(part for part in (question, answer, latest) if part)
+
+
+def _add_new(first: list, more: list) -> list:
+    seen = {item.id for item in first}
+    return first + [item for item in more if item.id not in seen][:FOLLOW_UP_EXTRA]
 
 
 def format_memories(hits: MemoryHits, profile: list | tuple = ()) -> str:
@@ -98,11 +129,22 @@ class MemoryManager:
         self._store = store
         self._extractor = extractor
 
-    def recall(self, query: str) -> str:
+    def recall(self, query: str, context: str = "") -> str:
+        """Memories for a turn. `query` is the latest message; `context` (see `memory_query`)
+        adds a few hits a follow-up question alone would miss, after the direct ones."""
         # Facts about the user are needed on every turn ("do you remember me?", answer style),
         # but a question rarely resembles them, so they are loaded without a search.
         profile = self._store.profile_facts()
         hits = self._store.search(query) if query.strip() else MemoryHits()
+
+        if context.strip() and context != query:
+            more = self._store.search(context)
+            hits = MemoryHits(
+                episodes=_add_new(hits.episodes, more.episodes),
+                facts=_add_new(hits.facts, more.facts),
+                procedures=_add_new(hits.procedures, more.procedures),
+            )
+
         shown = {f.id for f in profile}
         hits.facts = [f for f in hits.facts if f.id not in shown]
 

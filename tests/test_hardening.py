@@ -16,16 +16,16 @@ from tests import stubs
 
 stubs.install()
 
-import chat_loop  # noqa: E402
-import jobs  # noqa: E402
-import main  # noqa: E402
-import turns  # noqa: E402
-from chat_loop import ChatLoop  # noqa: E402
-from graph import node  # noqa: E402
-from jobs import JobManager  # noqa: E402
-from memories import extractor  # noqa: E402
-from tests.test_chat_loop import FakeTurns, wait_for  # noqa: E402
-from turns import TurnCancelled  # noqa: E402
+import chat_loop
+import jobs
+import main
+import turns
+from chat_loop import ChatLoop
+from graph import node
+from jobs import JobManager
+from memories import extractor
+from tests.test_chat_loop import wait_for
+from turns import TurnCancelled
 
 
 class RecordingTurns:
@@ -215,7 +215,7 @@ class NoticeMessageTests(unittest.TestCase):
 
     def test_memory_is_not_searched_for_a_notice(self):
         recalled = []
-        manager = SimpleNamespace(recall=lambda q: recalled.append(q) or "memory text")
+        manager = SimpleNamespace(recall=lambda q, context="": recalled.append((q, context)) or "memory text")
         notice = HumanMessage(content="job ended", additional_kwargs={"notice": True})
         question = HumanMessage(content="what did we decide?")
 
@@ -223,7 +223,7 @@ class NoticeMessageTests(unittest.TestCase):
             self.assertEqual(node.recall_memory({"messages": [notice]})["memory_context"], "")  # type: ignore[arg-type]
             self.assertEqual(recalled, [])
             self.assertEqual(node.recall_memory({"messages": [question]})["memory_context"], "memory text")  # type: ignore[arg-type]
-            self.assertEqual(recalled, ["what did we decide?"])
+            self.assertEqual(recalled, [("what did we decide?", "")])
 
 
 class BackgroundMemoryTests(unittest.TestCase):

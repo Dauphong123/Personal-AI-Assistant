@@ -248,16 +248,39 @@ class ExtractionPromptTests(unittest.TestCase):
 
 
 class MemoryQueryTests(unittest.TestCase):
-    def test_query_is_the_latest_message(self):
+    def query(self, messages):
         from memories.manager import memory_query
 
-        messages = [HumanMessage(content="first"), AIMessage(content="answer"), HumanMessage(content="second")]
-        self.assertEqual(memory_query(messages), "second")
+        return memory_query(messages)
 
-    def test_no_messages_gives_an_empty_query(self):
-        from memories.manager import memory_query
+    def test_first_message_has_no_follow_up_context(self):
+        self.assertEqual(self.query([HumanMessage(content="what's my name?")]), ("what's my name?", ""))
 
-        self.assertEqual(memory_query([]), "")
+    def test_follow_up_context_joins_previous_question_answer_and_latest(self):
+        messages = [HumanMessage(content="do I have pets?"), AIMessage(content="You have a cat."),
+                    HumanMessage(content="what's its name?")]
+        self.assertEqual(self.query(messages),
+                         ("what's its name?", "do I have pets?\nYou have a cat.\nwhat's its name?"))
+
+    def test_tool_steps_and_notices_are_skipped(self):
+        messages = [
+            HumanMessage(content="which port is the db on?"),
+            AIMessage(content="", tool_calls=[{"name": "read_file", "args": {"path": "compose.yaml"}, "id": "c1"}]),
+            ToolMessage(content="ports: 15432", tool_call_id="c1"),
+            AIMessage(content="Port 15432."),
+            HumanMessage(content="job 3 finished", additional_kwargs={"notice": True}),
+            HumanMessage(content="and the user?"),
+        ]
+        self.assertEqual(self.query(messages)[1], "which port is the db on?\nPort 15432.\nand the user?")
+
+    def test_a_long_answer_is_clipped(self):
+        messages = [HumanMessage(content="q1"), AIMessage(content="x" * 2000), HumanMessage(content="q2")]
+        context = self.query(messages)[1]
+        self.assertLess(len(context), 400)
+        self.assertTrue(context.endswith("\nq2"))
+
+    def test_no_messages_gives_empty_queries(self):
+        self.assertEqual(self.query([]), ("", ""))
 
 
 class ManagerTests(unittest.TestCase):
@@ -381,6 +404,30 @@ class ManagerTests(unittest.TestCase):
 
         self.assertEqual(text.count("The user's name is Dat."), 1)
         self.assertIn("Facts:\n- The project's database is Postgres 17.", text)
+
+    def test_follow_up_context_adds_a_few_hits_after_the_direct_ones(self):
+        def fact(i):
+            return SimpleNamespace(id=i, fact=f"fact {i}")
+
+        class Store(FakeStore):
+            def search(self, query, limit=3, max_distance=0.5, keywords=True):
+                self.searches = getattr(self, "searches", []) + [query]
+                ids = [1, 2] if query == "its name?" else [2, 3, 4, 5]
+                return MemoryHits(facts=[fact(i) for i in ids])
+
+        store = Store()
+        context = "do I have pets?\nA cat.\nits name?"
+        text = MemoryManager(store, None).recall("its name?", context)
+
+        self.assertEqual(store.searches, ["its name?", context])
+        # Direct hits first, then at most FOLLOW_UP_EXTRA new ones from the context search.
+        self.assertTrue(text.endswith("Facts:\n- fact 1\n- fact 2\n- fact 3\n- fact 4"), text)
+
+    def test_without_follow_up_context_there_is_one_search(self):
+        store = FakeStore()
+        MemoryManager(store, None).recall("hello")
+        MemoryManager(store, None).recall("hello", "hello")
+        self.assertEqual([q for q, _ in store.searches], ["hello", "hello"])
 
     def test_blank_query_still_gets_the_profile_without_searching(self):
         class NoSearch(FakeStore):

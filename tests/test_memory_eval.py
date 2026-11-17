@@ -77,7 +77,7 @@ CASES = [
 ]
 
 # Recall must find at least this share of cases. Raised by each step of F021 as retrieval improves.
-MIN_HIT_RATE = 0.90  # step 3: 32/35 with hybrid fact search (30/35 before, on the same 35 cases)
+MIN_HIT_RATE = 0.94  # step 4: 33/35 with follow-up context (step 3: 32/35, step 1 baseline: 15/30)
 
 
 def as_messages(turns):
@@ -123,7 +123,7 @@ class MemoryRetrievalEval(unittest.TestCase):
         hits, report = 0, []
         for name, turns, expected in CASES:
             # The same query the graph builds (graph/node.py recall_memory).
-            text = self.manager.recall(memory_query(as_messages(turns)))
+            text = self.manager.recall(*memory_query(as_messages(turns)))
             missing = [e for e in expected if e not in text]
             recalled = text.count("\n- ")
             hits += not missing
