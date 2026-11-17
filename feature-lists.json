@@ -477,21 +477,21 @@
           "tests": [
             "tests/test_backend_server.py (43 tests, 2026-11-17)"
           ],
-          "commit": null
+          "commit": "c0bea0f"
         },
         {
           "n": 3,
           "title": "python -m backend entry point",
-          "status": "in_progress",
+          "status": "done",
           "tests": [
-            "tests/test_backend_main.py"
+            "tests/test_backend_main.py (14 tests, 2026-11-17)"
           ],
           "commit": null
         },
         {
           "n": 4,
           "title": "webui/ TypeScript core: package.json, tsconfig, api.ts, state.ts, build script",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [
             "webui/test/*.test.ts (node --test)"
           ],
