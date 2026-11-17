@@ -8,6 +8,8 @@ import {
   emptyConversation,
   formatCalls,
   isChatEvent,
+  isThinking,
+  statusOf,
   sortSessions,
   stateLabel,
 } from "../src/state.ts";
@@ -191,4 +193,65 @@ test("stateLabel names every busy state and nothing for idle", () => {
   assert.equal(stateLabel("running"), "Working");
   assert.equal(stateLabel("waiting"), "Waiting");
   assert.equal(stateLabel("approval"), "Needs approval");
+});
+
+// --- status line and thinking indicator -------------------------------------------------
+
+const idle = { connection: "", voiceStatus: "", handsFree: false, transcribing: false, queued: 0 };
+
+test("status: nothing to say when idle", () => {
+  assert.deepEqual(statusOf({ ...idle, conv: emptyConversation() }), { text: "", tone: "" });
+});
+
+test("status: a running turn, a waiting turn and an approval", () => {
+  const busy = apply(emptyConversation(), { id: 1, type: "user", text: "hi" });
+  assert.deepEqual(statusOf({ ...idle, conv: busy }), { text: "Working…", tone: "busy" });
+  const waiting = apply(busy, { id: 2, type: "waiting" });
+  assert.deepEqual(statusOf({ ...idle, conv: waiting }), { text: "Waiting for another session", tone: "busy" });
+  const approval = apply(busy, { id: 2, type: "approval", calls: [{ name: "terminal", args: {} }] });
+  assert.deepEqual(statusOf({ ...idle, conv: approval }), { text: "Needs approval", tone: "approval" });
+  assert.deepEqual(statusOf({ ...idle, conv: approval, handsFree: true }), {
+    text: "Hands-free: Needs approval: say yes or no",
+    tone: "approval",
+  });
+});
+
+test("status: connection trouble wins over everything", () => {
+  const busy = apply(emptyConversation(), { id: 1, type: "user", text: "hi" });
+  assert.deepEqual(statusOf({ ...idle, conv: busy, connection: "Reconnecting…", handsFree: true, queued: 2 }), {
+    text: "Reconnecting…",
+    tone: "error",
+  });
+});
+
+test("status: voice states and the hands-free queue", () => {
+  const conv = emptyConversation();
+  assert.deepEqual(statusOf({ ...idle, conv, voiceStatus: "Listening…" }), { text: "Listening…", tone: "voice" });
+  assert.deepEqual(statusOf({ ...idle, conv, handsFree: true }), { text: "Hands-free: Listening…", tone: "voice" });
+  assert.deepEqual(statusOf({ ...idle, conv, handsFree: true, transcribing: true, queued: 2 }), {
+    text: "Hands-free: Transcribing… · 2 queued",
+    tone: "voice",
+  });
+  assert.deepEqual(statusOf({ ...idle, conv, queued: 1 }), { text: "Sending… · 1 queued", tone: "busy" });
+});
+
+test("thinking: a running turn with no answer text yet", () => {
+  const asked = apply(emptyConversation(), { id: 1, type: "user", text: "hi" });
+  assert.equal(isThinking(emptyConversation()), false);
+  assert.equal(isThinking(asked), true);
+  assert.equal(isThinking(apply(asked, { id: 2, type: "token", text: "He" })), false);
+  assert.equal(isThinking(apply(asked, { id: 2, type: "waiting" })), false);
+  assert.equal(isThinking(apply(asked, { id: 2, type: "approval", calls: [] })), false);
+  assert.equal(isThinking(apply(asked, { id: 2, type: "done" })), false);
+});
+
+test("thinking: after a tool approval the answer goes on, so no new placeholder", () => {
+  const conv = applyAll(emptyConversation(), [
+    { id: 1, type: "user", text: "run it" },
+    { id: 2, type: "token", text: "Running." },
+    { id: 3, type: "approval", calls: [] },
+  ]);
+  // Approved: the event that follows clears the approval while the turn goes on.
+  const resumed = apply(conv, { id: 4, type: "token", text: " Done." });
+  assert.equal(isThinking(resumed), false);
 });

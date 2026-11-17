@@ -136,3 +136,51 @@ export function isChatEvent(value: unknown): value is ChatEvent {
       return false;
   }
 }
+
+// --- status line ----------------------------------------------------------------------------
+
+export type StatusTone = "" | "busy" | "approval" | "error" | "voice";
+
+export interface StatusInput {
+  conv: Conversation;
+  connection: string; // stream trouble ("Reconnecting…")
+  voiceStatus: string; // push-to-talk ("Listening…" / "Transcribing…")
+  handsFree: boolean;
+  transcribing: boolean; // a hands-free recording is at the backend
+  queued: number; // spoken prompts waiting to be sent
+}
+
+/** The header's status text and how it should look. */
+export function statusOf(input: StatusInput): { text: string; tone: StatusTone } {
+  const { conv, connection, voiceStatus, handsFree, transcribing, queued } = input;
+
+  if (connection) return { text: connection, tone: "error" };
+
+  let text = "";
+  let tone: StatusTone = "";
+
+  if (voiceStatus) {
+    [text, tone] = [voiceStatus, "voice"];
+  } else if (conv.waiting) {
+    [text, tone] = ["Waiting for another session", "busy"];
+  } else if (conv.approval) {
+    [text, tone] = [handsFree ? "Needs approval: say yes or no" : "Needs approval", "approval"];
+  } else if (conv.busy) {
+    [text, tone] = ["Working…", "busy"];
+  }
+
+  const suffix = queued ? ` · ${queued} queued` : "";
+
+  if (handsFree) {
+    return { text: `Hands-free: ${text || (transcribing ? "Transcribing…" : "Listening…")}${suffix}`, tone: tone || "voice" };
+  }
+
+  if (suffix) return { text: `${text || "Sending…"}${suffix}`, tone: tone || "busy" };
+
+  return { text, tone };
+}
+
+/** A turn is running and no answer text has arrived yet (show the thinking placeholder). */
+export function isThinking(conv: Conversation): boolean {
+  return conv.busy && !conv.waiting && conv.approval === null && conv.items.at(-1)?.kind !== "assistant";
+}

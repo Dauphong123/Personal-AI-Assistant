@@ -120,7 +120,41 @@ class PageTests(unittest.TestCase):
         self.assertIn("history.replaceState", MAIN)
 
 
+class AccessibilityTests(unittest.TestCase):
+    def test_icon_only_buttons_have_a_name(self):
+        # A button whose only content is an icon needs aria-label (screen readers, voice control).
+        for match in re.finditer(r"<button\b([^>]*)>(.*?)</button>", HTML, re.S):
+            attrs, body = match.groups()
+            text = re.sub(r"<svg\b.*?</svg>", "", body, flags=re.S)
+            text = re.sub(r"<[^>]+>", "", text).strip()
+            self.assertTrue(text or "aria-label=" in attrs, f"unnamed button: {attrs.strip()}")
+
+    def test_icons_are_hidden_from_screen_readers(self):
+        for svg in re.findall(r"<svg\b[^>]*>", HTML):
+            self.assertIn('aria-hidden="true"', svg)
+
+    def test_thinking_placeholder_and_examples_exist(self):
+        for element in ("thinking", "empty-text", "examples"):
+            self.assertIn(f'id="{element}"', HTML, element)
+        self.assertIn("data-prompt=", HTML)
+
+
+def custom_properties(block: str) -> set[str]:
+    return set(re.findall(r"(--[\w-]+)\s*:", block))
+
+
 class StyleTests(unittest.TestCase):
+    def test_dark_theme_defines_every_colour(self):
+        light = CSS[CSS.index(":root {"):CSS.index("}", CSS.index(":root {"))]
+        dark_start = CSS.index(":root:not([data-theme=\"light\"])")
+        dark = CSS[dark_start:CSS.index("}", dark_start)]
+        forced_start = CSS.index(':root[data-theme="dark"]')
+        forced = CSS[forced_start:CSS.index("}", forced_start)]
+        colours = {name for name in custom_properties(light) if not name.startswith(("--sans", "--display", "--mono", "--radius", "--column"))}
+        self.assertTrue(colours)
+        self.assertEqual(colours, custom_properties(dark))
+        self.assertEqual(custom_properties(dark), custom_properties(forced))
+
     def test_supports_dark_mode_and_reduced_motion(self):
         self.assertIn("prefers-color-scheme: dark", CSS)
         self.assertIn("prefers-reduced-motion", CSS)

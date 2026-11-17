@@ -12,30 +12,51 @@
 <div class="app">
   <aside id="sidebar" class="sidebar" aria-label="Sessions">
     <div class="sidebar-head">
-      <h1>Coding assistant</h1>
-      <button id="new-session" type="button" class="primary">New session</button>
+      <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>Coding assistant</h1>
+      <button id="new-session" type="button" class="new-session">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span>New session</span>
+      </button>
     </div>
-    <nav>
+    <nav class="session-nav">
       <ul id="sessions" class="sessions"></ul>
     </nav>
   </aside>
 
   <div class="chat">
     <header class="bar">
-      <button id="toggle-sidebar" type="button" class="quiet narrow-only" aria-controls="sidebar" aria-expanded="false">Sessions</button>
+      <button id="toggle-sidebar" type="button" class="icon-button narrow-only" aria-controls="sidebar" aria-expanded="false" aria-label="Sessions">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
       <h2 id="session-title" class="title"></h2>
       <span id="status" class="status" role="status"></span>
-      <label id="speak-label" class="speak-toggle" hidden><input id="speak-answers" type="checkbox"> Read answers aloud</label>
       <div class="bar-actions">
-        <button id="rename" type="button" class="quiet">Rename</button>
-        <button id="clear-chat" type="button" class="quiet">Clear</button>
-        <button id="delete-session" type="button" class="quiet danger">Delete</button>
+        <button id="rename" type="button" class="icon-button" aria-label="Rename session" title="Rename">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
+        </button>
+        <button id="clear-chat" type="button" class="icon-button" aria-label="Clear conversation" title="Clear">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>
+        </button>
+        <button id="delete-session" type="button" class="icon-button danger" aria-label="Delete session" title="Delete">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+        </button>
       </div>
     </header>
 
     <main id="scroll" class="scroll">
-      <p id="empty" class="empty">Ask about this project's code, or say what to change. The assistant asks before it runs a command or edits a file.</p>
+      <section id="empty" class="empty">
+        <h3 class="empty-title">What should we work on?</h3>
+        <p id="empty-text" class="empty-text">Ask about this project's code, or say what to change. The assistant asks before it runs a command or edits a file.</p>
+        <div id="examples" class="examples">
+          <button type="button" class="example" data-prompt="Explain how a message is routed to the chat or coding agent.">How is a message routed?</button>
+          <button type="button" class="example" data-prompt="Where are long-term memories saved, and when?">Where are memories saved?</button>
+          <button type="button" class="example" data-prompt="Run the test suite and summarise any failures.">Run the tests</button>
+        </div>
+      </section>
       <div id="log" class="log" role="log"></div>
+      <div id="thinking" class="msg assistant thinking" hidden>
+        <p><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span> Thinking…</p>
+      </div>
     </main>
 
     <p id="alert" class="alert" role="alert" hidden></p>
@@ -52,10 +73,31 @@
     <form id="form" class="composer" autocomplete="off">
       <label class="sr" for="input">Message</label>
       <textarea id="input" rows="1" placeholder="Message the assistant" enterkeyhint="send"></textarea>
-      <button id="mic" type="button" class="quiet mic" aria-pressed="false" title="Hold to talk (or hold Right Ctrl); the text goes into the message box. A short click records until the next click." hidden>Talk</button>
-      <button id="hands-free" type="button" class="quiet mic" aria-pressed="false" title="Talk prompt after prompt: every pause sends one. Double tap Right Ctrl to start or stop; say &quot;stop listening&quot; to end." hidden>Hands-free</button>
-      <button id="stop" type="button" class="quiet" disabled>Stop</button>
-      <button id="send" type="submit" class="primary">Send</button>
+      <div class="composer-tools">
+        <div class="voice-tools">
+          <button id="mic" type="button" class="tool mic" aria-pressed="false" title="Hold to talk (or hold Right Ctrl); the text goes into the message box. A short click records until the next click." hidden>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+            <span class="label">Talk</span>
+          </button>
+          <button id="hands-free" type="button" class="tool mic" aria-pressed="false" title="Talk prompt after prompt: every pause sends one. Double tap Right Ctrl to start or stop; say &quot;stop listening&quot; to end." hidden>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>
+            <span class="label">Hands-free</span>
+          </button>
+          <label id="speak-label" class="tool speak-toggle" title="Read each new answer aloud" hidden>
+            <input id="speak-answers" type="checkbox">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7"/></svg>
+            <span class="label">Read aloud</span>
+          </label>
+        </div>
+        <span class="hint">Shift+Enter for a new line</span>
+        <button id="stop" type="button" class="tool stop" disabled>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+          <span class="label">Stop</span>
+        </button>
+        <button id="send" type="submit" class="send" aria-label="Send">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>
+        </button>
+      </div>
     </form>
   </div>
 </div>

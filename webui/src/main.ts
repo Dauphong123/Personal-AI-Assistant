@@ -10,8 +10,10 @@ import {
   emptyConversation,
   formatCalls,
   isChatEvent,
+  isThinking,
   sortSessions,
   stateLabel,
+  statusOf,
 } from "./state.ts";
 import type { Conversation, Item } from "./state.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
@@ -48,7 +50,10 @@ const ui = {
   remove: byId<HTMLButtonElement>("delete-session"),
   scroll: byId("scroll"),
   empty: byId("empty"),
+  emptyText: byId("empty-text"),
+  examples: byId("examples"),
   log: byId("log"),
+  thinking: byId("thinking"),
   alert: byId("alert"),
   approval: byId("approval"),
   approvalCalls: byId("approval-calls"),
@@ -102,6 +107,7 @@ let conv: Conversation = emptyConversation();
 let source: EventSource | null = null;
 let connection = ""; // stream trouble shown in the status line
 let rendered: { item: Item; node: HTMLElement }[] = [];
+let writingNode: HTMLElement | null = null; // the answer still being written (its spine moves)
 let shownApproval: Conversation["approval"] = null;
 const drafts = new Map<string, string>();
 const recorder = new Recorder();
@@ -170,36 +176,30 @@ function renderHeader(): void {
   ui.rename.disabled = none;
   ui.clear.disabled = none || conv.busy;
   ui.remove.disabled = none || conv.busy;
-  ui.send.disabled = none || conv.busy;
   ui.stop.disabled = none || !conv.busy;
   // Dictation goes into the message box, so it works while a turn runs.
   ui.mic.disabled = none || handsFree || voiceStatus === "Transcribing…";
   ui.handsFree.disabled = none;
 
-  let status = "";
+  ui.send.disabled = none || conv.busy || ui.input.value.trim() === "";
 
-  if (connection) {
-    status = connection;
-  } else if (voiceStatus) {
-    status = voiceStatus;
-  } else if (conv.waiting) {
-    status = "Waiting for another session";
-  } else if (conv.approval) {
-    status = handsFree ? "Needs approval: say yes or no" : "Needs approval";
-  } else if (conv.busy) {
-    status = "Working…";
-  }
+  const status = statusOf({
+    conv,
+    connection,
+    voiceStatus,
+    handsFree,
+    transcribing: transcribing > 0,
+    queued: handsFreeQueue.length,
+  });
+  ui.status.textContent = status.text;
+  ui.status.dataset["tone"] = status.tone;
+}
 
-  const queued = handsFreeQueue.length ? ` · ${handsFreeQueue.length} queued` : "";
+/** Set the visible label of an icon button (its icon stays). */
+function setLabel(button: HTMLElement, text: string): void {
+  const label = button.querySelector(".label");
 
-  if (handsFree && !connection) {
-    const hearing = transcribing ? "Transcribing…" : "Listening…";
-    status = `Hands-free: ${status || hearing}${queued}`;
-  } else if (queued && !connection) {
-    status = `${status || "Sending…"}${queued}`;
-  }
-
-  ui.status.textContent = status;
+  if (label) label.textContent = text;
 }
 
 function renderMessage(item: Item): HTMLElement {
@@ -269,6 +269,8 @@ function renderConversation(): void {
       ui.log.append(node);
     }
 
+    if (existing?.node === writingNode) writingNode = null; // replaced: set again below
+
     rendered[index] = { item, node };
   });
 
@@ -277,6 +279,16 @@ function renderConversation(): void {
   }
 
   ui.empty.hidden = conv.items.length > 0;
+  ui.thinking.hidden = !isThinking(conv);
+
+  const last = rendered.at(-1);
+  const writing = conv.busy && last?.item.kind === "assistant" ? last.node : null;
+
+  if (writing !== writingNode) {
+    writingNode?.classList.remove("writing");
+    writing?.classList.add("writing");
+    writingNode = writing;
+  }
 
   if (conv.approval !== shownApproval) {
     shownApproval = conv.approval;
@@ -397,11 +409,12 @@ function select(id: string): void {
   player.stop();
   voiceStatus = "";
   ui.mic.setAttribute("aria-pressed", "false");
-  ui.mic.textContent = "Talk";
+  setLabel(ui.mic, "Talk");
   activeId = id;
   replayEnd = active()?.last_event ?? 0;
   conv = emptyConversation();
   rendered = [];
+  writingNode = null;
   shownApproval = null;
   ui.log.replaceChildren();
   ui.approval.hidden = true;
@@ -544,7 +557,7 @@ async function startTalking(): Promise<void> {
   }
 
   ui.mic.setAttribute("aria-pressed", "true");
-  ui.mic.textContent = "Done";
+  setLabel(ui.mic, "Done");
   voiceStatus = "Listening…";
   renderHeader();
 }
@@ -553,7 +566,7 @@ function cancelTalking(): void {
   talkAttempt += 1;
   recorder.cancel();
   ui.mic.setAttribute("aria-pressed", "false");
-  ui.mic.textContent = "Talk";
+  setLabel(ui.mic, "Talk");
   voiceStatus = "";
   renderHeader();
 }
@@ -571,7 +584,7 @@ async function finishTalking(): Promise<void> {
   const sessionId = activeId;
   const recording = await recorder.stop();
   ui.mic.setAttribute("aria-pressed", "false");
-  ui.mic.textContent = "Talk";
+  setLabel(ui.mic, "Talk");
   voiceStatus = recording.size > 0 ? "Transcribing…" : "";
   renderHeader();
 
@@ -622,7 +635,7 @@ async function startHandsFree(): Promise<void> {
   handsFree = true;
   showAlert(null);
   ui.handsFree.setAttribute("aria-pressed", "true");
-  ui.handsFree.textContent = "Stop hands-free";
+  setLabel(ui.handsFree, "Stop hands-free");
   renderHeader();
 }
 
@@ -634,7 +647,7 @@ function stopHandsFree(message: string | null = null): void {
   handsFree = false;
   transcribing = 0;
   ui.handsFree.setAttribute("aria-pressed", "false");
-  ui.handsFree.textContent = "Hands-free";
+  setLabel(ui.handsFree, "Hands-free");
 
   if (message) showAlert(message);
 
@@ -777,7 +790,8 @@ function autosize(): void {
   ui.input.style.height = "auto";
   // scrollHeight leaves out the border, and the box is border-box sized.
   const border = ui.input.offsetHeight - ui.input.clientHeight;
-  ui.input.style.height = `${Math.min(ui.input.scrollHeight + border, 160)}px`;
+  ui.input.style.height = `${Math.min(ui.input.scrollHeight + border, 192)}px`;
+  renderHeader(); // Send is enabled only with something to send
 }
 
 function setDrawer(open: boolean): void {
@@ -793,7 +807,8 @@ function needLink(): void {
 function stopPage(message: string): void {
   closeStream();
   stopHandsFree();
-  ui.empty.textContent = message;
+  ui.emptyText.textContent = message;
+  ui.examples.hidden = true;
   ui.empty.hidden = false;
   ui.input.disabled = true;
   ui.newSession.disabled = true;
@@ -814,6 +829,18 @@ ui.input.addEventListener("keydown", (event) => {
 });
 
 ui.input.addEventListener("input", autosize);
+
+// Example prompts on an empty session: put the text in the box, ready to edit or send.
+ui.examples.addEventListener("click", (event) => {
+  const example = event.target instanceof Element ? event.target.closest<HTMLElement>(".example") : null;
+  const prompt = example?.dataset["prompt"];
+
+  if (!prompt || ui.input.disabled) return;
+
+  ui.input.value = prompt;
+  autosize();
+  ui.input.focus();
+});
 // Talk: hold to talk (released = into the message box); a short click records until the next.
 ui.mic.addEventListener("pointerdown", (event) => {
   if (event.button !== 0 || ui.mic.disabled) return;

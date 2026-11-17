@@ -910,20 +910,26 @@
             "webui/test/markdown.test.ts",
             "tests/test_webui_frontend.py"
           ],
-          "commit": null,
+          "commit": "edb0049",
           "date": "2026-11-18"
         },
         {
           "n": 2,
           "title": "Visual refresh",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "webui/test/state.test.ts (statusOf, isThinking)",
+            "tests/test_webui_frontend.py::AccessibilityTests",
+            "tests/test_webui_frontend.py::StyleTests::test_dark_theme_defines_every_colour",
+            "headless Chrome screenshots: light, dark, 390px mobile, thinking placeholder, writing spine (fake backend)"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 3,
           "title": "Interaction: copy, jump to latest, menu, dialogs, relative times, shortcuts",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [],
           "commit": null
         },
