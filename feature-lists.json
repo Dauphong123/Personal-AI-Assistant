@@ -564,7 +564,7 @@
       "created": "2026-11-17",
       "completed": "2026-11-17",
       "branch": "feature/F020-webui-handshake",
-      "commit": null,
+      "commit": "07a87f8",
       "files": [
         "backend/server.py",
         "backend/session.py",
@@ -669,7 +669,7 @@
           "tests": [
             "full suite 576 OK, 11 skipped (2026-11-17)"
           ],
-          "commit": null
+          "commit": "07a87f8"
         }
       ],
       "notes": "Opened at the user's request right after F019 in the same session (user asked to continue). Branched from feature/F019-webui-typescript-sessions (main has no backend/ yet). Browser-verified in headless Chrome with a fake mic and fake STT/TTS engines (real PyAV decoding). Not run with real faster-whisper/Piper models or the real Ollama graph in this session. Also fixed: refused POSTs lost to a Windows connection reset; faster_whisper.decode_audio incompatible with PyAV 19."
