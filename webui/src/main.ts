@@ -16,6 +16,8 @@ import {
 import type { Conversation, Item } from "./state.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
 import { sessionFromHash, tokenFrom } from "./url.ts";
+import { parseMarkdown } from "./markdown.ts";
+import { renderBlocks } from "./render.ts";
 import { PressTracker, TAP_MAX_MS, handsFreeAction, insertDictation } from "./handsfree.ts";
 import { HandsFreeListener, Player, Recorder, canListen, canRecord, replyToSpeak } from "./voice.ts";
 
@@ -218,6 +220,14 @@ function renderMessage(item: Item): HTMLElement {
   const message = document.createElement("div");
   message.className = `msg ${item.kind}`;
 
+  if (item.kind === "assistant") {
+    // The model writes markdown; it is parsed into a tree and built with textContent only.
+    message.classList.add("md");
+    message.append(...renderBlocks(parseMarkdown(item.text)));
+    return message;
+  }
+
+  // The user's own text is shown as typed (only ``` fences become code).
   for (const block of blocks(item.text)) {
     if (block.kind === "code") {
       const pre = document.createElement("pre");

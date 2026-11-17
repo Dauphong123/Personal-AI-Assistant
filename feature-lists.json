@@ -889,6 +889,67 @@
         }
       ],
       "notes": "User asked (2026-11-17) for hands-free across multiple prompts; plan amended accordingly. No new dependencies (ctypes GetAsyncKeyState; browser Web Audio). Not verified with real faster-whisper/Piper models, a real microphone or the real Ollama graph: unit tests use fakes; the web loop was smoke-tested in headless Chrome with a synthetic tone file. Wake-word prompts are not cleaned (preserves behavior/tests). voice/vad.py, README.md, docs/PROJECT.md committed with only F022 hunks (pre-existing uncommitted edits left in the working copy)."
+    },
+    {
+      "id": "F023",
+      "name": "Web UI redesign",
+      "description": "Better visual design and interaction for the web chat (webui/).",
+      "status": "in_progress",
+      "created": "2026-11-18",
+      "completed": null,
+      "branch": "feature/F023-webui-redesign",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {
+          "n": 1,
+          "title": "Markdown rendering",
+          "status": "done",
+          "tests": [
+            "webui/test/markdown.test.ts",
+            "tests/test_webui_frontend.py"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
+        },
+        {
+          "n": 2,
+          "title": "Visual refresh",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "Interaction: copy, jump to latest, menu, dialogs, relative times, shortcuts",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 4,
+          "title": "Approval card",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 5,
+          "title": "Voice feedback: timer, level meter, hands-free indicator",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 6,
+          "title": "Theme switch",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        }
+      ],
+      "notes": "Branched from feature/F022-wispr-flow-voice (F022 not yet in main; user approved 2026-11-18). Tool-activity events left out (needs backend/protocol change)."
     }
   ]
 }

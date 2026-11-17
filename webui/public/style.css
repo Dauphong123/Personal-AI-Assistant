@@ -220,6 +220,29 @@ button.danger { color: var(--danger); }
   font: 0.88rem/1.5 var(--mono);
 }
 
+/* --- markdown in answers ------------------------------------------------------- */
+
+.md > :first-child { margin-top: 0; }
+.md h4, .md h5, .md h6 { margin: 1.2em 0 0.5em; line-height: 1.3; }
+.md .md-h1 { font-size: 1.3rem; }
+.md .md-h2 { font-size: 1.15rem; }
+.md .md-h3 { font-size: 1.03rem; }
+.md .md-h4, .md .md-h5, .md .md-h6 { font-size: 0.95rem; }
+.md ul, .md ol { margin: 0 0 0.8em; padding-left: 1.6em; }
+.md li { margin: 0.2em 0; overflow-wrap: anywhere; }
+.md li > p { margin: 0.3em 0; }
+.md li > ul, .md li > ol { margin: 0.2em 0; }
+.md blockquote { margin: 0 0 0.8em; padding: 0.1em 0 0.1em 0.9rem; border-left: 3px solid var(--line); color: var(--muted); }
+.md hr { margin: 1.2em 0; border: 0; border-top: 1px solid var(--line); }
+.md a { color: var(--user); text-underline-offset: 2px; }
+.md :not(pre) > code { padding: 0.08em 0.35em; border-radius: 0.25rem; background: var(--code-bg); font: 0.88em var(--mono); }
+.md .table-wrap { margin: 0 0 0.8em; overflow-x: auto; }
+.md table { border-collapse: collapse; font-size: 0.92rem; }
+.md th, .md td { padding: 0.35rem 0.7rem; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.md th { background: var(--code-bg); font-weight: 600; }
+.md .align-right { text-align: right; }
+.md .align-center { text-align: center; }
+
 .note { margin: 0 0 1.6rem; color: var(--muted); font-size: 0.92rem; }
 
 .job-notice {
