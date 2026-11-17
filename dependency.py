@@ -1,19 +1,17 @@
 import logging
-import os
 
 from dotenv import load_dotenv
 from langchain_ollama import ChatOllama
 from transformers import AutoTokenizer
 
-from llm_options import ollama_options
+from llm_options import TOKENIZER_MAP, model_name, ollama_options
 from rag.rag import RAG
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-MODEL_NAME = os.environ["MODEL"]
-TOKENIZER_MAP = {"qwen3:8b": "Qwen/Qwen3-8B"}
+MODEL_NAME = model_name()
 
 
 def model_init():

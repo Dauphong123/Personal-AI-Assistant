@@ -1,6 +1,21 @@
 import unittest
 
-from llm_options import ollama_options
+from llm_options import TOKENIZER_MAP, model_name, ollama_options
+
+
+class ModelNameTests(unittest.TestCase):
+    def test_a_supported_model_is_returned(self):
+        self.assertEqual(model_name({"MODEL": " qwen3:8b "}), "qwen3:8b")
+        self.assertIn("qwen3:8b", TOKENIZER_MAP)
+
+    def test_missing_model_says_how_to_fix_it(self):
+        for env in [{}, {"MODEL": ""}, {"MODEL": "   "}]:
+            with self.assertRaisesRegex(ValueError, r"MODEL is not set.*\.env.*qwen3:8b"):
+                model_name(env)
+
+    def test_unsupported_model_lists_the_supported_ones(self):
+        with self.assertRaisesRegex(ValueError, r"'llama3' is not supported.*qwen3:8b.*TOKENIZER_MAP"):
+            model_name({"MODEL": "llama3"})
 
 
 class OllamaOptionsTests(unittest.TestCase):

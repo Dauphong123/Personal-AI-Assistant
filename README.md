@@ -82,7 +82,7 @@ python -m pip install -r requirements_voice.txt
 copy .env.example .env     # .env is gitignored
 ```
 
-At minimum, `.env` needs `MODEL=qwen3:8b`. `MODEL` must be a key of `TOKENIZER_MAP` in `dependency.py` (currently only `qwen3:8b`, mapped to the `Qwen/Qwen3-8B` tokenizer). To use another Ollama model, add its tokenizer to that map. See the [configuration reference](#configuration-reference) for every variable.
+At minimum, `.env` needs `MODEL=qwen3:8b`. `MODEL` must be a key of `TOKENIZER_MAP` in `llm_options.py` (currently only `qwen3:8b`, mapped to the `Qwen/Qwen3-8B` tokenizer). To use another Ollama model, add its tokenizer to that map. See the [configuration reference](#configuration-reference) for every variable.
 
 ### Optional: long-term memory database
 
@@ -156,7 +156,6 @@ retrieval.py         Ranking shared by RAG and the page reader: BM25, rank fusio
 language.py          English/Vietnamese detection and localized phrases
 llm_options.py       Settings for every Ollama model (thinking off, keep-alive, context size)
 dependency.py        Builds model, RAG, tokenizer, memory (import-time singleton)
-app.py               Unfinished refactor stub (AgentApplication)
 
 graph/
   graph.py           The LangGraph definition (nodes and edges)
@@ -166,11 +165,9 @@ chains/
   direct_chain.py    Plain chat answer
   code_chain.py      Coding agent prompt, model bound to the tools
   summerize_chain.py History summarizer (spelling is intentional, see gotchas)
-  rag_chain.py       Standalone RAG chain (not used by the graph)
 data/
   state.py           Graph state: messages, search_file, memory_context
   route_query.py     Router schema (destination: direct | code)
-  rag_data.py        RagOutput schema (unused)
 rag/
   rag.py             Chroma vector store, chunking, idempotent document sync, search tool
 memories/
@@ -599,7 +596,7 @@ Not covered by automated tests: real human voices, real accuracy and false-activ
 |---|---|
 | `password authentication failed for user "agent"` at startup, then "Long-term memory disabled" | The app connected to the wrong server: on some machines another process also answers on `localhost:5432`. Check what owns the port, or map the container to another host port (`"5433:5432"` in `compose.yaml`) and update `DB_URL`. The app runs fine without memory. |
 | `KeyError: 'MODEL'` | Create `.env` from `.env.example`. |
-| `KeyError` for your model name | Add its tokenizer to `TOKENIZER_MAP` in `dependency.py`. |
+| `MODEL=... is not supported` at startup | Add its tokenizer to `TOKENIZER_MAP` in `llm_options.py`. |
 | `search_code` says ripgrep is not installed | Install `rg` and put it on PATH. |
 | Garbled characters on Windows | `main.py` reconfigures stdout to UTF-8; use a terminal font that has the glyphs. |
 | Voice mode does not react | Say **"Hey Jarvis"** (not "Jarvis"); run `python -m voice.check`; check `MICROPHONE_DEVICE`. |
@@ -649,7 +646,7 @@ Not covered by automated tests: real human voices, real accuracy and false-activ
 - **Conversation is in memory only.** History is lost when the program exits; only long-term memory persists.
 - **Stop is cooperative.** Cancelling is checked between streamed chunks, so a single tool call that is already running finishes first (at most about 5 s for `terminal`, up to 60 s for git and search).
 - **`terminal` is powerful.** It runs whatever you approve.
-- **Unused leftovers.** `chains/rag_chain.py` and `data/rag_data.py` are not wired into the graph (RAG is exposed as the `search_document` tool instead). `app.py` / `AgentApplication` is an empty stub. `transformers` is loaded only to count tokens for the summarize trigger.
+- **`transformers`** is loaded only to count tokens for the summarize trigger.
 - **Vietnamese** memory and document search are weak (English-only embeddings); see [Vietnamese](#vietnamese-tiếng-việt).
 - **Voice**: tested with synthetic speech and an idle microphone, not with a range of real voices. There is no barge-in and no echo cancellation. No plain "jarvis" model ships with openWakeWord. Speaker verification is not strong authentication.
 - **Platform**: tested on Windows only.

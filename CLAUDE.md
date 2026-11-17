@@ -15,7 +15,7 @@ Voice commands (`--voice`, `voice.enroll`, `voice.check`, voice engine tests): `
 
 Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama with `qwen3:8b` (main) and `qwen3:4b` (summaries; `SUMMARY_MODEL`), and `rg` (ripgrep) for `search_code`. First run downloads the `Qwen/Qwen3-8B` tokenizer and `BAAI/bge-small-en-v1.5` embeddings.
 
-`.env` (gitignored; copy `.env.example`): `MODEL` must be a key in `TOKENIZER_MAP` (`dependency.py`). DB URL from `DATABASE_URL` or `DB_URL`; `postgresql://` is rewritten to `postgresql+psycopg://` (only psycopg 3 installed). `PROJECT_ROOT` changes the directory the coding tools may touch.
+`.env` (gitignored; copy `.env.example`): `MODEL` must be a key in `TOKENIZER_MAP` (`llm_options.py`; `model_name()` fails at startup with a clear message otherwise). DB URL from `DATABASE_URL` or `DB_URL`; `postgresql://` is rewritten to `postgresql+psycopg://` (only psycopg 3 installed). `PROJECT_ROOT` changes the directory the coding tools may touch.
 
 **Speed.** `llm_options.py` sets `reasoning=False` on every `ChatOllama` (thinking made routing take 113 s vs 3 s), `keep_alive=30m`, optional `LLM_NUM_CTX`. `MAX_HISTORY_TOKENS` (default 5000) must stay below the context window (8192) minus the ~1,400-token tool prompt and the answer, or Ollama silently drops the oldest messages. This machine (RTX 3050 4 GB): `qwen3:8b` ~4 tok/s, ~64% CPU, so output length is the main cost; `qwen3:4b` still thinks.
 
@@ -46,7 +46,7 @@ Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama wit
 
 **Naming quirk:** the summarization chain is `summerize` in file/symbol names (`summerize_chain`); graph nodes use `summarize`.
 
-**Known leftovers:** `rag_chain.py` and `data/rag_data.py` unused (RAG is the `search_document` tool); `transformers` only counts tokens for the summarize trigger; `app.py` / `AgentApplication` is an empty stub.
+**Known leftovers:** `transformers` only counts tokens for the summarize trigger.
 
 ## How to work here
 

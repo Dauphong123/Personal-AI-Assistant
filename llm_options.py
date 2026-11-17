@@ -11,6 +11,24 @@ TRUE = {"1", "true", "yes", "on"}
 FALSE = {"0", "false", "no", "off", ""}
 MIN_CONTEXT = 256
 
+# Main model (MODEL) -> Hugging Face tokenizer used to count history tokens.
+TOKENIZER_MAP = {"qwen3:8b": "Qwen/Qwen3-8B"}
+
+
+def model_name(env=None) -> str:
+    """The main model from MODEL, checked so a missing .env fails with a clear message."""
+    env = os.environ if env is None else env
+    name = (env.get("MODEL") or "").strip()
+    supported = ", ".join(TOKENIZER_MAP)
+
+    if not name:
+        raise ValueError(f"MODEL is not set; copy .env.example to .env and set MODEL to one of: {supported}")
+
+    if name not in TOKENIZER_MAP:
+        raise ValueError(f"MODEL={name!r} is not supported; use one of: {supported} (or add it to TOKENIZER_MAP)")
+
+    return name
+
 
 def _flag(env, name: str) -> bool:
     raw = env.get(name, "false").strip().lower()
