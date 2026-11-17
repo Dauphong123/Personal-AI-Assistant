@@ -14,7 +14,7 @@ import {
   stateLabel,
 } from "./state.ts";
 import type { Conversation, Item } from "./state.ts";
-import type { SessionInfo } from "./types.ts";
+import type { ServerInfo, SessionInfo } from "./types.ts";
 import { sessionFromHash, tokenFrom } from "./url.ts";
 
 const TOKEN_KEY = "coding-assistant-token";
@@ -86,6 +86,7 @@ const api = new Api(launch.token);
 
 // --- state ---------------------------------------------------------------------
 
+let server: ServerInfo | null = null; // from the handshake
 let sessions: SessionInfo[] = [];
 let activeId: string | null = null;
 let conv: Conversation = emptyConversation();
@@ -446,8 +447,13 @@ function setDrawer(open: boolean): void {
 }
 
 function needLink(): void {
+  stopPage("This page needs the link printed in the terminal, including its token.");
+}
+
+/** The page cannot work (no token, wrong protocol, no server): say why and disable it. */
+function stopPage(message: string): void {
   closeStream();
-  ui.empty.textContent = "This page needs the link printed in the terminal, including its token.";
+  ui.empty.textContent = message;
   ui.empty.hidden = false;
   ui.input.disabled = true;
   ui.newSession.disabled = true;
@@ -524,6 +530,21 @@ async function start(): Promise<void> {
   }
 
   renderHeader();
+
+  // Handshake first: agree on the protocol and learn which features this backend offers.
+  const hello = await api.handshake();
+
+  if (!hello.ok) {
+    if (hello.status === 401) {
+      needLink();
+    } else {
+      stopPage(hello.error);
+    }
+
+    return;
+  }
+
+  server = hello.data;
 
   if (await refreshSessions()) {
     await openDefault();

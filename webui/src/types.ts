@@ -1,5 +1,20 @@
 // Shapes of what the backend (backend/server.py, backend/session.py) sends.
 
+/** API version this page speaks; must equal backend/server.py PROTOCOL (the handshake checks). */
+export const PROTOCOL = 1;
+
+/** The backend's answer to the handshake (POST /api/handshake). */
+export interface ServerInfo {
+  protocol: number;
+  server: string;
+  features: {
+    sessions: boolean;
+    notices: boolean; // background-job completion notices arrive as `notice` turns
+    voice: { transcribe: boolean; speak: boolean };
+  };
+  limits: { max_sessions: number; max_turns: number; max_body: number; max_audio: number };
+}
+
 export type SessionState = "idle" | "waiting" | "running" | "approval";
 
 export interface SessionInfo {

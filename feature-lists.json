@@ -558,31 +558,70 @@
     },
     {
       "id": "F020",
-      "name": "Web chat: background-job completion notices",
-      "description": "When a terminal command started from a web session finishes in the background, that session gets the [system notice] turn, as the keyboard chat does.",
-      "status": "open",
+      "name": "Web handshake: capabilities, job notices, voice",
+      "description": "Frontend and backend agree on a protocol version and features at connect; background-job completion notices reach the session that started the job; push-to-talk and spoken answers through the backend's voice engines.",
+      "status": "in_progress",
       "created": "2026-11-17",
       "completed": null,
-      "branch": null,
+      "branch": "feature/F020-webui-handshake",
       "commit": null,
       "files": [],
       "tests": [],
-      "steps": [],
-      "notes": "Hand-off from F019 session (2026-11-17). Verified: tools.JOBS is one global JobManager (tools.py:21) with a single on_finish callback (jobs.py:119-194, fires only for detached, non-cancelled jobs); ChatLoop wires it at chat_loop.py:54 and queues the notice as a turn with run_turn(notice=True) (NOTICE_PREFIX chat_loop.py:22). Job (jobs.py:79) does not record which conversation started it, so the web backend cannot yet route a notice to the right session - main design question (e.g. record thread_id/session id on the Job when the terminal tool starts it). Backend side: backend/session.py would need a notice queue (a notice turn waits if the session is busy, and must also take the shared turn slot); frontend: show notice turns distinctly (event type, webui/src/state.ts). Branch from feature/F019-webui-typescript-sessions or after it is merged: feature-lists.json and backend/ are not on main yet."
-    },
-    {
-      "id": "F021",
-      "name": "Web chat: voice",
-      "description": "Talk to a web session and hear its answers, reusing the voice/ pipeline where it fits.",
-      "status": "open",
-      "created": "2026-11-17",
-      "completed": null,
-      "branch": null,
-      "commit": null,
-      "files": [],
-      "tests": [],
-      "steps": [],
-      "notes": "Hand-off from F019 session (2026-11-17). Verified: voice/ (voice/CLAUDE.md) is built around ChatLoop and the server machine's own mic and speakers via sounddevice (voice/audio.py): wake word (openWakeWord), Silero VAD, faster-whisper STT, Piper TTS, optional speaker verification; answers come from turns.SpeechStream. Unknown/to decide first: (a) browser audio - getUserMedia push-to-talk, upload audio to the backend for STT, stream Piper audio back (needs CSP media-src/connect changes, an upload route, size limits); or (b) server-side mic bound to one web session (only works when the browser runs on the same PC). Optional deps in requirements_voice.txt; tests must use fakes (no real models)."
+      "steps": [
+        {
+          "n": 1,
+          "title": "Handshake: POST /api/handshake (protocol, features, limits); frontend connects through it",
+          "status": "done",
+          "tests": [
+            "tests/test_backend_handshake.py (8 tests)",
+            "webui/test/api.test.ts handshake (2 tests)"
+          ],
+          "commit": null
+        },
+        {
+          "n": 2,
+          "title": "Job ownership: jobs.JOB_OWNER context variable, Job.owner, shared finished_notice()",
+          "status": "in_progress",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "Backend notices: ChatSession.notify queue + 'notice' event; SessionManager routes JOBS.on_finish",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 4,
+          "title": "Frontend notices: notice items in the reducer and the log",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 5,
+          "title": "Backend voice (--voice): transcribe browser audio (faster-whisper), speak text (Piper WAV)",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 6,
+          "title": "Frontend voice: hold-to-talk mic, speak-answers toggle, gated by the handshake",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 7,
+          "title": "Docs",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        }
+      ],
+      "notes": "Opened at the user's request right after F019 in the same session (user asked to continue). Branched from feature/F019-webui-typescript-sessions (main has no backend/ yet)."
     }
   ]
 }

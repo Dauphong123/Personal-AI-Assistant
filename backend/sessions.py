@@ -24,9 +24,14 @@ class SessionManager:
         self.app = app
         self._run = run
         self._slot = threading.Semaphore(max_turns)
+        self.max_turns = max_turns
         self._max_sessions = max_sessions
         self._lock = threading.Lock()
         self._sessions: dict[str, ChatSession] = {}  # insertion order = creation order
+
+    @property
+    def max_sessions(self) -> int:
+        return self._max_sessions
 
     def create(self, title: str | None = None) -> ChatSession | None:
         """A new empty session, or None when the limit is reached."""

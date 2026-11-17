@@ -1,7 +1,8 @@
 // Typed client for the backend API (backend/server.py). Calls never throw: failures come back
 // as { ok: false, status, error } so the page can show them.
 
-import type { SessionInfo } from "./types.ts";
+import { PROTOCOL } from "./types.ts";
+import type { ServerInfo, SessionInfo } from "./types.ts";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
 
@@ -12,6 +13,11 @@ export class Api {
   constructor(token: string, fetchFn: typeof fetch = (input, init) => fetch(input, init)) {
     this.#token = token;
     this.#fetch = fetchFn;
+  }
+
+  /** First call of a page: agree on the protocol and learn what this backend offers. */
+  handshake(): Promise<Result<ServerInfo>> {
+    return this.#call("POST", "/api/handshake", { protocol: PROTOCOL, client: "webui" }, (body) => body as unknown as ServerInfo);
   }
 
   listSessions(): Promise<Result<SessionInfo[]>> {

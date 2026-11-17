@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { Api } from "../src/api.ts";
+import { PROTOCOL } from "../src/types.ts";
 
 interface Call {
   url: string;
@@ -94,6 +95,25 @@ test("a network failure is an error result, not a throw", async () => {
   }) as typeof fetch;
   const result = await new Api("tok", fetchFn).listSessions();
   assert.deepEqual(result, { ok: false, status: 0, error: "Cannot reach the server." });
+});
+
+test("handshake posts our protocol and returns the server description", async () => {
+  const calls: Call[] = [];
+  const hello = {
+    protocol: PROTOCOL,
+    server: "coding-assistant",
+    features: { sessions: true, notices: true, voice: { transcribe: false, speak: true } },
+    limits: { max_sessions: 50, max_turns: 1, max_body: 65536, max_audio: 0 },
+  };
+  const result = await new Api("tok", fakeFetch(200, hello, calls)).handshake();
+  assert.deepEqual(result, { ok: true, data: hello });
+  assert.equal(calls[0]?.url, "/api/handshake");
+  assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), { protocol: PROTOCOL, client: "webui" });
+});
+
+test("handshake mismatch passes the server's message on", async () => {
+  const api = new Api("tok", fakeFetch(409, { error: "rebuild with npm", protocol: 9 }, []));
+  assert.deepEqual(await api.handshake(), { ok: false, status: 409, error: "rebuild with npm" });
 });
 
 test("eventsUrl carries token and resume point", () => {

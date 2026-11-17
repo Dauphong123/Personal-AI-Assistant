@@ -7,6 +7,8 @@ rebinding) and a browser Origin must be ours (cross-site requests). Pages are se
 CSP that forbids inline script and style.
 
 API (JSON bodies, token in X-Token or Authorization: Bearer):
+    POST /api/handshake       {protocol}    {protocol, server, features, limits}; 409 if the
+                                            frontend speaks another protocol version (rebuild it)
     GET  /api/sessions                      {"sessions": [info, ...]}
     POST /api/sessions        {title?}      201 {"session": info}; 429 at the session limit
     GET  /api/sessions/<id>                 {"session": info}
@@ -33,7 +35,11 @@ from .sessions import SessionManager
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "webui" / "dist"
 BUILD_HINT = "The web frontend is not built. Run: npm --prefix webui install && npm --prefix webui run build"
+# Bump when the API changes incompatibly; webui/src/types.ts PROTOCOL must match.
+PROTOCOL = 1
+SERVER_NAME = "coding-assistant"
 MAX_BODY = 64 * 1024
+MAX_AUDIO = 4 * 1024 * 1024  # one push-to-talk recording (compressed browser audio)
 DISCARD_LIMIT = 1024 * 1024  # how much of a refused body is read so the client sees our answer
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost"}
 KEEPALIVE_SECONDS = 10
@@ -58,6 +64,7 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
 }
 
+HANDSHAKE_PATH = "/api/handshake"
 API_ROUTE = re.compile(r"^/api/sessions(?:/(?P<id>[0-9a-f]{12})(?:/(?P<action>[a-z]+))?)?$")
 POST_ACTIONS = {"send", "approve", "stop", "reset", "rename", "delete"}
 
@@ -70,16 +77,47 @@ class WebServer(ThreadingHTTPServer):
     daemon_threads = True  # an open event stream must not keep the process alive
     allow_reuse_address = False  # on Windows SO_REUSEADDR lets a second process share the port
 
-    def __init__(self, address, manager: SessionManager, token: str, static_dir: Path, allow_remote: bool):
+    def __init__(
+        self,
+        address,
+        manager: SessionManager,
+        token: str,
+        static_dir: Path,
+        allow_remote: bool,
+        notices: bool = False,
+        voice=None,
+    ):
         super().__init__(address, Handler)
         self.manager = manager
         self.token = token
         self.static_dir = static_dir
         self.allow_remote = allow_remote
+        self.notices = notices  # background-job notices are routed to sessions
+        self.voice = voice  # backend.voice.WebVoice or None
 
     def allowed_hosts(self) -> set[str]:
         port = self.server_address[1]
         return {f"{name}:{port}" for name in LOOPBACK_HOSTS}
+
+    def describe(self) -> dict:
+        """What the handshake tells the frontend: protocol, features and limits."""
+        transcribe = bool(self.voice is not None and self.voice.can_transcribe)
+        speak = bool(self.voice is not None and self.voice.can_speak)
+        return {
+            "protocol": PROTOCOL,
+            "server": SERVER_NAME,
+            "features": {
+                "sessions": True,
+                "notices": self.notices,
+                "voice": {"transcribe": transcribe, "speak": speak},
+            },
+            "limits": {
+                "max_sessions": self.manager.max_sessions,
+                "max_turns": self.manager.max_turns,
+                "max_body": MAX_BODY,
+                "max_audio": MAX_AUDIO if transcribe else 0,
+            },
+        }
 
 
 def make_server(
@@ -89,11 +127,13 @@ def make_server(
     port: int = 8000,
     static_dir: Path = STATIC_DIR,
     allow_remote: bool = False,
+    notices: bool = False,
+    voice=None,
 ) -> WebServer:
     if host not in LOOPBACK_HOSTS and not allow_remote:
         raise ValueError(f"Refusing to listen on {host!r}: only loopback is allowed without allow_remote.")
 
-    return WebServer((host, port), manager, token, Path(static_dir), allow_remote)
+    return WebServer((host, port), manager, token, Path(static_dir), allow_remote, notices, voice)
 
 
 def static_file(static_dir: Path, url_path: str) -> Path | None:
@@ -257,6 +297,9 @@ class Handler(BaseHTTPRequestHandler):
         if not url.path.startswith("/api/"):
             return self._static(url.path)
 
+        if url.path == HANDSHAKE_PATH:
+            return self._fail(405, "Use POST")
+
         route = API_ROUTE.match(url.path)
 
         if route is None:
@@ -294,6 +337,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if not url.path.startswith("/api/"):
             return self._fail(405, "Use GET")
+
+        if url.path == HANDSHAKE_PATH:
+            if not self._authorized(parse_qs(url.query)):
+                return
+
+            data = self._read_json()
+            return None if data is None else self._handshake(data)
 
         route = API_ROUTE.match(url.path)
 
@@ -341,6 +391,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail(404, "Not found")
 
         self._send(200, body, CONTENT_TYPES[file.suffix.lower()])
+
+    def _handshake(self, data: dict) -> None:
+        protocol = data.get("protocol")
+
+        if not isinstance(protocol, int) or isinstance(protocol, bool):
+            return self._fail(400, "protocol must be an integer")
+
+        if protocol != PROTOCOL:
+            self.close_connection = True
+            return self._json(
+                409,
+                {
+                    "error": f"The page speaks protocol {protocol}, this backend speaks {PROTOCOL}. "
+                    "Rebuild the frontend (npm --prefix webui run build) and reload the page.",
+                    "protocol": PROTOCOL,
+                },
+            )
+
+        self._json(200, self.server.describe())
 
     def _create(self, data: dict) -> None:
         title = data.get("title")
