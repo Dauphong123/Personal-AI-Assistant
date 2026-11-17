@@ -453,13 +453,67 @@
       "files": [],
       "tests": [],
       "steps": [
-        {"n": 0, "title": "Workflow: 'open' status in new-feature skill", "status": "done", "tests": [], "commit": null},
-        {"n": 1, "title": "backend/sessions.py: SessionManager (many ChatSessions, shared turn limit)", "status": "in_progress", "tests": ["tests/test_backend_sessions.py"], "commit": null},
-        {"n": 2, "title": "backend/server.py: session API + SSE, serves built frontend from webui/dist", "status": "todo", "tests": ["tests/test_backend_server.py"], "commit": null},
-        {"n": 3, "title": "python -m backend entry point", "status": "todo", "tests": ["tests/test_backend_main.py"], "commit": null},
-        {"n": 4, "title": "webui/ TypeScript core: package.json, tsconfig, api.ts, state.ts, build script", "status": "todo", "tests": ["webui/test/*.test.ts (node --test)"], "commit": null},
-        {"n": 5, "title": "webui/ multi-session UI: main.ts, index.html, style.css", "status": "todo", "tests": ["tests/test_webui_frontend.py", "webui/test/*.test.ts"], "commit": null},
-        {"n": 6, "title": "Remove old Python webui, docs", "status": "todo", "tests": [], "commit": null}
+        {
+          "n": 0,
+          "title": "Workflow: 'open' status in new-feature skill",
+          "status": "done",
+          "tests": [],
+          "commit": "2c9a659"
+        },
+        {
+          "n": 1,
+          "title": "backend/sessions.py: SessionManager (many ChatSessions, shared turn limit)",
+          "status": "done",
+          "tests": [
+            "tests/test_backend_session.py (26 tests, 2026-11-17)",
+            "tests/test_backend_sessions.py (12 tests, 2026-11-17)"
+          ],
+          "commit": null
+        },
+        {
+          "n": 2,
+          "title": "backend/server.py: session API + SSE, serves built frontend from webui/dist",
+          "status": "in_progress",
+          "tests": [
+            "tests/test_backend_server.py"
+          ],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "python -m backend entry point",
+          "status": "todo",
+          "tests": [
+            "tests/test_backend_main.py"
+          ],
+          "commit": null
+        },
+        {
+          "n": 4,
+          "title": "webui/ TypeScript core: package.json, tsconfig, api.ts, state.ts, build script",
+          "status": "todo",
+          "tests": [
+            "webui/test/*.test.ts (node --test)"
+          ],
+          "commit": null
+        },
+        {
+          "n": 5,
+          "title": "webui/ multi-session UI: main.ts, index.html, style.css",
+          "status": "todo",
+          "tests": [
+            "tests/test_webui_frontend.py",
+            "webui/test/*.test.ts"
+          ],
+          "commit": null
+        },
+        {
+          "n": 6,
+          "title": "Remove old Python webui, docs",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        }
       ],
       "notes": "Opened before planning at the user's request. Rewrites F018 (webui/), which was never committed; its Python code moves to backend/. Defaults chosen (user declined questions): python -m backend; one turn at a time across sessions (WEBUI_MAX_TURNS); sessions in memory only."
     }
