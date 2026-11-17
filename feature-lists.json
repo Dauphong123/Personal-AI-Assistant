@@ -810,15 +810,18 @@
           "tests": [
             "tests/test_dictation.py (20 tests)"
           ],
-          "commit": null,
+          "commit": "47ce21a",
           "done": "2026-11-17"
         },
         {
           "n": 2,
           "title": "Push-to-talk key reader and voice trigger settings",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_hotkey.py (15 tests)"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
         },
         {
           "n": 3,

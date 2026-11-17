@@ -94,6 +94,29 @@ def _text(env: Mapping[str, str], name: str, default: str) -> str:
     return (env.get(name) or "").strip() or default
 
 
+TRIGGERS = ("both", "push_to_talk", "wake_word")
+
+
+def _trigger(env: Mapping[str, str], default: "VoiceConfig") -> str:
+    value = _text(env, "VOICE_TRIGGER", default.voice_trigger).lower()
+
+    if value not in TRIGGERS:
+        raise VoiceConfigError(f"VOICE_TRIGGER must be one of {', '.join(TRIGGERS)}; got {value!r}")
+
+    return value
+
+
+def _push_to_talk_key(env: Mapping[str, str], default: "VoiceConfig") -> str:
+    from voice.hotkey import KEYS
+
+    value = _text(env, "PUSH_TO_TALK_KEY", default.push_to_talk_key).lower()
+
+    if value not in KEYS:
+        raise VoiceConfigError(f"PUSH_TO_TALK_KEY must be one of {', '.join(KEYS)}; got {value!r}")
+
+    return value
+
+
 @dataclass(frozen=True)
 class VoiceConfig:
     enabled: bool = False
@@ -103,6 +126,13 @@ class VoiceConfig:
     wake_word_threshold: float = 0.5
     wake_word_min_frames: int = 2  # consecutive 80 ms frames above the threshold
     wake_word_cooldown: float = 2.0  # seconds ignored after a detection
+
+    # How you start talking: "both", "push_to_talk" (hold PUSH_TO_TALK_KEY, double tap for
+    # hands-free) or "wake_word". Hands-free keeps taking prompts until a tap, "stop listening",
+    # or this many seconds without speech.
+    voice_trigger: str = "both"
+    push_to_talk_key: str = "right_ctrl"
+    hands_free_idle_timeout: float = 120.0
 
     # Language(s) you speak: "en", "vi", a comma list such as "vi,en" (detect which one each time,
     # among just those), or "auto" (detect among all languages).
@@ -140,6 +170,9 @@ class VoiceConfig:
             wake_word_threshold=_number(env, "WAKE_WORD_THRESHOLD", default.wake_word_threshold, 0.05, 1.0),
             wake_word_min_frames=int(_number(env, "WAKE_WORD_MIN_FRAMES", default.wake_word_min_frames, 1, 10)),
             wake_word_cooldown=_number(env, "WAKE_WORD_COOLDOWN", default.wake_word_cooldown, 0, 30),
+            voice_trigger=_trigger(env, default),
+            push_to_talk_key=_push_to_talk_key(env, default),
+            hands_free_idle_timeout=_number(env, "HANDS_FREE_IDLE_TIMEOUT", default.hands_free_idle_timeout, 10, 3600),
             stt_model=_text(env, "SPEECH_RECOGNITION_MODEL", _default_stt_model(env, default)),
             stt_language=_language(env, default),
             stt_device=_text(env, "SPEECH_RECOGNITION_DEVICE", default.stt_device),
@@ -163,6 +196,14 @@ class VoiceConfig:
             raise VoiceConfigError(f"WAKE_WORD model file not found: {config.wake_word}")
 
         return config
+
+    @property
+    def uses_wake_word(self) -> bool:
+        return self.voice_trigger in ("both", "wake_word")
+
+    @property
+    def uses_push_to_talk(self) -> bool:
+        return self.voice_trigger in ("both", "push_to_talk")
 
     @property
     def stt_languages(self) -> tuple[str, ...]:
