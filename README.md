@@ -246,7 +246,7 @@ CLAUDE.md            Notes for Claude Code
                                           └──────────────────────────────────────────────────► END
 ```
 
-1. **`recall_memory`** searches long-term memory with the newest message and puts the result in `memory_context`, which is injected into the system prompt. Failures are logged, never fatal.
+1. **`recall_memory`** loads the user's profile facts, searches long-term memory with the newest message (and, for a follow-up, the previous question and answer) and puts the result in `memory_context`, which is injected into the system prompt. Failures are logged, never fatal.
 2. **`router`** classifies the message as `direct` or `code`, using the last 4 messages of context (each cut to 300 characters).
 3. **`direct`** answers from the model's knowledge. **`code_tools`** is the coding agent; if its reply contains tool calls, **`tool_execute`** runs them and loops back until the model answers in plain text.
 4. **`tool_execute`** never raises. An unknown tool or a tool error becomes an `ERROR: ...` tool message, output is capped, and a turn is limited to 30 tool calls (after that the model is told to answer with what it has). If any call needs approval, the node asks **once, before anything runs**, with `interrupt()`. On resume the node re-executes from the top, so nothing with side effects may happen before the interrupt.
@@ -344,14 +344,22 @@ Three memory types in Postgres with 384-dimension pgvector columns and **HNSW co
 
 **Why facts are overwritten.** A fact and its negation ("uses tabs" / "uses spaces") embed almost identically (distance about 0.004), so keeping the old text would silently discard a correction.
 
-**Recall** (`recall_memory`): embeds the newest message and returns up to 3 of each type within distance 0.4, formatted into the system prompt.
+**Recall** (`recall_memory`, `MemoryManager.recall`), formatted into the system prompt:
+
+- **Profile:** facts in the categories `user_profile`, `user_preference` and `environment` (up to 12, newest first) are listed under "About the user" on every turn, whatever the question.
+- **Search:** the newest message finds up to 3 of each type within distance 0.4. Facts are also matched by words: BM25 over all fact texts fused with the vector ranking (`rank_facts`), so ports, names and model tags are found.
+- **Follow-ups:** a second search with the previous question, the last answer (first 300 characters) and the newest message adds up to 2 more of each type (`memory_query`), so "what's its name?" still finds the cat.
 
 **Remembering** (`save_memory`), after a finished turn:
 1. Skip unless the turn ends in a plain-text answer.
-2. Skip trivial turns (fewer than 3 words and no tool use).
-3. Search known facts related to the question (up to 5, distance ≤ 0.45).
-4. An LLM structured-extraction call returns an optional episode, facts, procedures and the ids of known facts that this turn **supersedes**. Superseded facts are deleted first.
-5. Everything is stored; failures are logged and never break the conversation.
+2. Skip trivial turns (only greeting or thanks words, no tool use). "I'm Dat" is not trivial.
+3. Search known facts related to the question (up to 5, distance ≤ 0.45, by meaning only).
+4. An LLM structured-extraction call (temperature 0) returns an optional episode, facts, procedures and the ids of known facts that this turn **supersedes**. Facts are written in English as "The user's <subject> is <value>." with one of five categories (`FactCategory`), so a later change lands next to the old fact.
+5. Memories holding a key-like value (`sk-…`, `ghp_…`, long random strings) and facts about credentials are dropped (`looks_secret`).
+6. Stored facts within distance 0.25 of a new fact that the extractor did not see are shown to the model once more (`find_superseded`). This catches a Vietnamese turn whose question did not find the old English fact. Superseded facts are deleted first.
+7. Everything is stored; failures are logged and never break the conversation.
+
+**Eval.** `RUN_MEMORY_EVAL=1` runs `tests/test_memory_eval.py`: 15 facts and 35 questions (English, Vietnamese, vague, keyword, follow-up) against the real embeddings and Postgres, inside a transaction that is rolled back. Hit rate 33/35 (15/30 before F021); the two misses need a multilingual embedding or inference.
 
 The distance thresholds were calibrated against bge-small; re-check them if you change the embedding model (and `EMBEDDING_DIM`, which also fixes the table schema).
 

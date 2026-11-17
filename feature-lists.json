@@ -678,13 +678,28 @@
       "id": "F021",
       "name": "Better semantic memory retrieval",
       "description": "Store facts more reliably and find them better: always-on profile facts, hybrid vector+BM25 fact search, follow-up aware query, measured by an eval.",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-17",
-      "completed": null,
+      "completed": "2026-11-17",
       "branch": "feature/F021-memory-retrieval",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "15469dc",
+      "files": [
+        "memories/extractor.py",
+        "memories/manager.py",
+        "memories/store.py",
+        "graph/node.py",
+        "tests/test_memory.py",
+        "tests/test_memory_eval.py",
+        "tests/test_hardening.py",
+        "README.md",
+        "memories/CLAUDE.md",
+        "docs/PROJECT.md"
+      ],
+      "tests": [
+        "tests/test_memory.py",
+        "tests/test_memory_eval.py (opt-in, 33/35)",
+        "tests/test_hardening.py::NoticeMessageTests.test_memory_is_not_searched_for_a_notice"
+      ],
       "steps": [
         {
           "n": 0,
@@ -752,11 +767,11 @@
             "tests/test_hardening.py::test_memory_is_not_searched_for_a_notice",
             "tests/test_memory_eval.py (33/35)"
           ],
-          "commit": null,
+          "commit": "7b5ed57",
           "done": "2026-11-17"
         }
       ],
-      "notes": "Branched from feature/F020-webui-handshake (26c45e5): main lacks the memory test commit. Multilingual memory embeddings (plan step 5) not approved yet."
+      "notes": "Branched from feature/F020-webui-handshake (26c45e5): main lacks the memory test commit. Multilingual memory embeddings (plan step 5) not approved yet. Step 4 accidentally committed an unrelated import cleanup in tests/test_hardening.py; reverted in 15469dc (the working copy keeps it)."
     }
   ]
 }
