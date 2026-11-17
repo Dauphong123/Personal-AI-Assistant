@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from retrieval import BM25, reciprocal_rank_fusion
+
 from .database import get_session_factory
 from .table import EMBEDDING_DIM, EpisodicMemory, ProceduralMemory, SemanticMemory
 
@@ -31,6 +33,19 @@ class MemoryHits:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def rank_facts(
+    query: str, facts: list[tuple[int, str]], by_meaning: list[int], limit: int
+) -> list[int]:
+    """Fact ids, best first: the vector ranking `by_meaning` fused with BM25 over `facts`.
+
+    Words catch what embeddings blur: ports, names, model tags ("15432", "Miu", "qwen3:8b").
+    A fact matched neither way is left out."""
+    bm25 = BM25([text for _, text in facts])
+    by_words = [facts[i][0] for i in bm25.top(query, limit * 3)]
+
+    return [fact_id for fact_id, _ in reciprocal_rank_fusion([by_meaning, by_words])[:limit]]
 
 
 def _nearest(session: Session, model, vector: list[float], max_distance: float):
@@ -169,23 +184,39 @@ class MemoryStore:
         query: str,
         limit: int = 3,
         max_distance: float = 0.4,
+        keywords: bool = True,
     ) -> MemoryHits:
-        """Return the closest memories of each type (the query is embedded once)."""
+        """Return the closest memories of each type (the query is embedded once).
+
+        With `keywords`, facts are also matched by words (`rank_facts`); `max_distance` then
+        limits only the vector side."""
         vector = self._embed(query)
 
-        def top(session: Session, model):
+        def top(session: Session, model, count: int = limit):
             distance = model.embedding.cosine_distance(vector)
             stmt = (
                 select(model)
                 .where(distance <= max_distance)
                 .order_by(distance)
-                .limit(limit)
+                .limit(count)
             )
             return list(session.scalars(stmt))
+
+        def facts(session: Session) -> list[SemanticMemory]:
+            if not keywords:
+                return top(session, SemanticMemory)
+
+            by_meaning = [f.id for f in top(session, SemanticMemory, limit * 3)]
+            # The facts table stays small (one short row per durable fact), so BM25 is built
+            # over all of it per search instead of keeping an index in step with writes.
+            texts = [(row.id, row.fact) for row in session.execute(select(SemanticMemory.id, SemanticMemory.fact))]
+            ids = rank_facts(query, texts, by_meaning, limit)
+            rows = {f.id: f for f in session.scalars(select(SemanticMemory).where(SemanticMemory.id.in_(ids)))}
+            return [rows[i] for i in ids if i in rows]
 
         with self._session_factory() as session:
             return MemoryHits(
                 episodes=top(session, EpisodicMemory),
-                facts=top(session, SemanticMemory),
+                facts=facts(session),
                 procedures=top(session, ProceduralMemory),
             )

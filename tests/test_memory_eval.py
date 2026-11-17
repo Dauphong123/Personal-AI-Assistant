@@ -62,6 +62,12 @@ CASES = [
     ("cat", [("user", "what's my cat called?")], ["Miu"]),
     ("vi-cat", [("user", "con mèo của tôi tên gì?")], ["Miu"]),
     ("food", [("user", "suggest a dinner I'd like")], ["pho"]),
+    # Only a rare word links question and fact (names, ports, model tags).
+    ("kw-miu", [("user", "Miu has been sneezing all day")], ["Miu"]),
+    ("kw-pho", [("user", "any good pho places nearby?")], ["pho"]),
+    ("kw-port", [("user", "something else is already listening on 15432")], ["15432"]),
+    ("kw-qwen", [("user", "qwen3:8b feels slow today")], ["qwen3:8b"]),
+    ("kw-vi-miu", [("user", "Miu bị ốm rồi")], ["Miu"]),
     ("follow-up-db", [("user", "tell me about the project's database"), ("assistant", "It is Postgres."),
                       ("user", "which port again?")], ["15432"]),
     ("follow-up-cat", [("user", "do I have pets?"), ("assistant", "You have a cat."),
@@ -71,7 +77,7 @@ CASES = [
 ]
 
 # Recall must find at least this share of cases. Raised by each step of F021 as retrieval improves.
-MIN_HIT_RATE = 0.85  # step 2: 26/30 with always-on profile facts (step 1 baseline 15/30)
+MIN_HIT_RATE = 0.90  # step 3: 32/35 with hybrid fact search (30/35 before, on the same 35 cases)
 
 
 def as_messages(turns):

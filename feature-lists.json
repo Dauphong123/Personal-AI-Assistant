@@ -724,15 +724,22 @@
             "StoreIntegrationTests.test_profile_facts_are_user_categories_newest_first",
             "tests/test_memory_eval.py (26/30)"
           ],
-          "commit": null,
+          "commit": "7e04d3a",
           "done": "2026-11-17"
         },
         {
           "n": 3,
           "title": "Hybrid fact search: vector + BM25 fused",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_memory.py::RankFactsTests",
+            "StoreIntegrationTests.test_fact_search_finds_a_rare_word_the_vector_misses",
+            "ManagerTests.test_remember_searches_by_meaning_only",
+            "ManagerTests.test_recall_searches_by_meaning_and_words",
+            "tests/test_memory_eval.py (32/35)"
+          ],
+          "commit": null,
+          "done": "2026-11-17"
         },
         {
           "n": 4,

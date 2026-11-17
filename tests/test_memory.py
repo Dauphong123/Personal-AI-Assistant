@@ -188,7 +188,8 @@ class FakeStore:
         self.calls.append(("procedure", task, steps))
         return None, True
 
-    def search(self, query, limit=3, max_distance=0.5):
+    def search(self, query, limit=3, max_distance=0.5, keywords=True):
+        self.searches = getattr(self, "searches", []) + [(query, keywords)]
         return MemoryHits(facts=self.known)
 
     def delete_facts(self, ids):
@@ -301,7 +302,7 @@ class ManagerTests(unittest.TestCase):
         reviewed = {}
 
         class Store(FakeStore):
-            def search(self, query, limit=3, max_distance=0.5):
+            def search(self, query, limit=3, max_distance=0.5, keywords=True):
                 self.calls.append(("search", query, max_distance))
                 return MemoryHits(facts=[old, unrelated] if query.startswith("The user") else [])
 
@@ -322,6 +323,20 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(fact_search[2], REVIEW_DISTANCE)
         writes = [c for c in store.calls if c[0] != "search"]
         self.assertEqual(writes, [("delete", [5]), ("fact", "The user's editor is Vim")])
+
+    def test_remember_searches_by_meaning_only(self):
+        # Word matches ("user", "project") would send nearly every save to the review model.
+        extraction = MemoryExtraction(facts=[Fact(fact="The user's editor is Vim")])
+        store = FakeStore()
+        MemoryManager(store, SimpleNamespace(extract=lambda messages, known=(): extraction)).remember(
+            [HumanMessage(content="I use Vim now")])
+
+        self.assertEqual(store.searches, [("I use Vim now", False), ("The user's editor is Vim", False)])
+
+    def test_recall_searches_by_meaning_and_words(self):
+        store = FakeStore()
+        MemoryManager(store, None).recall("port 15432")
+        self.assertEqual(store.searches, [("port 15432", True)])
 
     def test_facts_already_offered_are_not_reviewed_twice(self):
         known = [SimpleNamespace(id=7, fact="uses tabs")]
@@ -407,6 +422,34 @@ class StoreValidationTests(unittest.TestCase):
     def test_empty_hits_are_falsy(self):
         self.assertFalse(MemoryHits())
         self.assertTrue(MemoryHits(procedures=[object()]))
+
+
+class RankFactsTests(unittest.TestCase):
+    FACTS = [(1, "The user's cat is named Miu."), (2, "The project's database port is 15432."),
+             (3, "The user's editor is Vim."), (4, "The user's favourite food is pho.")]
+
+    def rank(self, query, by_meaning, limit=3):
+        from memories.store import rank_facts
+
+        return rank_facts(query, self.FACTS, by_meaning, limit)
+
+    def test_a_word_match_is_found_when_meaning_finds_nothing(self):
+        self.assertEqual(self.rank("something listens on 15432", []), [2])
+
+    def test_meaning_matches_are_kept_without_word_matches(self):
+        self.assertEqual(self.rank("which text editor?", [3, 1]), [3, 1])
+
+    def test_found_both_ways_ranks_first(self):
+        self.assertEqual(self.rank("is Miu ok?", [3, 1])[0], 1)
+
+    def test_nothing_matching_gives_nothing(self):
+        self.assertEqual(self.rank("hello there", []), [])
+
+    def test_limit_is_respected(self):
+        self.assertEqual(len(self.rank("Miu pho Vim 15432", [4, 3, 2, 1], limit=2)), 2)
+
+    def test_accents_are_folded(self):
+        self.assertEqual(self.rank("phở ngon ở đâu", []), [4])
 
 
 class DatabaseUrlTests(unittest.TestCase):
@@ -536,6 +579,14 @@ class StoreIntegrationTests(unittest.TestCase):
         mine = [f.fact for f in self.store.profile_facts(limit=100) if tag in f.fact]
         self.assertEqual(mine, [f"profile os {tag}", f"profile style {tag}", f"profile name {tag}"])
         self.assertEqual([f.fact for f in self.store.profile_facts(limit=1)], [f"profile os {tag}"])
+
+    def test_fact_search_finds_a_rare_word_the_vector_misses(self):
+        fact, _ = self.store.add_fact(f"The user's cat is named Miu {self.tag}.", "general")
+        # FakeEmbeddings: the query vector is unrelated to the fact's, so only the words can match
+        # (the tag's digits are a word no other fact has).
+        hits = self.store.search(f"is {self.tag} hungry?")
+        self.assertEqual([f.id for f in hits.facts], [fact.id])
+        self.assertEqual(self.store.search("completely unrelated words").facts, [])
 
     def test_deleting_unknown_fact_ids_deletes_nothing(self):
         self.assertEqual(self.store.delete_facts([-1, -2]), 0)

@@ -114,7 +114,7 @@ class MemoryManager:
         question = next(
             (str(m.content) for m in reversed(messages) if isinstance(m, HumanMessage)), ""
         )
-        known = self._store.search(question, limit=5, max_distance=0.45).facts if question else []
+        known = self._store.search(question, limit=5, max_distance=0.45, keywords=False).facts if question else []
         extraction = _without_secrets(self._extractor.extract(messages, known))
 
         known_ids = {f.id for f in known}
@@ -126,7 +126,7 @@ class MemoryManager:
         new_facts = [f.fact for f in extraction.facts]
         nearby = {}
         for fact in new_facts:
-            for old in self._store.search(fact, limit=5, max_distance=REVIEW_DISTANCE).facts:
+            for old in self._store.search(fact, limit=5, max_distance=REVIEW_DISTANCE, keywords=False).facts:
                 if old.id not in known_ids:
                     nearby[old.id] = old
         if nearby:
