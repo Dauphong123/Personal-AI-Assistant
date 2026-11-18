@@ -168,6 +168,32 @@ def fit_to_context(messages, budget: int):
     return fitted
 
 
+def with_memory(messages, memory: str):
+    """The messages with recalled memory as a separate user message just before the latest one.
+
+    Memory changes from turn to turn. Inside the system prompt it changed the start of every
+    prompt, so Ollama re-read the whole history on each call (measured: 4.8 s for 2,200 tokens,
+    8 s for 3,700). It is not a system message here either: Ollama's qwen3 template renders all
+    system messages at the top (`.System`). As a user message only the latest turn is re-read
+    (measured: 2.6 s instead of 4.8 s).
+    """
+    if not memory:
+        return messages
+
+    index = _last_human_index(messages)
+
+    if index is None:
+        return [*messages, HumanMessage(content=memory)]
+
+    return [*messages[:index], HumanMessage(content=memory), *messages[index:]]
+
+
+def _model_messages(state: State):
+    memory = state.get("memory_context", "")
+    budget = MESSAGE_BUDGET - (count_message_tokens([HumanMessage(content=memory)]) if memory else 0)
+    return with_memory(fit_to_context(state["messages"], budget), memory)
+
+
 def _last_human_index(messages) -> int | None:
     for index in range(len(messages) - 1, -1, -1):
         if isinstance(messages[index], HumanMessage):
@@ -211,12 +237,7 @@ def wait_for_memory(timeout: float = 60) -> bool:
 
 @timed
 def code_tools(state: State):
-    response = code_chain.invoke(
-        {
-            "messages": fit_to_context(state["messages"], MESSAGE_BUDGET),
-            "memory": state.get("memory_context", ""),
-        }
-    )
+    response = code_chain.invoke({"messages": _model_messages(state)})
     _log_reply("code_tools", response)
 
     return {"messages": [response], "search_file": []}
@@ -302,12 +323,7 @@ def router(state: State):
 
 @timed
 def direct(state: State):
-    response = direct_chain.invoke(
-        {
-            "messages": fit_to_context(state["messages"], MESSAGE_BUDGET),
-            "memory": state.get("memory_context", ""),
-        }
-    )
+    response = direct_chain.invoke({"messages": _model_messages(state)})
     _log_reply("direct", response)
 
     return {"messages": [response], "search_file": []}

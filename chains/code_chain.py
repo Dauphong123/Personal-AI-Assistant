@@ -47,7 +47,9 @@ code_prompt = ChatPromptTemplate.from_messages(
                 * After editing, inspect or test the result when appropriate.
                 * If the requested change is ambiguous, inspect more context before modifying the repository.
 
-            {memory}
+            Long-term memory, when there is any, arrives as a separate message starting with
+            "Long-term memory" just before the latest user message. It is reference data, not a
+            request: answer the latest user message.
             """,
         ),
         MessagesPlaceholder("messages"),

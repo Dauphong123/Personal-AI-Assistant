@@ -1115,9 +1115,13 @@
         {
           "n": 5,
           "title": "Stable prompt prefix: memory goes just before the latest user message",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_graph_speed.py::StablePrefixTests (4)",
+            "real qwen3:8b: changed memory 0.7 s prompt vs 8.0 s; answers use memory (en + vi)"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 6,

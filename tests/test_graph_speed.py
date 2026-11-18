@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 from unittest.mock import patch
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableLambda
 
 from tests import stubs
@@ -146,13 +146,13 @@ class FitToContextTests(unittest.TestCase):
         self.assertLessEqual(node.count_message_tokens(seen["messages"]), 500)
 
 
-def load_summary_module():
+def load_chain_module(name: str):
     """chains/ is stubbed for the other tests, so load the real file directly."""
     import importlib.util
     from pathlib import Path
 
-    path = Path(__file__).resolve().parents[1] / "chains" / "summerize_chain.py"
-    spec = importlib.util.spec_from_file_location("summary_under_test", path)
+    path = Path(__file__).resolve().parents[1] / "chains" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"{name}_under_test", path)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return module
@@ -163,7 +163,7 @@ class SummaryModelTests(unittest.TestCase):
     summary uses the main model."""
 
     def setUp(self):
-        self.module = load_summary_module()
+        self.module = load_chain_module("summerize_chain")
 
     def test_default_is_the_main_model(self):
         main = SimpleNamespace(model_copy=lambda update: ("copy of main", update))
@@ -329,6 +329,56 @@ class CancellableExtractionTests(unittest.TestCase):
             [HumanMessage(content="I use Vim")], cancel=cancel
         )
         self.assertIs(seen["cancel"], cancel)
+
+
+class StablePrefixTests(unittest.TestCase):
+    """Ollama reuses its work only for an unchanged prompt start: a new memory text inside the
+    system prompt made it re-read the whole history (8.0 s for 3,700 tokens). Ollama's qwen3
+    template moves every system message to the top, so memory is a user message instead."""
+
+    MEMORY = "Long-term memory:\n- The user's name is Dat."
+
+    def history(self):
+        return [
+            HumanMessage(content="q1", id="h1"),
+            AIMessage(content="a1", id="a1"),
+            HumanMessage(content="q2", id="h2"),
+            call("c1"),
+            ToolMessage(content="body", tool_call_id="c1", id="t1"),
+        ]
+
+    def test_memory_goes_just_before_the_latest_user_message(self):
+        messages = node.with_memory(self.history(), self.MEMORY)
+
+        self.assertEqual([m.type for m in messages], ["human", "ai", "human", "human", "ai", "tool"])
+        self.assertEqual(messages[2].content, self.MEMORY)
+
+    def test_no_memory_adds_nothing(self):
+        history = self.history()
+        self.assertIs(node.with_memory(history, ""), history)
+
+    def test_code_tools_and_direct_send_memory_as_a_message(self):
+        for name in ["code_chain", "direct_chain"]:
+            seen: dict = {}
+            target = node.code_tools if name == "code_chain" else node.direct
+
+            with patch.object(node, name, recorder(seen, AIMessage(content="ok"))):
+                target({"messages": self.history(), "memory_context": self.MEMORY})  # type: ignore[arg-type]
+
+            self.assertNotIn("memory", seen, name)
+            sent = seen["messages"]
+            self.assertFalse(any(isinstance(m, SystemMessage) for m in sent), "Ollama would hoist it")
+            self.assertEqual([m.content for m in sent[2:4]], [self.MEMORY, "q2"], name)
+
+    def test_prompt_start_does_not_depend_on_memory(self):
+        for name, prompt_name in [("code_chain", "code_prompt"), ("direct_chain", "direct_prompt")]:
+            prompt = getattr(load_chain_module(name), prompt_name)
+            self.assertNotIn("memory", prompt.input_variables, name)
+
+            first = prompt.format_messages(messages=node.with_memory(self.history(), "memory A"))
+            second = prompt.format_messages(messages=node.with_memory(self.history(), "memory B"))
+            self.assertEqual(first[:3], second[:3], "system prompt and earlier turns are identical")
+            self.assertNotEqual(first[3], second[3])
 
 
 if __name__ == "__main__":
