@@ -143,5 +143,39 @@ class FitToContextTests(unittest.TestCase):
         self.assertLessEqual(node.count_message_tokens(seen["messages"]), 500)
 
 
+def load_summary_module():
+    """chains/ is stubbed for the other tests, so load the real file directly."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "chains" / "summerize_chain.py"
+    spec = importlib.util.spec_from_file_location("summary_under_test", path)
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+class SummaryModelTests(unittest.TestCase):
+    """Loading a second model unloads qwen3:8b on a 4 GB GPU (reload ~8 s), so by default the
+    summary uses the main model."""
+
+    def setUp(self):
+        self.module = load_summary_module()
+
+    def test_default_is_the_main_model(self):
+        main = SimpleNamespace(model_copy=lambda update: ("copy of main", update))
+        self.assertEqual(self.module.summary_model({}, main), ("copy of main", {"temperature": 0.3}))
+
+    def test_summary_model_setting_still_picks_another_model(self):
+        model = self.module.summary_model({"SUMMARY_MODEL": "qwen3:4b"}, object())
+        self.assertEqual(model.model, "qwen3:4b")
+        self.assertEqual(model.temperature, 0.3)
+        self.assertFalse(model.reasoning)
+
+    def test_blank_setting_means_the_main_model(self):
+        main = SimpleNamespace(model_copy=lambda update: "main")
+        self.assertEqual(self.module.summary_model({"SUMMARY_MODEL": "  "}, main), "main")
+
+
 if __name__ == "__main__":
     unittest.main()
