@@ -1143,9 +1143,13 @@
         {
           "n": 8,
           "title": "qwen3:4b as a supported MODEL + opt-in model eval",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_llm_options.py::test_qwen3_4b_is_supported_with_the_shared_qwen3_tokenizer",
+            "tests/test_model_eval.py (opt-in RUN_MODEL_EVAL=1): qwen3:8b routing 12/12 32s, tools 8/8 55s; qwen3:4b routing 12/12 16s, tools 6/8 428s -> default stays qwen3:8b"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 9,

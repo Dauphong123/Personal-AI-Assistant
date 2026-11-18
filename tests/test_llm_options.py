@@ -8,6 +8,12 @@ class ModelNameTests(unittest.TestCase):
         self.assertEqual(model_name({"MODEL": " qwen3:8b "}), "qwen3:8b")
         self.assertIn("qwen3:8b", TOKENIZER_MAP)
 
+    def test_qwen3_4b_is_supported_with_the_shared_qwen3_tokenizer(self):
+        # F025: 2.3x faster on this GPU (14.2 vs 6.2 tok/s); the Qwen3 sizes share one tokenizer,
+        # so the one already downloaded for qwen3:8b counts its tokens.
+        self.assertEqual(model_name({"MODEL": "qwen3:4b"}), "qwen3:4b")
+        self.assertEqual(TOKENIZER_MAP["qwen3:4b"], TOKENIZER_MAP["qwen3:8b"])
+
     def test_missing_model_says_how_to_fix_it(self):
         for env in [{}, {"MODEL": ""}, {"MODEL": "   "}]:
             with self.assertRaisesRegex(ValueError, r"MODEL is not set.*\.env.*qwen3:8b"):

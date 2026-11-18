@@ -12,7 +12,8 @@ FALSE = {"0", "false", "no", "off", ""}
 MIN_CONTEXT = 256
 
 # Main model (MODEL) -> Hugging Face tokenizer used to count history tokens.
-TOKENIZER_MAP = {"qwen3:8b": "Qwen/Qwen3-8B"}
+# The Qwen3 sizes share one tokenizer, so qwen3:4b reuses the one already downloaded for 8b.
+TOKENIZER_MAP = {"qwen3:8b": "Qwen/Qwen3-8B", "qwen3:4b": "Qwen/Qwen3-8B"}
 
 
 def model_name(env=None) -> str:
