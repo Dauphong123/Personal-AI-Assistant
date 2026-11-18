@@ -2,6 +2,7 @@ import functools
 import json
 import logging
 import os
+import re
 import time
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from chains import code_chain, direct_chain, router_chain, summerize_chain
 from data.route_query import Router
 from data.state import State
 from dependency import dependency
+from language import normalize
 from llm_options import _flag, ollama_options
 from memories.manager import memory_query
 from memories.scheduler import MEMORY_SCHEDULER
@@ -303,9 +305,60 @@ def tool_execute(state: State):
     return {"messages": messages, "search_file": []}
 
 
+# Requests that obviously need the repository or the machine, and messages that obviously do not.
+# Only clear cases: anything else, short follow-ups ("yes, do it") above all, goes to the model.
+_FILE_NAME = re.compile(
+    r"[\w\-/\\]\w*\.(py|pyi|ts|tsx|js|jsx|json|md|txt|toml|ya?ml|ini|cfg|sh|ps1|bat|html|css|sql|csv|lock|env)\b",
+    re.IGNORECASE,
+)
+_COMMANDS = re.compile(
+    r"\b(git\s+(status|diff|log|show|commit|push|pull|branch|checkout|switch|add|stash|blame)|"
+    r"pytest|unittest|pyright|npm\s+(run|install|test|ci)|pip\s+install|docker\s+compose|"
+    r"run\s+(the\s+)?(tests?|build|linter|script|command)|git\s+diff)\b",
+    re.IGNORECASE,
+)
+_FILE_ACTIONS = re.compile(
+    r"\b(read|open|edit|create|delete|remove|rename|move|search|grep|list)\b"
+    r"(?!.*\b(in|with|using)\s+(python|javascript|js|java|c\+\+|go|rust)\b)"
+    r".*\b(file|files|folder|directory|repo|repository|codebase|project)\b",
+    re.IGNORECASE,
+)
+_VIETNAMESE_ACTIONS = re.compile(
+    r"\b(chạy\s+(lệnh|test|thử|kiểm\s+thử)|(sửa|tạo|xóa|xoá|đọc|mở|đổi\s+tên)\s+(file|tệp|thư\s+mục)|"
+    r"sửa\s+(lỗi|code|mã))",
+    re.IGNORECASE,
+)
+_SMALL_TALK = {
+    "hi", "hello", "hey", "thanks", "thank you", "thanks a lot", "good morning", "good evening",
+    "xin chào", "chào", "chào bạn", "cảm ơn", "cảm ơn bạn", "cám ơn",
+}
+
+
+def quick_route(text: str) -> str | None:
+    """"code_tools" or "direct" when the message decides it alone, else None (ask the model)."""
+    text = normalize(text).strip()
+    bare = re.sub(r"[^\w\s]", "", text.lower()).strip()
+
+    if bare in _SMALL_TALK:
+        return "direct"
+
+    for pattern in (_FILE_NAME, _COMMANDS, _FILE_ACTIONS, _VIETNAMESE_ACTIONS):
+        if pattern.search(text):
+            return "code_tools"
+
+    return None
+
+
 @timed
 def router(state: State):
     messages = state["messages"]
+    last = messages[-1]
+
+    if not last.additional_kwargs.get("notice"):
+        shortcut = quick_route(str(last.content))
+        if shortcut:
+            timing_logger.info("router: rule -> %s", shortcut)
+            return shortcut
     history = "\n".join(
         f"{m.type}: {str(m.content)[:300]}"
         for m in messages[-(ROUTER_HISTORY_MESSAGES + 1) : -1]

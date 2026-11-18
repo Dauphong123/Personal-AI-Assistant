@@ -411,7 +411,7 @@ class ParallelRouteTests(unittest.TestCase):
 
         app = ModelGraph.compile(checkpointer=InMemorySaver())
         started = time.monotonic()
-        final = app.invoke({"messages": [HumanMessage(content="hi")]}, {"configurable": {"thread_id": "p"}})  # type: ignore[arg-type]
+        final = app.invoke({"messages": [HumanMessage(content="tell me more")]}, {"configurable": {"thread_id": "p"}})  # type: ignore[arg-type]
         return time.monotonic() - started, final, seen
 
     def test_recall_and_routing_overlap(self):
@@ -426,6 +426,71 @@ class ParallelRouteTests(unittest.TestCase):
     def test_code_route_reaches_the_coding_agent(self):
         _, final, _ = self.run_turn("code", delay=0)
         self.assertEqual(final["messages"][-1].content, "code answer")
+
+
+class QuickRouteTests(unittest.TestCase):
+    """Obvious requests skip the router's model call (3.0 s measured); anything unclear,
+    including short follow-ups such as "yes, do it", still goes to the model."""
+
+    CODE = [
+        "fix the bug in main.py",
+        "what does graph/node.py do?",
+        "read README.md and summarize it",
+        "run the tests",
+        "git status",
+        "show me the git diff",
+        "pytest -k memory",
+        "npm run build",
+        "pip install requests",
+        "delete the file old_notes.txt",
+        "create a new file called notes.md",
+        "search the repo for TODO",
+        "sửa lỗi trong file main.py",
+        "chạy test giúp mình",
+        "tạo file mới tên notes.md",
+    ]
+    DIRECT = ["hi", "Hello!", "thanks", "Thank you.", "xin chào", "cảm ơn bạn", "good morning"]
+    MODEL = [
+        "yes, do it",
+        "ok",
+        "what is a python generator?",
+        "explain recursion",
+        "what is a .py file?",
+        "Viết một bài thơ về mùa thu",
+        "how do I write a file in python?",
+    ]
+
+    def test_obvious_coding_requests(self):
+        for text in self.CODE:
+            self.assertEqual(node.quick_route(text), "code_tools", text)
+
+    def test_greetings_and_thanks(self):
+        for text in self.DIRECT:
+            self.assertEqual(node.quick_route(text), "direct", text)
+
+    def test_everything_else_is_left_to_the_model(self):
+        for text in self.MODEL:
+            self.assertIsNone(node.quick_route(text), text)
+
+    def test_router_skips_the_model_for_an_obvious_request(self):
+        def fail(inputs):
+            raise AssertionError("the model must not be asked")
+
+        with patch.object(node, "router_chain", RunnableLambda(fail)):
+            self.assertEqual(node.router({"messages": [HumanMessage(content="git status")]}), "code_tools")  # type: ignore[arg-type]
+
+    def test_router_asks_the_model_when_unsure(self):
+        reply = RunnableLambda(lambda x: SimpleNamespace(destination="code"))
+
+        with patch.object(node, "router_chain", reply):
+            self.assertEqual(node.router({"messages": [HumanMessage(content="yes, do it")]}), "code_tools")  # type: ignore[arg-type]
+
+    def test_job_notices_are_left_to_the_model(self):
+        notice = HumanMessage(content="[system notice] job 3 finished: git status", additional_kwargs={"notice": True})
+        reply = RunnableLambda(lambda x: SimpleNamespace(destination="direct"))
+
+        with patch.object(node, "router_chain", reply):
+            self.assertEqual(node.router({"messages": [notice]}), "direct")  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":
