@@ -621,6 +621,12 @@ async function send(): Promise<void> {
   }
 }
 
+/** Allow or deny the approval shown on the card (named by its request id). */
+function answerApproval(allow: boolean): void {
+  const request = conv.approvalRequest;
+  if (request !== null) void run((id) => api.approve(id, allow, request));
+}
+
 async function run(action: (id: string) => Promise<{ ok: boolean; error?: string }>): Promise<void> {
   if (!activeId) return;
 
@@ -765,6 +771,7 @@ function stopHandsFree(message: string | null = null): void {
 async function handleUtterance(sessionId: string | null, recording: Blob): Promise<void> {
   if (!handsFree || sessionId !== activeId || !sessionId || tooLong(recording)) return;
 
+  const heardFor = conv.approvalRequest; // the approval waiting while the user spoke
   transcribing += 1;
   renderHeader();
   const result = await api.dictate(recording);
@@ -779,6 +786,8 @@ async function handleUtterance(sessionId: string | null, recording: Blob): Promi
   }
 
   const action = handsFreeAction(result.data, conv.approval !== null);
+  // An answer counts only for the request it was heard for, never for a newer one.
+  const request = conv.approvalRequest !== null && conv.approvalRequest === heardFor ? conv.approvalRequest : null;
 
   switch (action.kind) {
     case "off":
@@ -789,7 +798,7 @@ async function handleUtterance(sessionId: string | null, recording: Blob): Promi
       await run((id) => api.stop(id));
       break;
     case "approve":
-      await run((id) => api.approve(id, action.allow));
+      if (request !== null) await run((id) => api.approve(id, action.allow, request));
       break;
     case "send":
       handsFreeQueue.push(action.text);
@@ -1012,8 +1021,8 @@ ui.speakAnswers.addEventListener("change", () => {
   }
 });
 ui.stop.addEventListener("click", () => void run((id) => api.stop(id)));
-ui.allow.addEventListener("click", () => void run((id) => api.approve(id, true)));
-ui.deny.addEventListener("click", () => void run((id) => api.approve(id, false)));
+ui.allow.addEventListener("click", () => answerApproval(true));
+ui.deny.addEventListener("click", () => answerApproval(false));
 ui.newSession.addEventListener("click", () => void createSession());
 
 // --- session menu, rename, confirm ---------------------------------------------------------

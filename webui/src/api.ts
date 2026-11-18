@@ -33,8 +33,9 @@ export class Api {
     return this.#action(id, "send", { text });
   }
 
-  approve(id: string, allow: boolean): Promise<Result<SessionInfo>> {
-    return this.#action(id, "approve", { allow });
+  /** Answer the approval request named by `request` (its event's id); 409 if it is no longer waiting. */
+  approve(id: string, allow: boolean, request: string): Promise<Result<SessionInfo>> {
+    return this.#action(id, "approve", { allow, request });
   }
 
   stop(id: string): Promise<Result<SessionInfo>> {

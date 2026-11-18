@@ -38,7 +38,7 @@ export type ChatEvent =
   | { id: number; type: "notice"; text: string } // a finished background job starts a turn
   | { id: number; type: "waiting" }
   | { id: number; type: "token"; text: string }
-  | { id: number; type: "approval"; calls: ToolCall[] }
+  | { id: number; type: "approval"; calls: ToolCall[]; request: string } // request: id an answer must name
   | { id: number; type: "done" }
   | { id: number; type: "cancelled" }
   | { id: number; type: "error"; text: string }

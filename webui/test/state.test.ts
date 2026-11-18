@@ -82,11 +82,25 @@ test("approval is pending until the next event", () => {
   const calls = [{ name: "write_file", args: { path: "a.txt" } }];
   let conv = applyAll(emptyConversation(), [
     { id: 1, type: "user", text: "go" },
-    { id: 2, type: "approval", calls },
+    { id: 2, type: "approval", calls, request: "req1" },
   ]);
   assert.deepEqual(conv.approval, calls);
+  assert.equal(conv.approvalRequest, "req1");
   conv = apply(conv, { id: 3, type: "token", text: "ok" });
   assert.equal(conv.approval, null);
+  assert.equal(conv.approvalRequest, null);
+});
+
+test("each approval keeps its own request id", () => {
+  let conv = applyAll(emptyConversation(), [
+    { id: 1, type: "user", text: "go" },
+    { id: 2, type: "approval", calls: [], request: "first" },
+    { id: 3, type: "token", text: "ok" },
+    { id: 4, type: "approval", calls: [], request: "second" },
+  ]);
+  assert.equal(conv.approvalRequest, "second");
+  conv = apply(conv, { type: "gone" });
+  assert.equal(conv.approvalRequest, null);
 });
 
 test("cancelled and error add notes and end the turn", () => {
@@ -168,7 +182,9 @@ test("isChatEvent accepts known events and rejects junk", () => {
   assert.equal(isChatEvent({ id: 1, type: "token", text: "a" }), true);
   assert.equal(isChatEvent({ type: "gone" }), true);
   assert.equal(isChatEvent({ id: 1, type: "token" }), false);
-  assert.equal(isChatEvent({ id: 1, type: "approval", calls: "x" }), false);
+  assert.equal(isChatEvent({ id: 1, type: "approval", calls: "x", request: "r" }), false);
+  assert.equal(isChatEvent({ id: 1, type: "approval", calls: [], request: "r" }), true);
+  assert.equal(isChatEvent({ id: 1, type: "approval", calls: [] }), false); // protocol 1 event
   assert.equal(isChatEvent({ id: 1, type: "nope" }), false);
   assert.equal(isChatEvent({ type: "done" }), false);
   assert.equal(isChatEvent(null), false);
@@ -210,7 +226,7 @@ test("status: a running turn, a waiting turn and an approval", () => {
   assert.deepEqual(statusOf({ ...idle, conv: busy }), { text: "Working…", tone: "busy" });
   const waiting = apply(busy, { id: 2, type: "waiting" });
   assert.deepEqual(statusOf({ ...idle, conv: waiting }), { text: "Waiting for another session", tone: "busy" });
-  const approval = apply(busy, { id: 2, type: "approval", calls: [{ name: "terminal", args: {} }] });
+  const approval = apply(busy, { id: 2, type: "approval", calls: [{ name: "terminal", args: {} }], request: "r" });
   assert.deepEqual(statusOf({ ...idle, conv: approval }), { text: "Needs approval", tone: "approval" });
   assert.deepEqual(statusOf({ ...idle, conv: approval, handsFree: true }), {
     text: "Hands-free: Needs approval: say yes or no",
@@ -243,7 +259,7 @@ test("thinking: a running turn with no answer text yet", () => {
   assert.equal(isThinking(asked), true);
   assert.equal(isThinking(apply(asked, { id: 2, type: "token", text: "He" })), false);
   assert.equal(isThinking(apply(asked, { id: 2, type: "waiting" })), false);
-  assert.equal(isThinking(apply(asked, { id: 2, type: "approval", calls: [] })), false);
+  assert.equal(isThinking(apply(asked, { id: 2, type: "approval", calls: [], request: "r" })), false);
   assert.equal(isThinking(apply(asked, { id: 2, type: "done" })), false);
 });
 
@@ -251,7 +267,7 @@ test("thinking: after a tool approval the answer goes on, so no new placeholder"
   const conv = applyAll(emptyConversation(), [
     { id: 1, type: "user", text: "run it" },
     { id: 2, type: "token", text: "Running." },
-    { id: 3, type: "approval", calls: [] },
+    { id: 3, type: "approval", calls: [], request: "r" },
   ]);
   // Approved: the event that follows clears the approval while the turn goes on.
   const resumed = apply(conv, { id: 4, type: "token", text: " Done." });

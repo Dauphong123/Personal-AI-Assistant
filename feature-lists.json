@@ -1474,15 +1474,21 @@
             "tests/test_backend_server.py::SessionApiTests::test_approve_needs_a_request_id",
             "tests/test_backend_server.py::ApprovalApiTests::test_answer_needs_the_pending_request_id"
           ],
-          "commit": null,
+          "commit": "ebf4621",
           "date": "2026-11-19"
         },
         {
           "n": 2,
           "title": "Frontend keeps and sends the approval request id",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "webui/test/state.test.ts::approval is pending until the next event",
+            "webui/test/state.test.ts::each approval keeps its own request id",
+            "webui/test/state.test.ts::isChatEvent accepts known events and rejects junk",
+            "webui/test/api.test.ts::session actions post to their route"
+          ],
+          "commit": null,
+          "date": "2026-11-19"
         },
         {
           "n": 3,

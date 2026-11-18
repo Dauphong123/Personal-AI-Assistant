@@ -52,7 +52,7 @@ test("session actions post to their route", async () => {
   const api = new Api("tok", fakeFetch(200, { ok: true, session: info }, calls));
   const id = "abcdef012345";
   await api.send(id, "hello");
-  await api.approve(id, false);
+  await api.approve(id, false, "req1");
   await api.stop(id);
   await api.reset(id);
   await api.rename(id, "Name");
@@ -62,7 +62,7 @@ test("session actions post to their route", async () => {
     ["send", "approve", "stop", "reset", "rename", "delete"].map((action) => `/api/sessions/${id}/${action}`),
   );
   assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), { text: "hello" });
-  assert.deepEqual(JSON.parse(String(calls[1]?.init?.body)), { allow: false });
+  assert.deepEqual(JSON.parse(String(calls[1]?.init?.body)), { allow: false, request: "req1" });
   assert.deepEqual(JSON.parse(String(calls[4]?.init?.body)), { title: "Name" });
 });
 

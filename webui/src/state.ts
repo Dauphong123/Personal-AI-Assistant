@@ -14,26 +14,27 @@ export interface Conversation {
   readonly busy: boolean; // a turn is running (or waiting for the model)
   readonly waiting: boolean; // queued behind another session's turn
   readonly approval: readonly ToolCall[] | null; // tool calls waiting for allow/deny
+  readonly approvalRequest: string | null; // id of that request; the answer names it
   readonly lastEventId: number; // resume point for the event stream
   readonly gone: boolean; // the session was deleted
 }
 
 export function emptyConversation(): Conversation {
-  return { items: [], busy: false, waiting: false, approval: null, lastEventId: 0, gone: false };
+  return { items: [], busy: false, waiting: false, approval: null, approvalRequest: null, lastEventId: 0, gone: false };
 }
 
 /** The conversation after one event. Events at or before lastEventId are ignored, so a
  * replay after a reconnect changes nothing. */
 export function apply(conv: Conversation, event: ChatEvent): Conversation {
   if (event.type === "gone") {
-    return { ...conv, gone: true, busy: false, waiting: false, approval: null };
+    return { ...conv, gone: true, busy: false, waiting: false, approval: null, approvalRequest: null };
   }
 
   if (event.id <= conv.lastEventId) {
     return conv;
   }
 
-  const next = { ...conv, lastEventId: event.id, approval: null };
+  const next = { ...conv, lastEventId: event.id, approval: null, approvalRequest: null };
 
   switch (event.type) {
     case "user":
@@ -51,7 +52,7 @@ export function apply(conv: Conversation, event: ChatEvent): Conversation {
       return { ...next, items, waiting: false };
     }
     case "approval":
-      return { ...next, approval: event.calls, waiting: false };
+      return { ...next, approval: event.calls, approvalRequest: event.request, waiting: false };
     case "done":
       return { ...next, busy: false, waiting: false };
     case "cancelled":
@@ -126,7 +127,7 @@ export function isChatEvent(value: unknown): value is ChatEvent {
     case "error":
       return typeof value["text"] === "string";
     case "approval":
-      return Array.isArray(value["calls"]);
+      return Array.isArray(value["calls"]) && typeof value["request"] === "string";
     case "waiting":
     case "done":
     case "cancelled":
