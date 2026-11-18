@@ -13,7 +13,7 @@ python -m unittest discover -s tests -t .   # tests (Postgres test skipped if DB
 docker compose up -d                        # pgvector Postgres 17 (db agent_memory, user agent)
 ```
 
-CI: `.github/workflows/ci.yml` runs the unittest suite (Windows, `.venv` with `requirements.txt` + `requirements_voice.txt`, pyright, ripgrep, built `webui/`) and the `webui` check/test/build on every push and on PRs to `main`; no Ollama/Postgres/voice engines there. `main` is protected: `python` and `webui` must pass, linear history, no force push (fast-forward a green branch or merge the PR). Keep it in step with these commands (`tests/test_ci_workflow.py`).
+CI: `.github/workflows/ci.yml` runs the unittest suite (Windows, `.venv` with `requirements.txt` + `requirements_voice.txt` locked by `constraints.txt` (`pip freeze`; regenerate after changing requirements), pyright, ripgrep, built `webui/`) and the `webui` check/test/build on every push and on PRs to `main`; no Ollama/Postgres/voice engines there. `main` is protected: `python` and `webui` must pass, linear history, no force push (fast-forward a green branch or merge the PR). Keep it in step with these commands (`tests/test_ci_workflow.py`).
 
 Voice commands (`--voice`, `voice.enroll`, `voice.check`, voice engine tests): `voice/CLAUDE.md`.
 
@@ -46,6 +46,8 @@ Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama wit
 **Vietnamese.** `language.py` (`detect_language`, `say`, NFC `normalize`) is shared by `chat_loop.py`, `turns.py`, `voice/`. Prompts say to answer in the user's language. RAG embeddings are English-only (weak Vietnamese recall), so the code prompt says to search documents in English; memory embeddings are multilingual (`memories/CLAUDE.md`). Speech-language settings: `voice/CLAUDE.md`.
 
 **Hardening.** Job notices reach the model as a flagged, fenced message (`additional_kwargs["notice"]`); memory neither recalls for nor learns from them. `ChatLoop.close()` cancels; `wait_idle()` lets piped input finish. `JobManager.close()` kills running jobs; job output is a bounded tail. `save_memory` queues on `memories/scheduler.py` (one worker; starts after `MEMORY_IDLE_SECONDS` with no turn; `run_turn` cancels a running save, which retries; `wait_for_memory()` at exit runs the queue). `read_file`/`search_code` refuse credential files (`SECRET_FILE_PATTERNS`).
+
+**Settings and logs.** `dependency.py` runs `settings.check_settings` right after `load_dotenv` and exits with every bad value listed (MODEL, flags, numbers, `PROJECT_ROOT`, `LOG_LEVEL`); add new settings there. `log_setup.configure_logging` (both entry points): `LOG_LEVEL` for the console (default WARNING), `LOG_FILE` = rotating file at INFO; a crashing tool is logged at INFO. Pyright checks every file, tests included (`tests/test_typecheck.py`; fakes get typed or a file-level directive with its reason).
 
 **Adding a tool:** `@tool` in `tools.py` + add to `TOOLS` at the bottom (binding and dispatch derive from it); add a line in the code prompt in `chains/code_chain.py` (a test checks every tool named there exists); add to `NEEDS_APPROVAL` if it changes state or runs commands; file args go through `resolve_path()` (rejects paths outside `PROJECT_ROOT`).
 

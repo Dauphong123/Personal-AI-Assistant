@@ -653,7 +653,7 @@ python -m unittest tests.test_voice_engines
 
 `.github/workflows/ci.yml` (GitHub Actions) runs on every push to any branch and on pull requests to `main`; a newer push to the same branch cancels the older run.
 
-- **python** (Windows, Python 3.12): creates `.venv`, installs `requirements.txt`, `requirements_voice.txt` (so Pyright resolves the voice imports), `pyright` and ripgrep, builds `webui/`, then runs the full unittest suite (including the Pyright check). Postgres, voice-engine and memory-eval tests are skipped there.
+- **python** (Windows, Python 3.12): creates `.venv`, installs `requirements.txt`, `requirements_voice.txt` (so Pyright resolves the voice imports) with `-c constraints.txt`, `pyright` and ripgrep, builds `webui/`, then runs the full unittest suite (including the Pyright check). Postgres, voice-engine and memory-eval tests are skipped there.
 - **webui** (Ubuntu, Node 24): `npm ci`, `npm run check`, `npm test`, `npm run build`.
 
 `tests/test_ci_workflow.py` keeps the workflow in step with these commands.

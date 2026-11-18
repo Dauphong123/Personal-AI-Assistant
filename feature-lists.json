@@ -1208,13 +1208,38 @@
       "id": "F026",
       "name": "Production hardening",
       "description": "Raise the app to production quality: typed tests, logging, backend health/shutdown, config validation, packaging, flaky test fix.",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-18",
-      "completed": null,
+      "completed": "2026-11-18",
       "branch": "feature/F026-production-hardening",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "77ebf5c",
+      "files": [
+        "log_setup.py",
+        "settings.py",
+        "constraints.txt",
+        "backend/server.py",
+        "backend/__main__.py",
+        "dependency.py",
+        "graph/node.py",
+        "memories/scheduler.py",
+        "memories/extractor.py",
+        "memories/store.py",
+        "main.py",
+        ".github/workflows/ci.yml",
+        ".env.example",
+        ".gitignore",
+        "README.md",
+        "tests/"
+      ],
+      "tests": [
+        "tests/test_typecheck.py",
+        "tests/test_log_setup.py",
+        "tests/test_settings.py",
+        "tests/test_backend_server.py::RobustnessTests",
+        "tests/test_backend_main.py::StopSignalTests",
+        "tests/test_ci_workflow.py::ConstraintsTests",
+        "tests/test_backend_voice.py::VoiceRouteTests"
+      ],
       "steps": [
         {
           "n": 1,
@@ -1283,7 +1308,7 @@
             "tests/test_backend_voice.py::VoiceRouteTests::test_transcribe_size_limits (no longer flaky: 3 full runs green)",
             "tests/test_backend_voice.py::VoiceRouteTests::test_a_recording_just_over_the_limit_is_drained_so_the_413_arrives"
           ],
-          "commit": null,
+          "commit": "77ebf5c",
           "date": "2026-11-18"
         }
       ],
