@@ -13,7 +13,7 @@ python -m unittest discover -s tests -t .   # tests (Postgres test skipped if DB
 docker compose up -d                        # pgvector Postgres 17 (db agent_memory, user agent)
 ```
 
-CI: `.github/workflows/ci.yml` runs the unittest suite (Windows, `.venv` with `requirements.txt` + `requirements_voice.txt`, pyright, ripgrep, built `webui/`) and the `webui` check/test/build on every push and on PRs to `main`; no Ollama/Postgres/voice engines there. Keep it in step with these commands (`tests/test_ci_workflow.py`).
+CI: `.github/workflows/ci.yml` runs the unittest suite (Windows, `.venv` with `requirements.txt` + `requirements_voice.txt`, pyright, ripgrep, built `webui/`) and the `webui` check/test/build on every push and on PRs to `main`; no Ollama/Postgres/voice engines there. `main` is protected: `python` and `webui` must pass, linear history, no force push (fast-forward a green branch or merge the PR). Keep it in step with these commands (`tests/test_ci_workflow.py`).
 
 Voice commands (`--voice`, `voice.enroll`, `voice.check`, voice engine tests): `voice/CLAUDE.md`.
 

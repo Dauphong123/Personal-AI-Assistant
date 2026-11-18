@@ -13,7 +13,7 @@ Tags: **[verified]** checked in code/tests/docs (cite where) · **[assumed]** be
 
 ## Decisions
 Format: `date — decision — why — alternatives rejected`.
-- 2026-11-18 — F024 CI: GitHub Actions `.github/workflows/ci.yml`, every push + PRs to `main`; `python` job on windows-latest in a real `.venv` with `requirements.txt` + `requirements_voice.txt` (Pyright needs the voice imports) + pyright + ripgrep + built `webui/`; `webui` job on Ubuntu (check/test/build) — no CD (local app, nothing to deploy); branch protection and a `dist` artifact not added (not approved) — Ubuntu for the Python job rejected (WinDLL, `.venv\Scripts` paths); skipping Pyright in CI rejected.
+- 2026-11-18 — F024 CI: GitHub Actions `.github/workflows/ci.yml`, every push + PRs to `main`; `python` job on windows-latest in a real `.venv` with `requirements.txt` + `requirements_voice.txt` (Pyright needs the voice imports) + pyright + ripgrep + built `webui/`; `webui` job on Ubuntu (check/test/build) — no CD (local app, nothing to deploy); `main` protected (user approved): required checks `python` + `webui`, branch up to date, linear history, no force push/deletion, applies to admins, no review requirement (solo); a `dist` artifact not added — Ubuntu for the Python job rejected (WinDLL, `.venv\Scripts` paths); skipping Pyright in CI rejected.
 - 2026-11-17 — Instructions split: root `CLAUDE.md` + `voice/CLAUDE.md` + `memories/CLAUDE.md` + skills; roles are skills — keeps always-loaded context small; solo project needs no agent fleet.
 
 - 2026-11-17 — Removed dead `app.py`, `chains/rag_chain.py`, `data/rag_data.py` (no references outside each other; RAG is the `search_document` tool) — less misleading code — keeping them rejected.
