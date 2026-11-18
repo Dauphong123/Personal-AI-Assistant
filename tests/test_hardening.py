@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from tests import stubs
 
@@ -236,7 +236,7 @@ class BackgroundMemoryTests(unittest.TestCase):
             saved.append((list(messages), thread_id))
 
         manager = SimpleNamespace(remember=remember)
-        messages = [HumanMessage(content="remember I like tabs")]
+        messages: list[BaseMessage] = [HumanMessage(content="remember I like tabs")]
 
         with patch.dict(node.dependency, {"memory": manager}):
             started = time.monotonic()

@@ -1203,6 +1203,66 @@
         }
       ],
       "notes": "Branched from feature/F024-ci (not yet in main) so feature-lists.json and CI stay in step. Approved 2026-11-18 (user: do every step, tests for each). Measured: 8b 5.4-6.2 tok/s, 4b 14.2 tok/s, router 3.0 s, memory extraction 32 s, model reload ~8 s, prompt re-read ~8 s/3.7k tokens, cancelled Ollama request frees it in 1.7 s. Results: memory change 0.7 s vs 8.0 s prompt; extraction cancelled in 3.1 s (next call 1.0 s) instead of blocking up to 32 s; router rule 0.00 s vs 1.8-3 s; qwen3:4b eval tools 6/8 in 428 s so default stays qwen3:8b. Pre-existing flaky test: test_backend_voice test_transcribe_size_limits."
+    },
+    {
+      "id": "F026",
+      "name": "Production hardening",
+      "description": "Raise the app to production quality: typed tests, logging, backend health/shutdown, config validation, packaging, flaky test fix.",
+      "status": "in_progress",
+      "created": "2026-11-18",
+      "completed": null,
+      "branch": "feature/F026-production-hardening",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {
+          "n": 1,
+          "title": "Type-check tests/ with Pyright (fix test errors, CI covers tests)",
+          "status": "done",
+          "tests": [
+            "tests/test_typecheck.py::TypeCheckTests::test_no_type_errors (all files, PENDING removed)"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
+        },
+        {
+          "n": 2,
+          "title": "Central logging setup + audit swallowed exceptions",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "Backend hardening: /healthz, structured errors, graceful shutdown",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 4,
+          "title": "Startup config validation for .env values",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 5,
+          "title": "Packaging: pyproject.toml, pinned lockfile, README run/troubleshoot",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 6,
+          "title": "Root-cause flaky test_transcribe_size_limits",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        }
+      ],
+      "notes": "Branched from feature/F025-graph-speed (F024/F025 not yet in main). Plan approved 2026-11-18 (user: Start)."
     }
   ]
 }

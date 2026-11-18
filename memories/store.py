@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any, cast
 
-from sqlalchemy import delete, select
+from sqlalchemy import CursorResult, delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from retrieval import BM25, reciprocal_rank_fusion
@@ -178,7 +179,7 @@ class MemoryStore:
             return 0
 
         with self._session_factory() as session, session.begin():
-            result = session.execute(delete(SemanticMemory).where(SemanticMemory.id.in_(ids)))
+            result = cast(CursorResult[Any], session.execute(delete(SemanticMemory).where(SemanticMemory.id.in_(ids))))
 
         return result.rowcount
 
@@ -240,7 +241,7 @@ class MemoryStore:
         limits only the vector side."""
         vector = self._embed(query)
 
-        def top(session: Session, model, count: int = limit):
+        def top(session: Session, model, count: int = limit) -> list[Any]:
             distance = model.embedding.cosine_distance(vector)
             stmt = (
                 select(model)

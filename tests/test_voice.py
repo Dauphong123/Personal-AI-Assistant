@@ -4,7 +4,9 @@ component is a fake, and the real ChatLoop + graph are used where the agent matt
 import threading
 import time
 import unittest
+from collections.abc import Callable
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import patch
 
 import numpy as np
@@ -20,6 +22,7 @@ from chat_loop import ChatLoop
 from graph import ModelGraph, node
 from jobs import JobManager
 from voice.assistant import (
+    ChatPort,
     InvalidTransition,
     VoiceAssistant,
     VoiceState,
@@ -151,8 +154,12 @@ class FakeChat:
     def __init__(self):
         self.submitted = []
         self.busy = False
-        self.pending_approval = None
-        self.on_reply = None
+        self.pending_approval: dict | None = None
+        # Set by VoiceAssistant (ChatPort); typed so tests can call them.
+        self.on_reply: Callable[[str], None] = lambda _text: None
+        self.on_speech: Callable[[str], None] = lambda _text: None
+        self.on_cancel: Callable[[], None] = lambda: None
+        self.speech_limit = 0
         self.quit = False
 
     def submit(self, line):
@@ -172,7 +179,7 @@ class VoiceTestCase(unittest.TestCase):
         self.shown = []
         config = VoiceConfig(wake_word=wake_word, stt_language=language)
         self.assistant = VoiceAssistant(
-            self.chat, self.mic, self.detector, self.recorder, self.transcriber,
+            cast(ChatPort, self.chat), self.mic, self.detector, self.recorder, self.transcriber,
             self.speaker, config, show=self.shown.append, sleep=lambda s: None, playback_grace=0,
             verifier=verifier,
         )  # fmt: skip

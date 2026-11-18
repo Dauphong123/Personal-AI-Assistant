@@ -307,7 +307,7 @@ class ModelDownloadTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.directory = Path(self._tmp.name) / "speaker"
 
-    def download(self, data, length="same", timeout_seen=None):
+    def download(self, data, length: int | str | None = "same", timeout_seen=None):
         length = len(data) if length == "same" else length
         seen = timeout_seen if timeout_seen is not None else []
 

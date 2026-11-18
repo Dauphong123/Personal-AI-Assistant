@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from langchain_core.runnables import RunnableLambda
+from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langgraph.checkpoint.memory import InMemorySaver
 
 from tests import stubs
@@ -211,7 +211,7 @@ class RealGraphTurnTests(unittest.TestCase):
             self.addCleanup(p.stop)
 
         self.app = ModelGraph.compile(checkpointer=InMemorySaver())
-        self.config = {"configurable": {"thread_id": "t"}}
+        self.config: RunnableConfig = {"configurable": {"thread_id": "t"}}
 
     def run_turn(self, text, cancel=None):
         out = []

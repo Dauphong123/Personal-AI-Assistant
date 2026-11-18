@@ -16,9 +16,9 @@ MAX_TOOL_OUTPUT_CHARS = 300
 
 class Episode(BaseModel):
     event: str = Field(description="One or two sentences on what happened in this turn")
-    task: str | None = Field(None, description="The task the user wanted done")
-    outcome: str | None = Field(None, description="How it ended: success, failure, partial")
-    importance: float = Field(0.5, ge=0, le=1, description="0 = trivial, 1 = very important")
+    task: str | None = Field(default=None, description="The task the user wanted done")
+    outcome: str | None = Field(default=None, description="How it ended: success, failure, partial")
+    importance: float = Field(default=0.5, ge=0, le=1, description="0 = trivial, 1 = very important")
 
 
 FactCategory = Literal["user_profile", "user_preference", "environment", "project", "general"]
@@ -28,7 +28,7 @@ FACT_CATEGORIES: tuple[str, ...] = get_args(FactCategory)
 class Fact(BaseModel):
     fact: str = Field(description="A self-contained, durable statement of fact")
     category: FactCategory = Field(
-        "general",
+        default="general",
         description="user_profile (who the user is), user_preference, environment (the user's "
         "machine and tools), project, or general",
     )
@@ -43,7 +43,7 @@ class Fact(BaseModel):
 class Procedure(BaseModel):
     task: str = Field(description="What this procedure accomplishes, phrased as a goal")
     steps: list[str] = Field(description="Ordered, concrete steps that worked")
-    notes: str | None = Field(None, description="Pitfalls or conditions worth remembering")
+    notes: str | None = Field(default=None, description="Pitfalls or conditions worth remembering")
 
 
 class MemoryExtraction(BaseModel):

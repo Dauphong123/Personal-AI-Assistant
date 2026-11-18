@@ -1,3 +1,7 @@
+# The manager tests pass small duck-typed fakes (stores, extractors, rows) where the code
+# expects MemoryStore / MemoryExtractor / ORM rows; the tests themselves check the behavior.
+# pyright: reportArgumentType=false
+
 import hashlib
 import os
 import random

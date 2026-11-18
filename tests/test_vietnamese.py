@@ -6,6 +6,7 @@ import unicodedata
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import numpy as np
@@ -205,7 +206,7 @@ class LanguageChoiceTests(unittest.TestCase):
     AUDIO = np.zeros(16000, dtype=np.int16)
 
     def transcriber(self, languages, odds=()):
-        stt = FasterWhisperTranscriber.__new__(FasterWhisperTranscriber)  # skip loading the model
+        stt: Any = FasterWhisperTranscriber.__new__(FasterWhisperTranscriber)  # skip loading the model; holds a fake model
         stt.candidates = languages
         stt.language = languages[0] if len(languages) == 1 else None
         stt._model = FakeWhisper(list(odds))

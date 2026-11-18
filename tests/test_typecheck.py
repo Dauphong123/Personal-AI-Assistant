@@ -1,8 +1,5 @@
-"""Pyright (installed in .venv, configured by pyrightconfig.json) reports no errors.
-
-PENDING lists files that still carry uncommitted work from before 2026-11-17 (see
-docs/PROJECT.md, Open questions). Their type errors are left for whoever commits that work;
-take a file off the list once it is committed and clean. Everything else is checked."""
+"""Pyright (installed in .venv, configured by pyrightconfig.json) reports no errors in any
+Python file of the project, tests included."""
 
 import json
 import shutil
@@ -14,21 +11,6 @@ ROOT = Path(__file__).resolve().parent.parent
 PYRIGHT = ROOT / ".venv" / "Scripts" / "pyright.exe"
 SKIP_DIRS = {".venv", "node_modules", "chroma_db", "__pycache__", ".git", "dist"}
 
-PENDING = {
-    "memories/store.py",
-    "tests/test_chat_loop.py",
-    "tests/test_graph.py",
-    "tests/test_hardening.py",
-    "tests/test_memory.py",
-    "tests/test_speaker.py",
-    "tests/test_streaming_speech.py",
-    "tests/test_vietnamese.py",
-    "tests/test_voice.py",
-    "tests/test_voice_engines.py",
-    "tests/test_voice_hardening.py",
-    "tests/test_voice_parts.py",
-}
-
 
 def python_files() -> list[str]:
     files = []
@@ -36,9 +18,7 @@ def python_files() -> list[str]:
         relative = path.relative_to(ROOT)
         if SKIP_DIRS.intersection(relative.parts):
             continue
-        name = relative.as_posix()
-        if name not in PENDING:
-            files.append(name)
+        files.append(relative.as_posix())
     return sorted(files)
 
 
@@ -54,15 +34,12 @@ class TypeCheckTests(unittest.TestCase):
         config = json.loads((ROOT / "pyrightconfig.json").read_text(encoding="utf-8"))
         self.assertEqual((config["venvPath"], config["venv"]), (".", ".venv"))
 
-    def test_pending_files_still_exist(self):
-        for name in PENDING:
-            self.assertTrue((ROOT / name).is_file(), f"{name} is gone: drop it from PENDING")
-
     def test_no_type_errors(self):
         exe = pyright_executable()
         assert exe is not None
         files = python_files()
         self.assertIn("backend/server.py", files)
+        self.assertIn("tests/test_memory.py", files)
         result = subprocess.run(
             [exe, "--outputjson", *files],
             cwd=ROOT,

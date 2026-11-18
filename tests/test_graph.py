@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -118,13 +119,17 @@ class SummarizeTests(unittest.TestCase):
         )
 
     def test_old_turns_summarized_and_last_turn_kept_intact_and_in_order(self):
-        seen = {}
-        chain = RunnableLambda(lambda x: seen.update(x) or "SUMMARY")
+        seen: dict[str, Any] = {}
+        def capture(x: dict[str, Any]) -> str:
+            seen.update(x)
+            return "SUMMARY"
+
+        chain = RunnableLambda(capture)
         messages = self.history()
         with patch.object(node, "summerize_chain", chain):
             update = node.summarize({"messages": messages})  # type: ignore[arg-type]
 
-        result = add_messages(messages, update["messages"])
+        result: list[Any] = add_messages(messages, update["messages"])  # type: ignore[assignment]
         self.assertEqual(
             [m.content for m in result][:2],
             ["Summary of the earlier conversation:\nSUMMARY", "q2"],
@@ -141,10 +146,12 @@ class SummarizeTests(unittest.TestCase):
 
 class RouterTests(unittest.TestCase):
     def test_router_passes_recent_history(self):
-        seen = {}
-        chain = RunnableLambda(
-            lambda x: seen.update(x) or SimpleNamespace(destination="code")
-        )
+        seen: dict[str, Any] = {}
+        def capture(x: dict[str, Any]) -> SimpleNamespace:
+            seen.update(x)
+            return SimpleNamespace(destination="code")
+
+        chain = RunnableLambda(capture)
         messages = add_messages(
             [],
             [

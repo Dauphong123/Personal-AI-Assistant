@@ -5,6 +5,10 @@ VAD, recorder and Whisper through the real VoiceAssistant, ChatLoop and graph. O
 microphone and the loudspeaker are fake. The first run downloads about 200 MB of models.
 """
 
+# The engine imports run only when the optional voice packages are installed (AVAILABLE),
+# and every test using them is skipped otherwise.
+# pyright: reportPossiblyUnboundVariable=false
+
 import os
 import threading
 import unittest
@@ -50,8 +54,8 @@ class RecordingPlayer:
     def __init__(self):
         self.clips = []
 
-    def play(self, samples, rate, should_stop=lambda: False):
-        self.clips.append(len(samples) / rate)
+    def play(self, samples, sample_rate, should_stop=lambda: False):
+        self.clips.append(len(samples) / sample_rate)
 
     def close(self):
         pass

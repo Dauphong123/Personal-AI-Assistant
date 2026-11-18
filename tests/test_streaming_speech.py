@@ -26,7 +26,7 @@ from tests.test_voice import SPEECH, WAKE, FakeChat, VoiceTestCase
 from turns import SpeechStream, TurnCancelled
 
 
-def chunk(text, id="m1", tool_call_chunks=()):
+def chunk(text, id: str | None = "m1", tool_call_chunks=()):
     return SimpleNamespace(id=id, content=text, tool_call_chunks=list(tool_call_chunks))
 
 
@@ -256,7 +256,10 @@ class RealGraphSpeechTests(unittest.TestCase):
             pieces=["First sentence. ", "Second ", "sentence. ", "Third sentence."],
             finished=self.model_finished,
         )
-        node_chain = RunnableLambda(lambda inputs, config: model.invoke(inputs["messages"], config))
+        def node_chain_call(inputs: dict, config):
+            return model.invoke(inputs["messages"], config)
+
+        node_chain = RunnableLambda(node_chain_call)
 
         with patch.object(node, "code_chain", node_chain):
             heard = []
@@ -382,6 +385,7 @@ class VoiceStreamingTests(VoiceTestCase):
         chat = FakeChat()
         chat.busy = True
         self.build(frames=[WAKE], audios=[SPEECH], texts=["Jarvis, stop"], chat=chat)
+        assert self.assistant.chat.on_speech is not None
         chat.on_speech = self.assistant.chat.on_speech
         self.run_until(lambda: chat.submitted)
         self.assertEqual(chat.submitted, ["stop"])

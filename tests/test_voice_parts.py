@@ -2,6 +2,7 @@
 
 import threading
 import unittest
+from collections.abc import Callable
 
 import numpy as np
 
@@ -110,7 +111,7 @@ class CommandRecorderTests(unittest.TestCase):
     def test_records_until_silence_after_speech(self):
         mic = ScriptedMic([QUIET, LOUD, LOUD, *[QUIET] * 6, LOUD])
         audio = self.recorder().record(mic)
-        self.assertIsNotNone(audio)
+        assert audio is not None
         # 1 lead-in frame + 2 speech + 5 silent frames (0.4 s >= 0.35 s); the later speech is left alone
         self.assertEqual(len(audio) // FRAME_SAMPLES, 8)
         self.assertEqual(len(mic.frames), 2)
@@ -122,12 +123,14 @@ class CommandRecorderTests(unittest.TestCase):
     def test_preroll_speech_is_kept(self):
         recorder = self.recorder()
         audio = recorder.record(ScriptedMic([LOUD, QUIET, QUIET, QUIET, QUIET, QUIET]), preroll=[LOUD, LOUD])
+        assert audio is not None
         self.assertGreaterEqual(int(np.count_nonzero(audio[::FRAME_SAMPLES])), 3)
 
     def test_max_duration_ends_a_long_recording(self):
         recorder = self.recorder()
         frames = [LOUD] * 100
         audio = recorder.record(ScriptedMic(frames), max_duration=1.0)
+        assert audio is not None
         self.assertLessEqual(len(audio) / 16000, 1.0 + 2 * FRAME_SECONDS)
 
     def test_stop_request_aborts_listening(self):
@@ -138,6 +141,7 @@ class CommandRecorderTests(unittest.TestCase):
 
     def test_stalled_stream_after_speech_returns_what_was_heard(self):
         audio = self.recorder().record(ScriptedMic([LOUD, LOUD]))
+        assert audio is not None
         self.assertEqual(len(audio) // FRAME_SAMPLES, 2)
 
 
@@ -161,9 +165,9 @@ class FakePlayer:
         self.closed = 0
         self.active = 0
         self.max_active = 0
-        self.during_play = None  # callback run in the middle of the first clip
+        self.during_play: Callable[[], None] | None = None  # callback run in the middle of the first clip
 
-    def play(self, samples, rate, should_stop=lambda: False):
+    def play(self, samples, sample_rate, should_stop=lambda: False):
         self.active += 1
         self.max_active = max(self.max_active, self.active)
 
@@ -171,7 +175,7 @@ class FakePlayer:
             self.during_play()
 
         if not should_stop():
-            self.played.append((int(samples[0]), rate))
+            self.played.append((int(samples[0]), sample_rate))
 
         self.active -= 1
 
