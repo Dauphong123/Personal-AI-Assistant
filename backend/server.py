@@ -49,7 +49,10 @@ PROTOCOL = 1
 SERVER_NAME = "coding-assistant"
 MAX_BODY = 64 * 1024
 MAX_AUDIO = 4 * 1024 * 1024  # one push-to-talk recording (compressed browser audio)
-DISCARD_LIMIT = 1024 * 1024  # how much of a refused body is read so the client sees our answer
+# How much of a refused body is read so the client sees our answer (closing with unread data
+# makes Windows reset the connection). Covers a recording just over MAX_AUDIO; anything larger
+# is answered and closed without reading it all.
+DISCARD_LIMIT = 2 * MAX_AUDIO
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost"}
 KEEPALIVE_SECONDS = 10
 # A socket read or write that stalls this long ends the connection (idle keep-alive, slow

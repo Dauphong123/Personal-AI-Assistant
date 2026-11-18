@@ -1271,16 +1271,20 @@
             "tests/test_ci_workflow.py::WorkflowTests::test_pip_cache_follows_the_lock",
             "tests/test_ci_workflow.py::WorkflowTests::test_ci_pyright_matches_the_lock"
           ],
-          "commit": null,
+          "commit": "cd9ad81",
           "date": "2026-11-18",
           "notes": "pyproject.toml dropped: the app is run from the repo as flat modules, never installed. README already had run/troubleshooting sections."
         },
         {
           "n": 6,
           "title": "Root-cause flaky test_transcribe_size_limits",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_backend_voice.py::VoiceRouteTests::test_transcribe_size_limits (no longer flaky: 3 full runs green)",
+            "tests/test_backend_voice.py::VoiceRouteTests::test_a_recording_just_over_the_limit_is_drained_so_the_413_arrives"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         }
       ],
       "notes": "Branched from feature/F025-graph-speed (F024/F025 not yet in main). Plan approved 2026-11-18 (user: Start)."

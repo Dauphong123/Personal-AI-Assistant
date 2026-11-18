@@ -11,7 +11,7 @@ from tests import stubs
 
 stubs.install()
 
-from backend.server import MAX_AUDIO, PROTOCOL, make_server  # noqa: E402
+from backend.server import DISCARD_LIMIT, MAX_AUDIO, PROTOCOL, make_server  # noqa: E402
 from backend.sessions import SessionManager  # noqa: E402
 from backend.voice import WebVoice  # noqa: E402
 from tests.test_backend_server import TOKEN, ServerCase  # noqa: E402
@@ -147,6 +147,11 @@ class VoiceRouteTests(ServerCase):
     def test_transcribe_size_limits(self):
         self.assertEqual(self.post_audio(data=b"")[0], 400)
         self.assertEqual(self.post_audio(data=b"x" * (MAX_AUDIO + 1))[0], 413)
+
+    def test_a_recording_just_over_the_limit_is_drained_so_the_413_arrives(self):
+        # The server answers 413 and closes; unread body bytes make Windows reset the
+        # connection and the client lost the 413 (25 of 300 tries with a 1 MB drain).
+        self.assertGreater(DISCARD_LIMIT, MAX_AUDIO)
 
     def test_transcribe_needs_token_and_origin(self):
         self.assertEqual(self.post_audio(token=False)[0], 401)
