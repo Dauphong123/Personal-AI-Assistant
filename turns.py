@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
 from language import detect_language, normalize, say
+from memories.scheduler import MEMORY_SCHEDULER
 
 STREAMED_NODES = {"direct", "code_tools", "tool_execute"}
 # Only these produce text meant for the user; tool_execute streams raw tool output.
@@ -247,6 +248,15 @@ def run_turn(
     `notice` marks the message as a system notice (a finished background job), not something
     the user said; memory skips such turns.
     """
+    # A turn pauses background memory saves: they share the one Ollama model with it.
+    MEMORY_SCHEDULER.turn_started()
+    try:
+        return _run_turn(app, query, config, on_text, approve, cancel, on_speech, speech_limit, notice)
+    finally:
+        MEMORY_SCHEDULER.turn_finished()
+
+
+def _run_turn(app, query, config, on_text, approve, cancel, on_speech, speech_limit, notice) -> bool:
     cancel = cancel or threading.Event()
     speech = SpeechStream(on_speech, speech_limit) if on_speech else None
     repair_dangling_tool_calls(app, config)

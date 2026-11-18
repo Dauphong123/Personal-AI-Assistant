@@ -1103,9 +1103,14 @@
         {
           "n": 4,
           "title": "Memory extraction waits for idle and is cancelled when a turn starts",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_graph_speed.py::MemorySchedulerTests (5)",
+            "tests/test_graph_speed.py::CancellableExtractionTests (4)",
+            "real Ollama: cancelled at 3.1 s, next call 1.0 s"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 5,

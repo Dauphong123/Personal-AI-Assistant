@@ -1,6 +1,9 @@
 """F025: faster graph turns (timing log, context fitting, memory scheduling, routing)."""
 
+import asyncio
 import logging
+import threading
+import time
 import unittest
 from types import SimpleNamespace
 
@@ -175,6 +178,157 @@ class SummaryModelTests(unittest.TestCase):
     def test_blank_setting_means_the_main_model(self):
         main = SimpleNamespace(model_copy=lambda update: "main")
         self.assertEqual(self.module.summary_model({"SUMMARY_MODEL": "  "}, main), "main")
+
+
+class MemorySchedulerTests(unittest.TestCase):
+    """Extraction costs ~32 s on qwen3:8b and Ollama runs one generation at a time, so a save
+    must not hold up the next turn: it waits for idle and is cancelled when a turn starts."""
+
+    def scheduler(self, idle=0.05):
+        from memories.scheduler import MemoryScheduler
+
+        scheduler = MemoryScheduler(idle_seconds=idle)
+        self.addCleanup(scheduler.wait, 5)
+        return scheduler
+
+    def test_a_save_waits_until_the_turn_is_over_and_the_chat_is_idle(self):
+        scheduler = self.scheduler(idle=0.2)
+        saved = threading.Event()
+        manager = SimpleNamespace(remember=lambda messages, thread_id=None, cancel=None: saved.set())
+
+        scheduler.turn_started()
+        scheduler.submit(manager, ["m"], "t")
+        self.assertFalse(saved.wait(0.3), "no save while a turn runs")
+
+        scheduler.turn_finished()
+        self.assertFalse(saved.wait(0.1), "no save right after the turn")
+        self.assertTrue(saved.wait(2))
+
+    def test_a_new_turn_cancels_the_running_save_and_it_is_retried_later(self):
+        from memories.extractor import MemoryCancelled
+
+        scheduler = self.scheduler()
+        attempts, running, done = [], threading.Event(), threading.Event()
+
+        def remember(messages, thread_id=None, cancel=None):
+            attempts.append(1)
+            running.set()
+            if len(attempts) == 1:
+                assert cancel is not None and cancel.wait(5), "the turn must cancel the save"
+                raise MemoryCancelled()
+            done.set()
+
+        scheduler.submit(SimpleNamespace(remember=remember), ["m"], "t")
+        self.assertTrue(running.wait(2))
+        scheduler.turn_started()
+        time.sleep(0.2)
+        self.assertEqual(len(attempts), 1, "no retry while the turn runs")
+        scheduler.turn_finished()
+
+        self.assertTrue(done.wait(2))
+        self.assertEqual(len(attempts), 2)
+
+    def test_waiting_at_exit_does_not_wait_for_idle(self):
+        scheduler = self.scheduler(idle=60)
+        saved = []
+        scheduler.turn_started()
+        scheduler.turn_finished()
+        scheduler.submit(SimpleNamespace(remember=lambda messages, thread_id=None, cancel=None: saved.append(1)), [], None)
+
+        self.assertTrue(scheduler.wait(5))
+        self.assertEqual(saved, [1])
+
+    def test_a_failing_save_is_logged(self):
+        scheduler = self.scheduler()
+
+        def remember(messages, thread_id=None, cancel=None):
+            raise RuntimeError("database down")
+
+        with self.assertLogs("memories.scheduler", level="WARNING") as logged:
+            scheduler.submit(SimpleNamespace(remember=remember), [], None)
+            self.assertTrue(scheduler.wait(5))
+
+        self.assertIn("Saving memory failed", logged.output[0])
+
+    def test_run_turn_marks_the_turn_even_when_it_fails(self):
+        import turns
+
+        calls = []
+        fake = SimpleNamespace(turn_started=lambda: calls.append("start"), turn_finished=lambda: calls.append("end"))
+        app = SimpleNamespace(get_state=lambda config: (_ for _ in ()).throw(RuntimeError("boom")))
+
+        with patch.object(turns, "MEMORY_SCHEDULER", fake), self.assertRaises(RuntimeError):
+            turns.run_turn(app, "hi", {}, on_text=lambda t: None, approve=lambda p: True)
+
+        self.assertEqual(calls, ["start", "end"])
+
+
+class CancellableExtractionTests(unittest.TestCase):
+    def test_cancel_stops_the_model_call(self):
+        from memories.extractor import MemoryCancelled, invoke_cancellable
+
+        stopped = threading.Event()
+
+        async def slow(inputs):
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                stopped.set()
+                raise
+
+        cancel = threading.Event()
+        threading.Timer(0.1, cancel.set).start()
+        started = time.monotonic()
+
+        with self.assertRaises(MemoryCancelled):
+            invoke_cancellable(RunnableLambda(lambda x: x, afunc=slow), {}, cancel)
+
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertTrue(stopped.is_set(), "the request itself is cancelled (Ollama then stops)")
+
+    def test_without_cancel_it_is_a_normal_call(self):
+        from memories.extractor import invoke_cancellable
+
+        def add_one(x: int) -> int:
+            return x + 1
+
+        self.assertEqual(invoke_cancellable(RunnableLambda(add_one), 1, None), 2)
+        self.assertEqual(invoke_cancellable(RunnableLambda(add_one), 1, threading.Event()), 2)
+
+    def test_calls_on_one_thread_share_an_open_event_loop(self):
+        """ChatOllama keeps its async HTTP client (and pooled connections) from the first call;
+        with a fresh, closed loop per call the second save failed with "Event loop is closed"."""
+        from memories.extractor import invoke_cancellable
+
+        loops = []
+
+        async def record(inputs):
+            loops.append(asyncio.get_running_loop())
+            return inputs
+
+        chain = RunnableLambda(lambda x: x, afunc=record)
+        invoke_cancellable(chain, 1, threading.Event())
+        invoke_cancellable(chain, 2, threading.Event())
+
+        self.assertIs(loops[0], loops[1])
+        self.assertFalse(loops[0].is_closed())
+
+    def test_manager_hands_the_cancel_event_to_the_extractor(self):
+        from memories.extractor import MemoryExtraction
+        from memories.manager import MemoryManager
+
+        seen = {}
+
+        def extract(messages, known=(), cancel=None):
+            seen["cancel"] = cancel
+            return MemoryExtraction()
+
+        store = SimpleNamespace(search=lambda *a, **k: SimpleNamespace(facts=[]), delete_facts=lambda ids: None)
+        cancel = threading.Event()
+        MemoryManager(store, SimpleNamespace(extract=extract)).remember(  # type: ignore[arg-type]
+            [HumanMessage(content="I use Vim")], cancel=cancel
+        )
+        self.assertIs(seen["cancel"], cancel)
 
 
 if __name__ == "__main__":

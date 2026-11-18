@@ -3,8 +3,6 @@ import json
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeout
 from uuid import uuid4
 
 from langchain_core.messages import (
@@ -22,6 +20,7 @@ from data.state import State
 from dependency import dependency
 from llm_options import _flag, ollama_options
 from memories.manager import memory_query
+from memories.scheduler import MEMORY_SCHEDULER
 from tools import NEEDS_APPROVAL, TOOL_BY_NAME
 
 logger = logging.getLogger(__name__)
@@ -193,37 +192,21 @@ def recall_memory(state: State):
     return {"memory_context": context}
 
 
-# Learning from a turn costs a whole extra model call, so it runs in the background: the turn
-# ends (and the next message can start) without waiting for it. One worker keeps saves in order.
-_memory_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="memory")
-
-
-def _remember(manager, messages, thread_id) -> None:
-    try:
-        manager.remember(messages, thread_id=thread_id)
-    except Exception:
-        logger.warning("Saving memory failed", exc_info=True)
-
-
 @timed
 def save_memory(state: State, config: RunnableConfig):
+    """Queue learning from this turn; `memories.scheduler` runs it when the chat is idle."""
     manager = dependency.get("memory")
 
     if manager is not None:
         thread_id = config.get("configurable", {}).get("thread_id")
-        _memory_pool.submit(_remember, manager, list(state["messages"]), thread_id)
+        MEMORY_SCHEDULER.submit(manager, list(state["messages"]), thread_id)
 
     return {}
 
 
 def wait_for_memory(timeout: float = 60) -> bool:
-    """Let saves that are still running finish (call before the program exits)."""
-    try:
-        _memory_pool.submit(lambda: None).result(timeout=timeout)  # queued behind earlier saves
-        return True
-    except FutureTimeout:
-        logger.warning("Memory is still being saved; exiting without waiting longer")
-        return False
+    """Let saves that are still queued or running finish (call before the program exits)."""
+    return MEMORY_SCHEDULER.wait(timeout)
 
 
 @timed

@@ -1,4 +1,6 @@
+import asyncio
 import re
+import threading
 import unicodedata
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -190,6 +192,52 @@ def is_trivial_turn(messages: list) -> bool:
     return not used_tools and all(word in TRIVIAL_WORDS for word in words)
 
 
+class MemoryCancelled(Exception):
+    """A memory save gave way to a new turn; it is retried later."""
+
+
+_thread_loops = threading.local()
+
+
+def _thread_loop() -> asyncio.AbstractEventLoop:
+    """One event loop per thread, kept open: ChatOllama reuses the async HTTP client (and its
+    pooled connections) from its first call, which fails once that call's loop is closed."""
+    loop = getattr(_thread_loops, "loop", None)
+
+    if loop is None or loop.is_closed():
+        loop = _thread_loops.loop = asyncio.new_event_loop()
+
+    return loop
+
+
+def invoke_cancellable(chain, inputs, cancel: threading.Event | None):
+    """`chain.invoke(inputs)`, but setting `cancel` closes the request (Ollama then stops
+    generating, measured: the next call starts within ~2 s) and raises MemoryCancelled."""
+    if cancel is None:
+        return chain.invoke(inputs)
+
+    if cancel.is_set():
+        raise MemoryCancelled()
+
+    async def run():
+        task = asyncio.ensure_future(chain.ainvoke(inputs))
+
+        while not task.done():
+            if cancel.is_set():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                raise MemoryCancelled()
+
+            await asyncio.wait({task}, timeout=0.05)
+
+        return task.result()
+
+    return _thread_loop().run_until_complete(run())
+
+
 class MemoryExtractor:
     def __init__(self, model):
         # Same turn, same memories: at the chat default (~0.6) facts came and went between runs,
@@ -200,19 +248,23 @@ class MemoryExtractor:
         self._chain = extraction_prompt | model.with_structured_output(MemoryExtraction)
         self._review = review_prompt | model.with_structured_output(Superseded)
 
-    def find_superseded(self, new_facts: list[str], stored_facts) -> list[int]:
+    def find_superseded(
+        self, new_facts: list[str], stored_facts, cancel: threading.Event | None = None
+    ) -> list[int]:
         """Ids of `stored_facts` (objects with .id and .fact) that `new_facts` make outdated."""
         if not new_facts or not stored_facts:
             return []
 
-        result = self._review.invoke({
+        result = invoke_cancellable(self._review, {
             "new_facts": "\n".join(f"- {fact}" for fact in new_facts),
             "stored_facts": "\n".join(f"{f.id}: {f.fact}" for f in stored_facts),
-        })
+        }, cancel)
 
         return list(result.superseded_fact_ids) if isinstance(result, Superseded) else []
 
-    def extract(self, messages: list, known_facts=()) -> MemoryExtraction:
+    def extract(
+        self, messages: list, known_facts=(), cancel: threading.Event | None = None
+    ) -> MemoryExtraction:
         """`known_facts` are stored facts (objects with .id and .fact) the model may supersede."""
         transcript = format_turn(messages)
 
@@ -220,6 +272,6 @@ class MemoryExtractor:
             return MemoryExtraction()
 
         known = "\n".join(f"{f.id}: {f.fact}" for f in known_facts) or "(none)"
-        result = self._chain.invoke({"transcript": transcript, "known_facts": known})
+        result = invoke_cancellable(self._chain, {"transcript": transcript, "known_facts": known}, cancel)
 
         return result if isinstance(result, MemoryExtraction) else MemoryExtraction()

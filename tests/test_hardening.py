@@ -231,7 +231,7 @@ class BackgroundMemoryTests(unittest.TestCase):
         release = threading.Event()
         saved = []
 
-        def remember(messages, thread_id=None):
+        def remember(messages, thread_id=None, cancel=None):
             release.wait(10)
             saved.append((list(messages), thread_id))
 
@@ -255,14 +255,14 @@ class BackgroundMemoryTests(unittest.TestCase):
     def test_a_failing_save_is_logged_and_does_not_break_the_next_one(self):
         calls = []
 
-        def remember(messages, thread_id=None):
+        def remember(messages, thread_id=None, cancel=None):
             calls.append(1)
 
             if len(calls) == 1:
                 raise RuntimeError("database down")
 
         with patch.dict(node.dependency, {"memory": SimpleNamespace(remember=remember)}):
-            with self.assertLogs("graph.node", level="WARNING") as logged:
+            with self.assertLogs("memories.scheduler", level="WARNING") as logged:
                 node.save_memory({"messages": []}, {})  # type: ignore[arg-type]
                 self.assertTrue(node.wait_for_memory(10))
 
@@ -279,7 +279,7 @@ class BackgroundMemoryTests(unittest.TestCase):
     def test_waiting_for_memory_gives_up_after_the_timeout(self):
         release = threading.Event()
         self.addCleanup(release.set)
-        manager = SimpleNamespace(remember=lambda messages, thread_id=None: release.wait(10))
+        manager = SimpleNamespace(remember=lambda messages, thread_id=None, cancel=None: release.wait(10))
 
         with patch.dict(node.dependency, {"memory": manager}):
             node.save_memory({"messages": []}, {})  # type: ignore[arg-type]

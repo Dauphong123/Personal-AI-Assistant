@@ -150,14 +150,17 @@ class MemoryManager:
 
         return format_memories(hits, profile)
 
-    def remember(self, messages: list, thread_id: str | None = None) -> dict[str, int]:
+    def remember(self, messages: list, thread_id: str | None = None, cancel=None) -> dict[str, int]:
+        """`cancel` (a threading.Event) stops the model calls with MemoryCancelled; nothing is
+        written before they finish."""
         saved = {"episodes": 0, "facts": 0, "procedures": 0}
+        stop = {"cancel": cancel} if cancel is not None else {}
 
         question = next(
             (str(m.content) for m in reversed(messages) if isinstance(m, HumanMessage)), ""
         )
         known = self._store.search(question, limit=5, max_distance=KNOWN_FACT_DISTANCE, keywords=False).facts if question else []
-        extraction = _without_secrets(self._extractor.extract(messages, known))
+        extraction = _without_secrets(self._extractor.extract(messages, known, **stop))
 
         known_ids = {f.id for f in known}
         superseded = [i for i in extraction.superseded_fact_ids if i in known_ids]
@@ -173,7 +176,7 @@ class MemoryManager:
                     nearby[old.id] = old
         if nearby:
             superseded += [
-                i for i in self._extractor.find_superseded(new_facts, list(nearby.values()))
+                i for i in self._extractor.find_superseded(new_facts, list(nearby.values()), **stop)
                 if i in nearby
             ]
 
