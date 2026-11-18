@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import Callable
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -28,7 +28,9 @@ class SileroVAD:
         from silero_vad import load_silero_vad
 
         self._torch = torch
-        self._model = load_silero_vad(onnx=True)
+        # load_silero_vad(onnx=True) returns OnnxWrapper (callable, has reset_states); its
+        # annotation names another class, so the type checker is told Any.
+        self._model: Any = load_silero_vad(onnx=True)
         self.threshold = threshold
         self._rest = np.zeros(0, dtype=np.int16)
 

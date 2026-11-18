@@ -13,8 +13,7 @@ Solo project. One Claude session wears one role at a time; a role is a skill in 
 ## Active tasks
 Format: `- [status] task — role — depends on — files`. Status: todo, doing, blocked, done (remove done after logging the outcome in PROJECT.md).
 
-- [todo] F020 web job-completion notices — architect → implement — F019 branch (not merged) — `jobs.py`, `tools.py`, `backend/session.py`, `webui/src/` (notes in `feature-lists.json`)
-- [todo] F021 web voice — architect (decide browser audio vs server mic first) — F019 branch — `voice/`, `backend/`, `webui/src/` (notes in `feature-lists.json`)
+- (none yet)
 
 ## Rules
 - Domain-specific notes live in the nearest directory `CLAUDE.md` (`voice/`, `memories/`); this roster only points to them.

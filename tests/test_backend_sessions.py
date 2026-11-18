@@ -6,14 +6,14 @@ from tests import stubs
 stubs.install()
 
 from backend.sessions import SessionManager  # noqa: E402
-from tests.test_backend_session import blocking, scripted, wait_for  # noqa: E402
+from tests.test_backend_session import blocking, created, scripted, wait_for  # noqa: E402
 
 
 class ManagerTests(unittest.TestCase):
     def test_create_get_list(self):
         manager = SessionManager(app=None, run=scripted("a"))
-        a = manager.create()
-        b = manager.create()
+        a = created(manager)
+        b = created(manager)
         self.assertIs(manager.get(a.id), a)
         self.assertEqual([s["id"] for s in manager.list()], [a.id, b.id])
 
@@ -23,7 +23,7 @@ class ManagerTests(unittest.TestCase):
 
     def test_create_with_title(self):
         manager = SessionManager(app=None, run=scripted("a"))
-        self.assertEqual(manager.create(title="Plans").title, "Plans")
+        self.assertEqual(created(manager, title="Plans").title, "Plans")
 
     def test_sessions_have_separate_conversations(self):
         threads = []
@@ -34,7 +34,7 @@ class ManagerTests(unittest.TestCase):
             return False
 
         manager = SessionManager(app=None, run=run)
-        a, b = manager.create(), manager.create()
+        a, b = created(manager), created(manager)
         a.send("one")
         wait_for(a, "done")
         b.send("two")
@@ -52,14 +52,14 @@ class ManagerTests(unittest.TestCase):
 
         marker = object()
         manager = SessionManager(app=marker, run=run)
-        s = manager.create()
+        s = created(manager)
         s.send("x")
         wait_for(s, "done")
         self.assertEqual(apps, [marker])
 
     def test_delete(self):
         manager = SessionManager(app=None, run=scripted("a"))
-        s = manager.create()
+        s = created(manager)
         self.assertEqual(manager.delete(s.id), "deleted")
         self.assertIsNone(manager.get(s.id))
         self.assertEqual(manager.list(), [])
@@ -68,7 +68,7 @@ class ManagerTests(unittest.TestCase):
     def test_delete_refused_while_busy(self):
         run, started, gate = blocking()
         manager = SessionManager(app=None, run=run)
-        s = manager.create()
+        s = created(manager)
         s.send("go")
         self.assertTrue(started.wait(3))
         self.assertEqual(manager.delete(s.id), "busy")
@@ -78,14 +78,14 @@ class ManagerTests(unittest.TestCase):
 
     def test_session_limit(self):
         manager = SessionManager(app=None, run=scripted("a"), max_sessions=2)
-        manager.create()
-        manager.create()
+        created(manager)
+        created(manager)
         self.assertIsNone(manager.create())
 
     def test_only_max_turns_run_at_once(self):
         run, started, gate = blocking()
         manager = SessionManager(app=None, run=run, max_turns=1)
-        a, b = manager.create(), manager.create()
+        a, b = created(manager), created(manager)
         a.send("a")
         self.assertTrue(started.wait(3))
         b.send("b")
@@ -102,7 +102,7 @@ class ManagerTests(unittest.TestCase):
             return False
 
         manager = SessionManager(app=None, run=run, max_turns=2)
-        a, b = manager.create(), manager.create()
+        a, b = created(manager), created(manager)
         a.send("a")
         b.send("b")
         wait_for(a, "done")
@@ -115,7 +115,7 @@ class ManagerTests(unittest.TestCase):
     def test_stop_all(self):
         run, started, gate = blocking()
         manager = SessionManager(app=None, run=run)
-        s = manager.create()
+        s = created(manager)
         s.send("go")
         self.assertTrue(started.wait(3))
         manager.stop_all()

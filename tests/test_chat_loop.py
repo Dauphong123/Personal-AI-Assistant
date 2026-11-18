@@ -12,12 +12,12 @@ from tests import stubs
 
 stubs.install()
 
-import chat_loop  # noqa: E402
-import turns  # noqa: E402
-from chat_loop import ChatLoop  # noqa: E402
-from graph import ModelGraph, node  # noqa: E402
-from jobs import JobManager  # noqa: E402
-from turns import TurnCancelled, is_stop_request  # noqa: E402
+import chat_loop
+import turns
+from chat_loop import ChatLoop
+from graph import ModelGraph, node
+from jobs import JobManager
+from turns import TurnCancelled, is_stop_request
 
 
 def wait_for(condition, timeout=5):

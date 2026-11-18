@@ -201,6 +201,9 @@ class JobManager:
             reader.join(timeout=5)  # a grandchild may still hold the pipe open
 
         for pipe in (job.process.stdout, job.process.stderr):
+            if pipe is None:  # always set (stdout/stderr=PIPE); None only to the type checker
+                continue
+
             try:
                 pipe.close()
             except OSError:

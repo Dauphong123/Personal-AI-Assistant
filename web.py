@@ -250,7 +250,7 @@ def fetch(url: str) -> tuple[str, str, bytes]:
 def html_to_text(content: bytes) -> tuple[str, str]:
     """(title, readable text) of an HTML page, without menus, scripts and footers."""
     import lxml.html
-    from lxml import etree
+    from lxml import etree  # pyright: ignore[reportAttributeAccessIssue]  (compiled module, no stubs)
 
     try:
         document = lxml.html.fromstring(content)

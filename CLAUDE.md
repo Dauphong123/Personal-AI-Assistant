@@ -21,13 +21,14 @@ Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama wit
 
 **Speed.** `llm_options.py` sets `reasoning=False` on every `ChatOllama` (thinking made routing take 113 s vs 3 s), `keep_alive=30m`, optional `LLM_NUM_CTX`. `MAX_HISTORY_TOKENS` (default 5000) must stay below the context window (8192) minus the ~1,400-token tool prompt and the answer, or Ollama silently drops the oldest messages. This machine (RTX 3050 4 GB): `qwen3:8b` ~4 tok/s, ~64% CPU, so output length is the main cost; `qwen3:4b` still thinks.
 
-**Port gotcha.** Another process also answers on `localhost:5432`, so connections can hit the wrong server ("password authentication failed" while the container is fine). If memory logs a startup warning, check the port owner or map the container to another host port and update `DB_URL`.
+**Port gotcha.** A native Windows `postgres` also listens on `localhost:5432`, so connections hit the wrong server ("password authentication failed" while the container is fine). `compose.yaml` therefore publishes the container on host port **15432** (native servers also own 5433, and Windows lets them bind beside Docker; 50000-55633 are reserved by Windows); `DB_URL` must use `localhost:15432`. `python -m memories.check` diagnoses a failing connection (names the port owner, prints the fix); the memory startup warning includes the same hint.
 
 ## Architecture
 
 **Import-time singleton.** `dependency.py` builds model, RAG, tokenizer and memory manager on import (`dependency = dependency_init()`); `chains/*`, `tools.py`, `graph/node.py` use `from dependency import dependency`. Importing nearly any module loads models and syncs `./documents/` into Chroma (idempotent: stable chunk ids, stale chunks deleted). `dependency.py` must not import `graph` (circular). `main.py` compiles the graph.
 
 **Graph** (`graph/graph.py`, `graph/node.py`, state `data/state.py` = `{messages (add_messages), search_file, memory_context}`):
+
 - `START → recall_memory → router → direct | code_tools`; router sees the last few messages.
 - `code_tools ⇄ tool_execute` while the AI message has `tool_calls`; then `→ save_memory → reverse_router`. `direct → save_memory`.
 - History over `MAX_HISTORY_TOKENS` (counts text and tool-call args): `summarize` condenses everything before the latest turn; the latest turn stays whole (tool calls never split from results).
@@ -61,6 +62,20 @@ Improve the existing project; do not rebuild it. Respect reasonable existing des
 - Verify before claiming success: run relevant tests, check imports/initialization and affected paths, and say which tests could not run and why.
 - Never modify unrelated files, overwrite config/`.env` without permission, expose secrets, or commit/push without permission.
 - Tools: follow Superpowers workflows for non-trivial features; Serena for semantic navigation/refactoring; Pyright for type errors; code review before finalizing significant changes.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `Dauphong123/Personal-AI-Assistant` via `gh` (not on PATH: use `C:\Program Files\GitHub CLI\gh.exe`); `feature-lists.json` stays the feature log. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` + `docs/adr/` at the root, created lazily. See `docs/agents/domain.md`.
 
 ## Workflow and shared context
 

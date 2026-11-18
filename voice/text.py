@@ -15,8 +15,7 @@ YES_PREFIXES = ("đồng ý", "cho phép", "được rồi", "làm đi", "chạy
 # thought in it ("yes, no wait, don't", "có... không, đừng") or a long ramble is declined.
 MAX_ANSWER_WORDS = 8
 DOUBT_WORDS = frozenset(
-    "no nope nah not don dont wait hold never cancel stop maybe unsure but however "
-    "không khong đừng khoan chưa thôi nhưng".split()
+    ["no", "nope", "nah", "not", "don", "dont", "wait", "hold", "never", "cancel", "stop", "maybe", "unsure", "but", "however", "không", "khong", "đừng", "khoan", "chưa", "thôi", "nhưng"]
 )
 
 
@@ -39,7 +38,7 @@ def is_filler(text: str) -> bool:
 def wake_word_phrases(wake_word: str) -> list[str]:
     """Spoken forms of a wake word model name: 'hey_jarvis' -> ['hey jarvis', 'jarvis']."""
     name = wake_word.replace("\\", "/").rsplit("/", 1)[-1]
-    name = re.sub(r"\.onnx$", "", name, flags=re.I)
+    name = re.sub(r"\.onnx$", "", name, flags=re.IGNORECASE)
     name = re.sub(r"_v\d+(\.\d+)*$", "", name)  # model version suffix
     words = [w for w in re.split(r"[_\s-]+", name.lower()) if w]
     phrases = [" ".join(words)] if words else []
@@ -63,7 +62,7 @@ def strip_wake_word(text: str, wake_word: str) -> str:
         rf"^\W*(?:(?:hey|ok|okay|hi|hello|này|ê|chào|xin\s+chào)\W+)?(?:{alternatives})\b"
         r"(?:\W+ơi\b)?[\s,.:;!?-]*"
     )
-    return re.sub(pattern, "", normalize(text).strip(), count=1, flags=re.I).strip()
+    return re.sub(pattern, "", normalize(text).strip(), count=1, flags=re.IGNORECASE).strip()
 
 
 def normalize_answer(text: str) -> str:
@@ -88,16 +87,16 @@ def normalize_answer(text: str) -> str:
 
 def clean_for_speech(text: str, max_chars: int) -> str:
     """Turn a model reply into something worth reading aloud."""
-    text = re.sub(r"<think>.*?</think>", " ", text, flags=re.S | re.I)
-    text = re.sub(r"<think>.*", " ", text, flags=re.S | re.I)  # unterminated
-    text = re.sub(r"```.*?```", " (code omitted) ", text, flags=re.S)
+    text = re.sub(r"<think>.*?</think>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<think>.*", " ", text, flags=re.DOTALL | re.IGNORECASE)  # unterminated
+    text = re.sub(r"```.*?```", " (code omitted) ", text, flags=re.DOTALL)
     text = re.sub(r"`([^`]*)`", r"\1", text)
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"https?://\S+", " link ", text)
-    text = re.sub(r"^\s*[-=*_]{3,}\s*$", " ", text, flags=re.M)  # horizontal rules
-    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.M)
-    text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.M)
+    text = re.sub(r"^\s*[-=*_]{3,}\s*$", " ", text, flags=re.MULTILINE)  # horizontal rules
+    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.MULTILINE)
     text = re.sub(r"[*_~|]{1,3}", "", text)
     text = " ".join(text.split())
 

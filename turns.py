@@ -80,7 +80,7 @@ def final_reply(app, config) -> str:
 # A sentence ends at . ! ? or an ellipsis followed by whitespace, or at a line break.
 # "3.14" and "file.py" have no whitespace after the dot, so they stay whole.
 _SENTENCE_END = re.compile(r"(?<=[.!?\u2026])\s+|\n+")
-_CODE_BLOCK = re.compile(r"```.*?```", re.S)
+_CODE_BLOCK = re.compile(r"```.*?```", re.DOTALL)
 
 
 def _split_complete(text: str) -> tuple[list[str], str]:

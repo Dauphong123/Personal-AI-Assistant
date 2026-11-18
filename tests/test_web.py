@@ -123,18 +123,18 @@ class CheckUrlTests(WebTestCase):
             self.assertIn("blocked", web.check_url(url) or "", url)
 
     def test_other_schemes_and_credentials_are_refused(self):
-        self.assertIn("http and https", web.check_url("file:///etc/passwd"))
-        self.assertIn("http and https", web.check_url("ftp://example.com/x"))
-        self.assertIn("http and https", web.check_url("javascript:alert(1)"))
-        self.assertIn("user name", web.check_url("http://user:pass@example.com"))
-        self.assertIn("no host", web.check_url("http:///path"))
+        self.assertIn("http and https", web.check_url("file:///etc/passwd") or "")
+        self.assertIn("http and https", web.check_url("ftp://example.com/x") or "")
+        self.assertIn("http and https", web.check_url("javascript:alert(1)") or "")
+        self.assertIn("user name", web.check_url("http://user:pass@example.com") or "")
+        self.assertIn("no host", web.check_url("http:///path") or "")
 
     def test_unknown_hosts_are_reported(self):
-        self.assertIn("could not find", web.check_url("http://nope.invalid"))
+        self.assertIn("could not find", web.check_url("http://nope.invalid") or "")
 
     def test_a_name_with_one_private_address_is_blocked(self):
         with patch.dict(HOSTS, {"mixed.example": ["93.184.216.34", "10.0.0.1"]}):
-            self.assertIn("blocked", web.check_url("http://mixed.example"))
+            self.assertIn("blocked", web.check_url("http://mixed.example") or "")
 
 
 class DnsRebindingTests(WebTestCase):

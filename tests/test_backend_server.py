@@ -55,6 +55,11 @@ class ServerCase(unittest.TestCase):
         conn.close()
         return resp.status, resp, data
 
+    def session(self, sid):
+        session = self.manager.get(sid)
+        assert session is not None, f"no session {sid}"
+        return session
+
     def api(self, method, path, body=None, **kwargs):
         """(status, decoded JSON) of an API call."""
         status, _, data = self.request(method, path, body, **kwargs)
@@ -75,7 +80,7 @@ class ServerCase(unittest.TestCase):
         conn.request("GET", path or f"/api/sessions/{sid}/events", headers=hdrs)
         resp = conn.getresponse()
         self.assertEqual(resp.status, 200)
-        self.assertIn("text/event-stream", resp.getheader("Content-Type"))
+        self.assertIn("text/event-stream", resp.getheader("Content-Type", ""))
         events = sink if sink is not None else []
         while True:
             line = resp.fp.readline().decode("utf-8")
@@ -120,8 +125,8 @@ class StaticTests(ServerCase):
         status, resp, body = self.request("GET", "/", token=False)
         self.assertEqual(status, 200)
         self.assertIn(b"page", body)
-        self.assertIn("text/html", resp.getheader("Content-Type"))
-        csp = resp.getheader("Content-Security-Policy")
+        self.assertIn("text/html", resp.getheader("Content-Type", ""))
+        csp = resp.getheader("Content-Security-Policy", "")
         self.assertIn("script-src 'self'", csp)
         self.assertNotIn("unsafe-inline", csp)
         self.assertEqual(resp.getheader("X-Content-Type-Options"), "nosniff")
@@ -130,9 +135,9 @@ class StaticTests(ServerCase):
     def test_built_files_are_served_with_their_type(self):
         status, resp, _ = self.request("GET", "/main.js", token=False)
         self.assertEqual(status, 200)
-        self.assertIn("text/javascript", resp.getheader("Content-Type"))
+        self.assertIn("text/javascript", resp.getheader("Content-Type", ""))
         status, resp, _ = self.request("GET", "/style.css", token=False)
-        self.assertIn("text/css", resp.getheader("Content-Type"))
+        self.assertIn("text/css", resp.getheader("Content-Type", ""))
         self.assertEqual(self.request("GET", "/lib/api.js", token=False)[0], 200)
 
     def test_query_string_is_ignored_for_files(self):
@@ -214,7 +219,7 @@ class SecurityTests(ServerCase):
     def test_oversize_body_is_refused(self):
         sid = self.new_session()
         self.assertEqual(self.request("POST", f"/api/sessions/{sid}/send", {"text": "x" * 70_000})[0], 413)
-        self.assertEqual(self.manager.get(sid).events_after(0), [])
+        self.assertEqual(self.session(sid).events_after(0), [])
 
     def test_invalid_json_is_a_400(self):
         status, _, _ = self.request("POST", "/api/sessions", raw="{nope", headers={"Content-Type": "application/json"})
@@ -318,7 +323,7 @@ class SessionApiTests(ServerCase):
         sid = self.new_session()
         self.assertEqual(self.api("POST", f"/api/sessions/{sid}/stop", {})[0], 200)
         self.assertEqual(self.api("POST", f"/api/sessions/{sid}/reset", {})[0], 200)
-        self.assertEqual([e["type"] for e in self.manager.get(sid).events_after(0)], ["reset"])
+        self.assertEqual([e["type"] for e in self.session(sid).events_after(0)], ["reset"])
 
     def test_rename(self):
         sid = self.new_session()

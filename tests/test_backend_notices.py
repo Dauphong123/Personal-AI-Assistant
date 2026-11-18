@@ -12,7 +12,7 @@ stubs.install()
 from backend.session import ChatSession  # noqa: E402
 from backend.sessions import SessionManager  # noqa: E402
 from jobs import JOB_OWNER, NOTICE_PREFIX  # noqa: E402
-from tests.test_backend_session import blocking, wait_for  # noqa: E402
+from tests.test_backend_session import blocking, created, wait_for  # noqa: E402
 
 
 def recording():
@@ -149,7 +149,7 @@ class ManagerRoutingTests(unittest.TestCase):
     def test_finished_job_goes_to_its_session(self):
         run, calls = recording()
         manager = SessionManager(app=None, run=run)
-        a, b = manager.create(), manager.create()
+        a, b = created(manager), created(manager)
         manager.job_finished(finished_job(owner=b.id))
         events = wait_for(b, "done")
         self.assertEqual(events[0]["type"], "notice")
@@ -163,7 +163,7 @@ class ManagerRoutingTests(unittest.TestCase):
     def test_job_of_a_deleted_or_unknown_session_is_dropped(self):
         run, calls = recording()
         manager = SessionManager(app=None, run=run)
-        s = manager.create()
+        s = created(manager)
         manager.delete(s.id)
         manager.job_finished(finished_job(owner=s.id))
         manager.job_finished(finished_job(owner=None))

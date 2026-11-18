@@ -124,7 +124,7 @@ class PipelineCase(unittest.TestCase):
             thread = threading.Thread(target=assistant.run, daemon=True)
             thread.start()
             # The "go ahead" beep (0.12 s) is also played through the player; only a spoken reply counts.
-            replies = lambda: sum(seconds > 0.3 for seconds in self.player.clips)  # noqa: E731
+            replies = lambda: sum(seconds > 0.3 for seconds in self.player.clips)
             done = wait_for(lambda: replies() >= expected_replies, timeout=timeout)
             assistant.request_stop()
             thread.join(10)

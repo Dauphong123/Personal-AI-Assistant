@@ -14,8 +14,8 @@ from tests import stubs
 
 stubs.install()
 
-import tools  # noqa: E402
-from graph import ModelGraph, node  # noqa: E402
+import tools
+from graph import ModelGraph, node
 
 
 def tool_call(name, args, id="c1"):

@@ -16,18 +16,18 @@ from tests import stubs
 
 stubs.install()
 
-from chat_loop import ChatLoop  # noqa: E402
-from graph import ModelGraph, node  # noqa: E402
-from jobs import JobManager  # noqa: E402
-from voice.assistant import (  # noqa: E402
+from chat_loop import ChatLoop
+from graph import ModelGraph, node
+from jobs import JobManager
+from voice.assistant import (
     InvalidTransition,
     VoiceAssistant,
     VoiceState,
     describe_approval,
 )
-from voice.audio import MicDisconnected  # noqa: E402
-from voice.config import VoiceConfig, VoiceConfigError  # noqa: E402
-from voice.wakeword import WakeWordDetector  # noqa: E402
+from voice.audio import MicDisconnected
+from voice.config import VoiceConfig, VoiceConfigError
+from voice.wakeword import WakeWordDetector
 
 S = VoiceState
 WAKE = np.ones(1280, dtype=np.int16)

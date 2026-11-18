@@ -6,21 +6,21 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 from unittest.mock import patch
 
 from tests import stubs
 
 stubs.install()
 
-from language import detect_language  # noqa: E402
-from tests.test_voice import SPEECH, WAKE, FakeChat, FakeMic, VoiceTestCase, wait_for  # noqa: E402
-from voice import speaker as speaker_module  # noqa: E402
-from voice import text as vtext  # noqa: E402
-from voice.assistant import VoiceState as S  # noqa: E402
-from voice.audio import AudioPlayer  # noqa: E402
+import numpy as np
 
-import numpy as np  # noqa: E402
+from language import detect_language
+from tests.test_voice import SPEECH, WAKE, FakeChat, VoiceTestCase, wait_for
+from voice import speaker as speaker_module
+from voice import text as vtext
+from voice.assistant import VoiceState as S
+from voice.audio import AudioPlayer
 
 
 class ApprovalAnswerTests(unittest.TestCase):

@@ -16,11 +16,7 @@ _TOKEN = re.compile(r"\w+")
 # otherwise match every document that happens to contain "is" and "the". Stored folded
 # (no accents), so Vietnamese "là", "và", "của" are listed as "la", "va", "cua".
 STOPWORDS = frozenset(
-    "a an and are as at be but by for from how i if in is it its me my of on or so that the "
-    "their then there these they this to was we were what when where which who why will with "
-    "you your do does did can could should would about into than not no yes "
-    "la va cua co khong cho cac nhung mot trong duoc de nay nhu the nao gi ai dau khi thi ma "
-    "bi o tai voi den tu ra vao se da dang cung hay hoac neu vi sao".split()
+    ["a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from", "how", "i", "if", "in", "is", "it", "its", "me", "my", "of", "on", "or", "so", "that", "the", "their", "then", "there", "these", "they", "this", "to", "was", "we", "were", "what", "when", "where", "which", "who", "why", "will", "with", "you", "your", "do", "does", "did", "can", "could", "should", "would", "about", "into", "than", "not", "no", "yes", "la", "va", "cua", "co", "khong", "cho", "cac", "nhung", "mot", "trong", "duoc", "de", "nay", "nhu", "the", "nao", "gi", "ai", "dau", "khi", "thi", "ma", "bi", "o", "tai", "voi", "den", "tu", "ra", "vao", "se", "da", "dang", "cung", "hay", "hoac", "neu", "vi", "sao"]
 )
 # A word found in more than this share of the passages cannot tell them apart.
 MAX_DOCUMENT_SHARE = 0.5

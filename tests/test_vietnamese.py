@@ -2,8 +2,8 @@
 voice selection, configuration, and Vietnamese typed and spoken approvals."""
 
 import re
-import unittest
 import unicodedata
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -14,22 +14,21 @@ from tests import stubs
 
 stubs.install()
 
-import chat_loop  # noqa: E402
-import tools  # noqa: E402
-from chat_loop import ChatLoop  # noqa: E402
-from jobs import JobManager  # noqa: E402
-from language import detect_language, normalize, say  # noqa: E402
-from tests.test_chat_loop import FakeTurns, wait_for  # noqa: E402
-from tests.test_voice import FakeChat, VoiceTestCase  # noqa: E402
-from tests.test_voice_parts import FakePlayer, FakeSynth  # noqa: E402
-from turns import is_stop_request  # noqa: E402
-from voice import text as vtext  # noqa: E402
-from voice.assistant import describe_approval  # noqa: E402
-from voice.config import VoiceConfig, VoiceConfigError  # noqa: E402
-from voice.enroll import PHRASES, PHRASES_VI, phrases_for  # noqa: E402
-from voice.stt import FasterWhisperTranscriber  # noqa: E402
-from voice.tts import LazySynthesizer, Speaker  # noqa: E402
-from tests.test_voice import SPEECH, WAKE  # noqa: E402
+import chat_loop
+import tools
+from chat_loop import ChatLoop
+from jobs import JobManager
+from language import detect_language, normalize, say
+from tests.test_chat_loop import FakeTurns, wait_for
+from tests.test_voice import SPEECH, WAKE, FakeChat, VoiceTestCase
+from tests.test_voice_parts import FakePlayer, FakeSynth
+from turns import is_stop_request
+from voice import text as vtext
+from voice.assistant import describe_approval
+from voice.config import VoiceConfig, VoiceConfigError
+from voice.enroll import PHRASES, PHRASES_VI, phrases_for
+from voice.stt import FasterWhisperTranscriber
+from voice.tts import LazySynthesizer, Speaker
 
 
 class DetectLanguageTests(unittest.TestCase):

@@ -9,10 +9,10 @@ from tests import stubs
 
 stubs.install()
 
-from voice import text as vtext  # noqa: E402
-from voice.tts import Speaker, SpeechError  # noqa: E402
-from voice.vad import FRAME_SECONDS, CommandRecorder  # noqa: E402
-from voice.wakeword import FRAME_SAMPLES, WakeWordDetector  # noqa: E402
+from voice import text as vtext
+from voice.tts import Speaker, SpeechError
+from voice.vad import FRAME_SECONDS, CommandRecorder
+from voice.wakeword import FRAME_SAMPLES, WakeWordDetector
 
 LOUD = np.ones(FRAME_SAMPLES, dtype=np.int16)
 QUIET = np.zeros(FRAME_SAMPLES, dtype=np.int16)

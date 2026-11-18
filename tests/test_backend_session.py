@@ -109,7 +109,9 @@ class ApprovalTests(unittest.TestCase):
         events = wait_for(session, "approval")
         approval = next(e for e in events if e["type"] == "approval")
         self.assertEqual(approval["calls"][0]["name"], "write_file")
-        self.assertEqual(session.pending_approval["calls"][0]["name"], "write_file")
+        pending = session.pending_approval
+        assert pending is not None
+        self.assertEqual(pending["calls"][0]["name"], "write_file")
         self.assertTrue(session.approve(True))
         wait_for(session, "done")
         self.assertEqual(results, [True])
@@ -145,6 +147,7 @@ class StopAndNewChatTests(unittest.TestCase):
         started = threading.Event()
 
         def run(app, text, config, on_text, approve, cancel=None, **kwargs):
+            assert cancel is not None
             started.set()
             while not cancel.is_set():
                 cancel.wait(0.05)
@@ -204,6 +207,13 @@ class StopAndNewChatTests(unittest.TestCase):
         session.send("a")
         wait_for(session, "done")
         self.assertEqual(seen, [100])
+
+
+def created(manager, **kwargs):
+    """manager.create() for tests that expect room for a new session."""
+    session = manager.create(**kwargs)
+    assert session is not None, "session limit reached"
+    return session
 
 
 def blocking():

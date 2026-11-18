@@ -10,10 +10,10 @@ from tests import stubs
 
 stubs.install()
 
-from tests.test_voice import QUIET, WAKE, VoiceTestCase  # noqa: E402
-from voice import enroll as enroll_module  # noqa: E402
-from voice.config import VoiceConfig  # noqa: E402
-from voice.speaker import (  # noqa: E402
+from tests.test_voice import WAKE, VoiceTestCase
+from voice import enroll as enroll_module
+from voice.config import VoiceConfig
+from voice.speaker import (
     MIN_SAMPLES,
     SpeakerVerifier,
     VoicePrint,

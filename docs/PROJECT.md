@@ -5,15 +5,16 @@ Shared memory across sessions. Read at session start (imported by root `CLAUDE.m
 Tags: **[verified]** checked in code/tests/docs (cite where) · **[assumed]** believed, not checked · **[unknown]** open.
 
 ## Current state
-- `main` at `6d6be86`: F019 (web UI rewrite), F020 (handshake, web job notices, web voice) and F021 (memory retrieval) fast-forwarded in on 2026-11-17, with `d3eb111`. No merge commits. [verified: git log]
-- 2026-11-18: `feature/F022-wispr-flow-voice` (last `fe904c5`, web voice on by default) and `feature/F023-webui-redesign` (stacked on F022, web UI redesign) pushed, not merged; merge F022 first. Full suite 726 OK, 11 skipped; web unit tests 118. [verified: unittest discover, npm test]
-- Test status: full suite 647 OK, 11 skipped (opt-in memory eval and voice engine tests), 2026-11-17; memory eval (`RUN_MEMORY_EVAL=1`) 40/40. [verified: unittest discover]
-- Still uncommitted at 2026-11-17 end (purpose not recorded; they pass the tests): `jobs.py`, `retrieval.py`, `turns.py`, `web.py`, `voice/text.py`, `voice/vad.py`, many `tests/*`, doc hunks in `README.md`/`CLAUDE.md`/`docs/PROJECT.md`/`docs/ROSTER.md`; untracked `docs/agents/`, `pyrightconfig.json`, `tests/test_project_docs.py`, `tests/test_typecheck.py`. [verified: git status]
+- 2026-11-18: F019-F023 all fast-forwarded into `main` (F022 Wispr Flow-style voice, F023 web UI redesign); feature branches kept on origin. No merge commits. [verified: git log]
+- Test status 2026-11-18: full suite 726 OK, 11 skipped (opt-in memory eval and voice engine tests); web unit tests 118; memory eval (`RUN_MEMORY_EVAL=1`) 40/40 on 2026-11-17. [verified: unittest discover, npm test]
+- 2026-11-18: the long-uncommitted edits were committed: a Pyright cleanup (`pyrightconfig.json`, `tests/test_typecheck.py`; regex flag names, list-literal word sets, `Any`/`None` guards), `tests/test_project_docs.py`, `docs/agents/`, Postgres port-15432 docs. [verified: git diff]
+- GitHub says the repo moved to `Dauphong123/Personal-AI-Assistant`; `origin` still points at `Dauphong123/RAG.git` (pushes are redirected). [verified: git push output]
 - 2026-11-17: a script emptied the working copies of `README.md`, `CLAUDE.md`, `docs/PROJECT.md`, `memories/CLAUDE.md`; their uncommitted hunks were rebuilt from Claude Code file backups (`~/.claude/file-history`) and the session's own output. Sizes match the earlier diffs (README 284 lines, CLAUDE.md 17); if a README hunk looks missing, that is why. [verified: git diff --stat]
 
 ## Decisions
 Format: `date — decision — why — alternatives rejected`.
 - 2026-11-17 — Instructions split: root `CLAUDE.md` + `voice/CLAUDE.md` + `memories/CLAUDE.md` + skills; roles are skills — keeps always-loaded context small; solo project needs no agent fleet.
+
 - 2026-11-17 — Removed dead `app.py`, `chains/rag_chain.py`, `data/rag_data.py` (no references outside each other; RAG is the `search_document` tool) — less misleading code — keeping them rejected.
 - 2026-11-17 — `TOKENIZER_MAP` + `model_name()` moved to `llm_options.py` so a missing or unsupported `MODEL` fails with a fix-it message and is unit-testable (`dependency.py` cannot be imported in tests) — keeping a bare `os.environ["MODEL"]` KeyError rejected.
 
@@ -44,9 +45,8 @@ Format: `date — decision — why — alternatives rejected`.
 ## Dependencies and conflicts
 - `dependency.py` must not import `graph` (circular). [verified: CLAUDE.md, not re-checked]
 - New tool touches `tools.py` (`TOOLS`, `NEEDS_APPROVAL`) and `chains/code_chain.py` prompt; a test checks the prompt's tool names exist.
-- Port `localhost:5432` is shared with another process (memory connect failures). [reported in CLAUDE.md]
+- Port 5432 is owned by a native Windows `postgres` (pid 6688 on 2026-11-17); a native `postgresql-x64-18` owns 5433 (pid 7024); container now on host 15432 (55432 is in a Windows reserved range). [verified: netstat, netsh excludedportrange, memories.check OK 2026-11-17]
 
 ## Open questions
-- What are the uncommitted edits (from before 2026-11-17) for? They pass the tests, but their purpose is not recorded.
 - `tools.read_file`: `end_line=0` reads the whole file (`end_line or len(lines)`). Harmless; left as is.
 - Are Superpowers, Serena and Pyright installed here? [unknown]

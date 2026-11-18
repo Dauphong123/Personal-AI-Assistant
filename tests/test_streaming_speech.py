@@ -16,14 +16,14 @@ from tests import stubs
 
 stubs.install()
 
-import chat_loop  # noqa: E402
-import turns  # noqa: E402
-from chat_loop import ChatLoop  # noqa: E402
-from graph import ModelGraph, node  # noqa: E402
-from jobs import JobManager  # noqa: E402
-from tests.test_chat_loop import wait_for  # noqa: E402
-from tests.test_voice import SPEECH, WAKE, FakeChat, VoiceTestCase  # noqa: E402
-from turns import SpeechStream, TurnCancelled  # noqa: E402
+import chat_loop
+import turns
+from chat_loop import ChatLoop
+from graph import ModelGraph, node
+from jobs import JobManager
+from tests.test_chat_loop import wait_for
+from tests.test_voice import SPEECH, WAKE, FakeChat, VoiceTestCase
+from turns import SpeechStream, TurnCancelled
 
 
 def chunk(text, id="m1", tool_call_chunks=()):

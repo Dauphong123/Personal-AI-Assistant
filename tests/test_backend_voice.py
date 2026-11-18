@@ -179,7 +179,7 @@ class VoiceRouteTests(ServerCase):
 
     def test_csp_allows_playing_blob_audio(self):
         _, resp, _ = self.request("GET", "/", token=False)
-        self.assertIn("media-src 'self' blob:", resp.getheader("Content-Security-Policy"))
+        self.assertIn("media-src 'self' blob:", resp.getheader("Content-Security-Policy", ""))
 
     def test_wrong_method_and_unknown_voice_route(self):
         self.assertEqual(self.request("GET", "/api/voice/speak")[0], 405)

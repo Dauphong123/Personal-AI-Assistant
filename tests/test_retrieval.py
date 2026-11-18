@@ -1,6 +1,13 @@
 import unittest
 
-from retrieval import BM25, best_passages, fold, reciprocal_rank_fusion, split_passages, tokenize
+from retrieval import (
+    BM25,
+    best_passages,
+    fold,
+    reciprocal_rank_fusion,
+    split_passages,
+    tokenize,
+)
 
 
 class TokenizeTests(unittest.TestCase):
