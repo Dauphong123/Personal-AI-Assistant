@@ -961,15 +961,20 @@
             "webui/test/state.test.ts (statusOf listening tone)",
             "headless Chrome with fake mic: Talk meter peaks and clock runs, second click puts the dictation in the box; hands-free with a tone-burst WAV goes Listening -> Hearing you -> Transcribing and sends each prompt"
           ],
-          "commit": null,
+          "commit": "cef32ca",
           "date": "2026-11-18"
         },
         {
           "n": 6,
           "title": "Theme switch",
-          "status": "in_progress",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "webui/test/theme.test.ts",
+            "tests/test_webui_frontend.py::PageTests::test_has_every_control (theme, voice-meter)",
+            "headless Chrome: cycle system/light/dark with the OS in dark and in light, choice stored"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         }
       ],
       "notes": "Branched from feature/F022-wispr-flow-voice (F022 not yet in main; user approved 2026-11-18). Tool-activity events left out (needs backend/protocol change)."

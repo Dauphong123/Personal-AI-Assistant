@@ -70,7 +70,8 @@ CONTROLS = [
     "sidebar", "sessions", "new-session", "toggle-sidebar", "session-title", "status", "rename", "clear-chat",
     "delete-session", "scroll", "empty", "log", "alert", "approval", "approval-calls", "allow", "deny",
     "form", "input", "send", "stop", "mic", "speak-label", "speak-answers",
-    "session-menu", "session-menu-list", "title-input", "confirm", "confirm-ok", "confirm-cancel", "jump",
+    "session-menu", "session-menu-list", "title-input", "confirm", "confirm-ok", "confirm-cancel", "jump", "theme",
+    "voice-meter",
 ]
 
 

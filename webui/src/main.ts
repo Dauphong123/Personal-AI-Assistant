@@ -23,6 +23,8 @@ import { sessionFromHash, tokenFrom } from "./url.ts";
 import { parseMarkdown } from "./markdown.ts";
 import { copyButton, renderBlocks, renderCalls } from "./render.ts";
 import { shortcut } from "./keys.ts";
+import { nextTheme, parseTheme, themeLabel } from "./theme.ts";
+import type { Theme } from "./theme.ts";
 import {
   PressTracker,
   TAP_MAX_MS,
@@ -36,6 +38,7 @@ import { HandsFreeListener, MAX_RECORDING_MS, Player, Recorder, canListen, canRe
 
 const TOKEN_KEY = "coding-assistant-token";
 const SPEAK_KEY = "coding-assistant-speak";
+const THEME_KEY = "coding-assistant-theme";
 const POLL_MS = 2000;
 const NEAR_BOTTOM_PX = 80;
 
@@ -64,6 +67,7 @@ const ui = {
   confirmOk: byId<HTMLButtonElement>("confirm-ok"),
   confirmCancel: byId<HTMLButtonElement>("confirm-cancel"),
   jump: byId<HTMLButtonElement>("jump"),
+  theme: byId<HTMLButtonElement>("theme"),
   status: byId("status"),
   rename: byId<HTMLButtonElement>("rename"),
   clear: byId<HTMLButtonElement>("clear-chat"),
@@ -1256,6 +1260,44 @@ window.addEventListener("hashchange", () => {
 
   if (id && id !== activeId && sessions.some((s) => s.id === id)) {
     select(id);
+  }
+});
+
+// --- theme --------------------------------------------------------------------------
+
+function applyTheme(theme: Theme): void {
+  const root = document.documentElement;
+
+  if (theme === "system") {
+    delete root.dataset["theme"];
+    root.style.colorScheme = "";
+  } else {
+    root.dataset["theme"] = theme;
+    root.style.colorScheme = theme; // native controls and scrollbars follow too
+  }
+
+  setLabel(ui.theme, themeLabel(theme));
+}
+
+function storedTheme(): Theme {
+  try {
+    return parseTheme(localStorage.getItem(THEME_KEY));
+  } catch {
+    return "system";
+  }
+}
+
+let theme = storedTheme();
+applyTheme(theme);
+
+ui.theme.addEventListener("click", () => {
+  theme = nextTheme(theme);
+  applyTheme(theme);
+
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // storage blocked: the choice lasts until reload
   }
 });
 
