@@ -1,6 +1,8 @@
+import functools
 import json
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from uuid import uuid4
@@ -18,6 +20,7 @@ from chains import code_chain, direct_chain, router_chain, summerize_chain
 from data.route_query import Router
 from data.state import State
 from dependency import dependency
+from llm_options import _flag
 from memories.manager import memory_query
 from tools import NEEDS_APPROVAL, TOOL_BY_NAME
 
@@ -30,6 +33,54 @@ MAX_HISTORY_TOKENS = int(os.environ.get("MAX_HISTORY_TOKENS", "5000"))
 MAX_TOOL_CALLS_PER_TURN = 30
 MAX_TOOL_OUTPUT_CHARS = 20000
 ROUTER_HISTORY_MESSAGES = 4
+
+
+def timing_level(env=None) -> int:
+    """LOG_TIMING=true prints how long each graph step took (and Ollama's token counts)."""
+    env = os.environ if env is None else env
+    return logging.INFO if _flag(env, "LOG_TIMING") else logging.WARNING
+
+
+timing_logger = logging.getLogger("graph.timing")
+timing_logger.setLevel(timing_level())
+
+
+def timed(fn):
+    """Log a node's duration; functools.wraps keeps the signature LangGraph inspects."""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            timing_logger.info("%s %.2fs", fn.__name__, time.perf_counter() - start)
+
+    return wrapper
+
+
+def ollama_stats(message) -> str:
+    """Prompt and output token counts Ollama reports on a reply ("" when there are none)."""
+    meta = getattr(message, "response_metadata", None) or {}
+    parts = []
+
+    if meta.get("prompt_eval_count") is not None:
+        parts.append(
+            f"prompt {meta['prompt_eval_count']} tok in {meta.get('prompt_eval_duration', 0) / 1e9:.1f}s"
+        )
+
+    if meta.get("eval_count"):
+        seconds = meta.get("eval_duration", 0) / 1e9
+        rate = meta["eval_count"] / seconds if seconds else 0
+        parts.append(f"output {meta['eval_count']} tok at {rate:.1f} tok/s")
+
+    return ", ".join(parts)
+
+
+def _log_reply(name: str, message) -> None:
+    stats = ollama_stats(message)
+    if stats:
+        timing_logger.info("%s: %s", name, stats)
 
 
 def _message_text(message) -> str:
@@ -58,6 +109,7 @@ def _last_human_index(messages) -> int | None:
     return None
 
 
+@timed
 def recall_memory(state: State):
     manager = dependency.get("memory")
     context = ""
@@ -85,6 +137,7 @@ def _remember(manager, messages, thread_id) -> None:
         logger.warning("Saving memory failed", exc_info=True)
 
 
+@timed
 def save_memory(state: State, config: RunnableConfig):
     manager = dependency.get("memory")
 
@@ -105,6 +158,7 @@ def wait_for_memory(timeout: float = 60) -> bool:
         return False
 
 
+@timed
 def code_tools(state: State):
     response = code_chain.invoke(
         {
@@ -112,6 +166,7 @@ def code_tools(state: State):
             "memory": state.get("memory_context", ""),
         }
     )
+    _log_reply("code_tools", response)
 
     return {"messages": [response], "search_file": []}
 
@@ -140,6 +195,7 @@ def _run_tool(call) -> str:
     return output
 
 
+@timed
 def tool_execute(state: State):
     calls = state["messages"][-1].tool_calls
 
@@ -175,6 +231,7 @@ def tool_execute(state: State):
     return {"messages": messages, "search_file": []}
 
 
+@timed
 def router(state: State):
     messages = state["messages"]
     history = "\n".join(
@@ -192,6 +249,7 @@ def router(state: State):
     return "direct"
 
 
+@timed
 def direct(state: State):
     response = direct_chain.invoke(
         {
@@ -199,6 +257,7 @@ def direct(state: State):
             "memory": state.get("memory_context", ""),
         }
     )
+    _log_reply("direct", response)
 
     return {"messages": [response], "search_file": []}
 
@@ -226,6 +285,7 @@ def _as_text(messages) -> str:
     return "\n".join(lines)
 
 
+@timed
 def summarize(state: State):
     """Replace everything before the latest turn with a summary.
 
