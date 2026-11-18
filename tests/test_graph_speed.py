@@ -381,5 +381,52 @@ class StablePrefixTests(unittest.TestCase):
             self.assertNotEqual(first[3], second[3])
 
 
+class ParallelRouteTests(unittest.TestCase):
+    """The router does not use recalled memory, so both start together."""
+
+    def run_turn(self, destination, delay=0.4):
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        from graph import ModelGraph
+
+        def slow_route(inputs):
+            time.sleep(delay)
+            return SimpleNamespace(destination=destination)
+
+        def slow_recall(query, context=""):
+            time.sleep(delay)
+            return "memory"
+
+        seen: dict = {}
+        manager = SimpleNamespace(recall=slow_recall, remember=lambda *a, **k: None)
+        patches = [
+            patch.object(node, "router_chain", RunnableLambda(slow_route)),
+            patch.object(node, "direct_chain", recorder(seen, AIMessage(content="direct answer"))),
+            patch.object(node, "code_chain", recorder({}, AIMessage(content="code answer"))),
+            patch.dict(node.dependency, {"memory": manager}),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+        app = ModelGraph.compile(checkpointer=InMemorySaver())
+        started = time.monotonic()
+        final = app.invoke({"messages": [HumanMessage(content="hi")]}, {"configurable": {"thread_id": "p"}})  # type: ignore[arg-type]
+        return time.monotonic() - started, final, seen
+
+    def test_recall_and_routing_overlap(self):
+        elapsed, final, _ = self.run_turn("direct")
+        self.assertLess(elapsed, 0.75, "two 0.4 s steps in parallel, not one after the other")
+        self.assertEqual(final["messages"][-1].content, "direct answer")
+
+    def test_the_answer_still_gets_the_recalled_memory(self):
+        _, _, seen = self.run_turn("direct", delay=0)
+        self.assertIn("memory", [m.content for m in seen["messages"]])
+
+    def test_code_route_reaches_the_coding_agent(self):
+        _, final, _ = self.run_turn("code", delay=0)
+        self.assertEqual(final["messages"][-1].content, "code answer")
+
+
 if __name__ == "__main__":
     unittest.main()

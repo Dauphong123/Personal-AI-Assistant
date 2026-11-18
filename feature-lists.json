@@ -1126,9 +1126,12 @@
         {
           "n": 6,
           "title": "Recall memory and route in parallel",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_graph_speed.py::ParallelRouteTests (3)"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 7,

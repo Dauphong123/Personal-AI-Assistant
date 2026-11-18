@@ -321,6 +321,20 @@ def router(state: State):
     return "direct"
 
 
+def route(state: State):
+    """Runs beside recall_memory (the router does not need memory); `chosen_route` reads it."""
+    return {"route": router(state)}
+
+
+def chosen_route(state: State):
+    return state.get("route") or "direct"
+
+
+def routed(state: State):
+    """Join point: waits for both recall_memory and route."""
+    return {}
+
+
 @timed
 def direct(state: State):
     response = direct_chain.invoke({"messages": _model_messages(state)})
