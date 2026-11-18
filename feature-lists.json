@@ -894,13 +894,38 @@
       "id": "F023",
       "name": "Web UI redesign",
       "description": "Better visual design and interaction for the web chat (webui/).",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-18",
-      "completed": null,
+      "completed": "2026-11-18",
       "branch": "feature/F023-webui-redesign",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "250ae17",
+      "files": [
+        "webui/src/markdown.ts",
+        "webui/src/render.ts",
+        "webui/src/keys.ts",
+        "webui/src/theme.ts",
+        "webui/src/state.ts",
+        "webui/src/handsfree.ts",
+        "webui/src/voice.ts",
+        "webui/src/main.ts",
+        "webui/public/index.html",
+        "webui/public/style.css",
+        "webui/test/markdown.test.ts",
+        "webui/test/keys.test.ts",
+        "webui/test/theme.test.ts",
+        "webui/test/state.test.ts",
+        "webui/test/handsfree.test.ts",
+        "tests/test_webui_frontend.py",
+        "webui/CLAUDE.md",
+        "README.md",
+        "docs/PROJECT.md"
+      ],
+      "tests": [
+        "webui/test/*.test.ts (118 tests)",
+        "tests/test_webui_frontend.py",
+        "full suite 726 OK, 11 skipped",
+        "headless Chrome screenshots and interaction checks against a fake backend (scratchpad scripts)"
+      ],
       "steps": [
         {
           "n": 1,
@@ -973,7 +998,7 @@
             "tests/test_webui_frontend.py::PageTests::test_has_every_control (theme, voice-meter)",
             "headless Chrome: cycle system/light/dark with the OS in dark and in light, choice stored"
           ],
-          "commit": null,
+          "commit": "250ae17",
           "date": "2026-11-18"
         }
       ],
