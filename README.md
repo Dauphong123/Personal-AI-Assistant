@@ -70,11 +70,15 @@ Each message you send is routed either to a plain chat answer or to a **coding a
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt -c constraints.txt
 
 # optional: voice mode
-python -m pip install -r requirements_voice.txt
+python -m pip install -r requirements_voice.txt -c constraints.txt
 ```
+
+`constraints.txt` locks every package, transitive ones included, to the versions the tests
+passed with (CI installs the same). After changing `requirements*.txt`, regenerate it with
+`python -m pip freeze` (keep its header).
 
 ### Configure
 

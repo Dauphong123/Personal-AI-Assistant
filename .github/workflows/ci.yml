@@ -29,6 +29,7 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements_voice.txt
+            constraints.txt
 
       - uses: actions/setup-node@v7
         with:
@@ -43,7 +44,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv\Scripts\python -m pip install --upgrade pip
-          .venv\Scripts\python -m pip install -r requirements.txt -r requirements_voice.txt pyright==1.1.414
+          .venv\Scripts\python -m pip install -r requirements.txt -r requirements_voice.txt -c constraints.txt pyright==1.1.414
 
       - name: Build the web frontend (tests check webui/dist)
         run: |

@@ -1259,15 +1259,21 @@
             "tests/test_settings.py (11)",
             "tests/test_graph_speed.py::FitToContextTests::test_a_history_limit_over_the_budget_is_warned_about"
           ],
-          "commit": null,
+          "commit": "2b4034b",
           "date": "2026-11-18"
         },
         {
           "n": 5,
-          "title": "Packaging: pyproject.toml, pinned lockfile, README run/troubleshoot",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "title": "Lock every dependency version (constraints.txt) for installs and CI",
+          "status": "done",
+          "tests": [
+            "tests/test_ci_workflow.py::ConstraintsTests (2)",
+            "tests/test_ci_workflow.py::WorkflowTests::test_pip_cache_follows_the_lock",
+            "tests/test_ci_workflow.py::WorkflowTests::test_ci_pyright_matches_the_lock"
+          ],
+          "commit": null,
+          "date": "2026-11-18",
+          "notes": "pyproject.toml dropped: the app is run from the repo as flat modules, never installed. README already had run/troubleshooting sections."
         },
         {
           "n": 6,
