@@ -7,6 +7,7 @@ import { Api } from "./api.ts";
 import {
   apply,
   blocks,
+  describeCalls,
   emptyConversation,
   formatCalls,
   isChatEvent,
@@ -20,7 +21,7 @@ import type { Conversation, Item } from "./state.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
 import { sessionFromHash, tokenFrom } from "./url.ts";
 import { parseMarkdown } from "./markdown.ts";
-import { copyButton, renderBlocks } from "./render.ts";
+import { copyButton, renderBlocks, renderCalls } from "./render.ts";
 import { shortcut } from "./keys.ts";
 import { PressTracker, TAP_MAX_MS, handsFreeAction, insertDictation } from "./handsfree.ts";
 import { HandsFreeListener, Player, Recorder, canListen, canRecord, replyToSpeak } from "./voice.ts";
@@ -68,6 +69,7 @@ const ui = {
   alert: byId("alert"),
   approval: byId("approval"),
   approvalCalls: byId("approval-calls"),
+  approvalTitle: byId("approval-title"),
   allow: byId<HTMLButtonElement>("allow"),
   deny: byId<HTMLButtonElement>("deny"),
   form: byId<HTMLFormElement>("form"),
@@ -322,7 +324,10 @@ function renderConversation(): void {
     shownApproval = conv.approval;
 
     if (conv.approval) {
-      ui.approvalCalls.textContent = formatCalls(conv.approval);
+      const calls = describeCalls(conv.approval);
+      ui.approvalCalls.replaceChildren(...renderCalls(calls));
+      ui.approval.classList.toggle("danger", calls.some((call) => call.danger));
+      ui.approvalTitle.textContent = calls.length > 1 ? `Allow these ${calls.length} actions?` : "Allow this action?";
       ui.approval.hidden = false;
       ui.deny.focus(); // Enter on the focused button refuses, never allows
     } else if (!ui.approval.hidden) {

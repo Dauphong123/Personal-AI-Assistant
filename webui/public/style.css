@@ -552,17 +552,49 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 .approval h3 { margin: 0 0 0.55rem; color: var(--warn); font: 600 0.98rem/1.3 var(--display); }
 
-.approval pre {
-  max-height: 11rem;
+.calls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: min(18rem, 40vh);
   margin: 0 0 0.9rem;
-  padding: 0.6rem 0.8rem;
-  overflow: auto;
-  border-radius: calc(var(--radius) - 0.15rem);
+  overflow-y: auto;
+}
+
+.call {
+  padding: 0.6rem 0.75rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--warn) 25%, var(--line));
+  border-radius: calc(var(--radius) - 0.1rem);
   background: var(--surface);
-  font: 0.85rem/1.5 var(--mono);
+}
+
+.call-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.6rem; }
+.call-title { font-weight: 600; font-size: 0.93rem; }
+.call-target { font: 0.85rem var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.call.danger .call-title { color: var(--danger); }
+
+.call-field { margin-top: 0.45rem; }
+.call-label { display: block; margin-bottom: 0.2rem; color: var(--muted); font-size: 0.78rem; }
+.call-value { font-size: 0.9rem; }
+.call-field .call-label + .call-value { display: block; }
+
+.call pre {
+  max-height: 9rem;
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  overflow: auto;
+  border-radius: 0.4rem;
+  background: var(--code-bg);
+  font: 0.84rem/1.5 var(--mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.call-field.old pre { background: var(--danger-soft); }
+.call-field.new pre { background: color-mix(in srgb, var(--run) 14%, var(--surface)); }
+
+.approval.danger { border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
+.approval.danger .allow { border-color: var(--danger); background: var(--danger); }
 
 .actions { display: flex; gap: 0.6rem; justify-content: flex-end; }
 .actions button { min-width: 6.5rem; font-weight: 600; }

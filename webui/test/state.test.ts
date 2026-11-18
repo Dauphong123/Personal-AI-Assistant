@@ -5,6 +5,7 @@ import {
   apply,
   applyAll,
   blocks,
+  describeCalls,
   emptyConversation,
   formatCalls,
   isChatEvent,
@@ -277,4 +278,66 @@ test("relativeTime: older dates and clock skew", () => {
   assert.equal(relativeTime(Date.UTC(2026, 9, 2, 12) / 1000, now), "2 Oct");
   assert.equal(relativeTime(Date.UTC(2025, 9, 2, 12) / 1000, now), "2 Oct 2025");
   assert.equal(relativeTime(now / 1000 + 30, now), "just now"); // the server clock is a bit ahead
+});
+
+// --- approval card --------------------------------------------------------------------------
+
+test("describeCalls: a terminal command is shown as code", () => {
+  assert.deepEqual(describeCalls([{ name: "terminal", args: { command: "npm test" } }]), [
+    { name: "terminal", title: "Run a command", target: null, danger: false, fields: [{ label: "Command", text: "npm test", code: true }] },
+  ]);
+});
+
+test("describeCalls: file tools name the file and show what changes", () => {
+  const [write, edit, remove, move] = describeCalls([
+    { name: "write_file", args: { path: "a.py", content: "x = 1\n" } },
+    { name: "edit_file", args: { path: "b.py", old: "x = 1", new: "x = 2", occurrence: 2 } },
+    { name: "delete_file", args: { path: "c.py" } },
+    { name: "move_file", args: { source: "d.py", destination: "e/d.py" } },
+  ]);
+  assert.deepEqual(write, {
+    name: "write_file",
+    title: "Write a file",
+    target: "a.py",
+    danger: false,
+    fields: [{ label: "Content", text: "x = 1\n", code: true }],
+  });
+  assert.deepEqual(edit?.fields, [
+    { label: "Replace", text: "x = 1", code: true },
+    { label: "With", text: "x = 2", code: true },
+    { label: "Occurrence", text: "2", code: false },
+  ]);
+  assert.equal(edit?.target, "b.py");
+  assert.deepEqual(remove, { name: "delete_file", title: "Delete a file", target: "c.py", danger: true, fields: [] });
+  assert.equal(move?.title, "Move a file");
+  assert.equal(move?.target, "d.py → e/d.py");
+  assert.deepEqual(move?.fields, []);
+});
+
+test("describeCalls: unknown tools and extra arguments are listed as they are", () => {
+  assert.deepEqual(describeCalls([{ name: "web_search", args: { query: "pgvector", limit: 3, opts: { a: 1 } } }]), [
+    {
+      name: "web_search",
+      title: "Use web_search",
+      target: null,
+      danger: false,
+      fields: [
+        { label: "query", text: "pgvector", code: true },
+        { label: "limit", text: "3", code: true },
+        { label: "opts", text: '{\n  "a": 1\n}', code: true },
+      ],
+    },
+  ]);
+  const [odd] = describeCalls([{ name: "terminal", args: { command: "ls", cwd: "/tmp" } }]);
+  assert.deepEqual(odd?.fields.at(-1), { label: "cwd", text: "/tmp", code: true });
+});
+
+test("describeCalls: arguments that are not an object, or missing ones", () => {
+  const [raw] = describeCalls([{ name: "terminal", args: "ls -la" }]);
+  assert.deepEqual(raw?.fields, [{ label: "Arguments", text: "ls -la", code: true }]);
+  const [list] = describeCalls([{ name: "terminal", args: ["a", 1] }]);
+  assert.deepEqual(list?.fields, [{ label: "Arguments", text: '[\n  "a",\n  1\n]', code: true }]);
+  const [empty] = describeCalls([{ name: "write_file", args: {} }]);
+  assert.equal(empty?.target, null);
+  assert.deepEqual(empty?.fields, []);
 });

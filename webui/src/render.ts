@@ -2,6 +2,7 @@
 // nodes; link targets were checked by safeHref.
 
 import type { Inline, MdBlock } from "./markdown.ts";
+import type { CallView } from "./state.ts";
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -157,5 +158,54 @@ export function renderBlocks(blocks: readonly MdBlock[]): HTMLElement[] {
         return wrap;
       }
     }
+  });
+}
+
+// --- approval card -------------------------------------------------------------------------
+
+
+const FIELD_TONE: Record<string, string> = { Replace: "old", With: "new" };
+
+/** One card per tool call: what it does, the file it touches, and its arguments. */
+export function renderCalls(calls: readonly CallView[]): HTMLElement[] {
+  return calls.map((call) => {
+    const card = el("article", call.danger ? "call danger" : "call");
+    const head = el("div", "call-head");
+    const title = el("span", "call-title");
+    title.textContent = call.title;
+    head.append(title);
+
+    if (call.target !== null) {
+      const target = el("code", "call-target");
+      target.textContent = call.target;
+      head.append(target);
+    }
+
+    card.append(head);
+    const labelled = call.fields.length > 1;
+
+    for (const field of call.fields) {
+      const row = el("div", `call-field ${FIELD_TONE[field.label] ?? ""}`.trim());
+
+      if (labelled || !field.code) {
+        const label = el("span", "call-label");
+        label.textContent = field.label;
+        row.append(label);
+      }
+
+      if (field.code) {
+        const pre = el("pre");
+        pre.textContent = field.text;
+        row.append(pre);
+      } else {
+        const value = el("span", "call-value");
+        value.textContent = field.text;
+        row.append(value);
+      }
+
+      card.append(row);
+    }
+
+    return card;
   });
 }

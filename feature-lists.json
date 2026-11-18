@@ -937,21 +937,25 @@
             "tests/test_webui_frontend.py::PageTests::test_session_actions_are_a_menu",
             "headless Chrome (fake backend): copy code/answer to clipboard, jump button, menu + Escape, inline rename, clear/delete dialogs, Escape stops a turn, '/' focuses the box, 390px header"
           ],
-          "commit": null,
+          "commit": "c92c567",
           "date": "2026-11-18",
           "notes": "New-session shortcut dropped: Ctrl+Shift+O and similar are browser shortcuts; '/' (focus box) added instead."
         },
         {
           "n": 4,
           "title": "Approval card",
-          "status": "in_progress",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "webui/test/state.test.ts (describeCalls: terminal, file tools, unknown tools, non-object args)",
+            "headless Chrome (fake backend): terminal + edit_file cards, delete_file danger styling, Deny focused, Allow resumes the turn"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 5,
           "title": "Voice feedback: timer, level meter, hands-free indicator",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [],
           "commit": null
         },

@@ -203,3 +203,80 @@ export function relativeTime(epochSeconds: number, nowMs: number = Date.now()): 
   const day = `${then.getDate()} ${MONTHS[then.getMonth()]}`;
   return then.getFullYear() === new Date(nowMs).getFullYear() ? day : `${day} ${then.getFullYear()}`;
 }
+
+// --- approval card ----------------------------------------------------------------------------
+
+export interface CallField {
+  label: string;
+  text: string;
+  code: boolean; // shown as code (commands, file text, raw values)
+}
+
+export interface CallView {
+  name: string;
+  title: string; // "Run a command", "Edit a file"...
+  target: string | null; // the file it touches, if any
+  danger: boolean; // cannot be undone from the chat (delete)
+  fields: CallField[];
+}
+
+const asText = (value: unknown): string => (typeof value === "string" ? value : JSON.stringify(value, null, 2) ?? String(value));
+
+/** Tool calls waiting for approval, in words: what each does and to which file. */
+export function describeCalls(calls: readonly ToolCall[]): CallView[] {
+  return calls.map((call) => {
+    const args = call.args;
+
+    if (typeof args !== "object" || args === null || Array.isArray(args)) {
+      return { name: call.name, title: `Use ${call.name}`, target: null, danger: false, fields: [{ label: "Arguments", text: asText(args), code: true }] };
+    }
+
+    const rest = new Map(Object.entries(args as Record<string, unknown>));
+    const take = (key: string): string | null => {
+      if (!rest.has(key)) return null;
+
+      const value = rest.get(key);
+      rest.delete(key);
+      return asText(value);
+    };
+    const field = (label: string, key: string, code = true): CallField[] => {
+      const text = take(key);
+      return text === null ? [] : [{ label, text, code }];
+    };
+
+    let view: CallView;
+
+    switch (call.name) {
+      case "terminal":
+        view = { name: call.name, title: "Run a command", target: null, danger: false, fields: field("Command", "command") };
+        break;
+      case "write_file":
+        view = { name: call.name, title: "Write a file", target: take("path"), danger: false, fields: field("Content", "content") };
+        break;
+      case "edit_file": {
+        const target = take("path");
+        const fields = [...field("Replace", "old"), ...field("With", "new"), ...field("Occurrence", "occurrence", false)];
+        view = { name: call.name, title: "Edit a file", target, danger: false, fields };
+        break;
+      }
+      case "delete_file":
+        view = { name: call.name, title: "Delete a file", target: take("path"), danger: true, fields: [] };
+        break;
+      case "move_file": {
+        const source = take("source");
+        const destination = take("destination");
+        const target = source !== null && destination !== null ? `${source} → ${destination}` : (source ?? destination);
+        view = { name: call.name, title: "Move a file", target, danger: false, fields: [] };
+        break;
+      }
+      default:
+        view = { name: call.name, title: `Use ${call.name}`, target: null, danger: false, fields: [] };
+    }
+
+    for (const [label, value] of rest) {
+      view.fields.push({ label, text: asText(value), code: true });
+    }
+
+    return view;
+  });
+}
