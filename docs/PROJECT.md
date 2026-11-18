@@ -5,8 +5,7 @@ Shared memory across sessions. Read at session start (imported by root `CLAUDE.m
 Tags: **[verified]** checked in code/tests/docs (cite where) · **[assumed]** believed, not checked · **[unknown]** open.
 
 ## Current state
-- 2026-11-18: F026 (production hardening) on `feature/F026-production-hardening`, branched from F025 (F024, F025 not yet in `main`; merge them first). Suite 811 OK, 13 skipped, 3 runs in a row; Pyright 0 errors on every file. [verified: unittest discover, test_typecheck]
-- 2026-11-18: F025 (faster graph turns) on `feature/F025-graph-speed`, branched from `feature/F024-ci` (F024 not yet in `main`; merge F024 first). Suite 777 OK, 13 skipped. [verified: unittest discover]
+- 2026-11-18: F024 and F025 are in `main` (origin/main = `e49092e`). F026 (production hardening) on `feature/F026-production-hardening`, PR #5 to `main`. Suite 811 OK, 13 skipped, 3 runs in a row; Pyright 0 errors on every file. [verified: unittest discover, test_typecheck]
 - 2026-11-18: F019-F023 all fast-forwarded into `main` (F022 Wispr Flow-style voice, F023 web UI redesign); feature branches kept on origin. No merge commits. [verified: git log]
 - Test status 2026-11-18: full suite 726 OK, 11 skipped (opt-in memory eval and voice engine tests); web unit tests 118; memory eval (`RUN_MEMORY_EVAL=1`) 40/40 on 2026-11-17. [verified: unittest discover, npm test]
 - 2026-11-18: the long-uncommitted edits were committed: a Pyright cleanup (`pyrightconfig.json`, `tests/test_typecheck.py`; regex flag names, list-literal word sets, `Any`/`None` guards), `tests/test_project_docs.py`, `docs/agents/`, Postgres port-15432 docs. [verified: git diff]
