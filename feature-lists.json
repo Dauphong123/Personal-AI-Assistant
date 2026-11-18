@@ -1365,17 +1365,18 @@
             "tests/test_tools.py::PathPolicyTests::test_a_leading_slash_means_the_project_root",
             "tests/test_tools.py::PathPolicyTests::test_a_leading_slash_cannot_climb_out"
           ],
-          "commit": null,
+          "commit": "76628de",
           "date": "2026-11-18"
         },
         {
           "n": 5,
           "title": "Argument cases in the opt-in model eval",
-          "status": "todo",
+          "status": "done",
           "tests": [
-            "tests/test_model_eval.py"
+            "tests/test_model_eval.py::ModelEvalTests::test_tool_arguments (opt-in, qwen3:8b 6/6; tool choice 8/8)"
           ],
-          "commit": null
+          "commit": null,
+          "date": "2026-11-18"
         }
       ],
       "notes": "MCP considered and not chosen (more tools, not more reliable ones; adds deps, async tools, context cost). Branched from feature/F026-production-hardening (PR #5 not yet in main; user chose a). Optional step 'repeated failing call guard' left out (not observed). Step 4 added during the step-5 eval: qwen3:8b passed '/voice' and '/graph', which Windows resolved to the drive root (outside the project)."
