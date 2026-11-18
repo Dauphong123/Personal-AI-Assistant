@@ -314,11 +314,16 @@ class SessionApiTests(ServerCase):
 
     def test_approve_without_pending_request_is_a_409(self):
         sid = self.new_session()
-        self.assertEqual(self.api("POST", f"/api/sessions/{sid}/approve", {"allow": True})[0], 409)
+        self.assertEqual(self.api("POST", f"/api/sessions/{sid}/approve", {"allow": True, "request": "abc"})[0], 409)
 
     def test_approve_needs_a_boolean(self):
         sid = self.new_session()
-        self.assertEqual(self.api("POST", f"/api/sessions/{sid}/approve", {"allow": "yes"})[0], 400)
+        self.assertEqual(self.api("POST", f"/api/sessions/{sid}/approve", {"allow": "yes", "request": "abc"})[0], 400)
+
+    def test_approve_needs_a_request_id(self):
+        sid = self.new_session()
+        for body in ({"allow": True}, {"allow": True, "request": 5}, {"allow": True, "request": ""}):
+            self.assertEqual(self.api("POST", f"/api/sessions/{sid}/approve", body)[0], 400, body)
 
     def test_stop_and_reset(self):
         sid = self.new_session()
@@ -381,6 +386,25 @@ class BusyTests(ServerCase):
         self.assertEqual(states, {a: "running", b: "waiting"})
         BusyTests.gate.set()
         self.read_events(b, until="done")
+
+
+class ApprovalApiTests(ServerCase):
+    @staticmethod
+    def run_fn(app, text, config, on_text, approve, cancel=None, **kwargs):
+        on_text("yes" if approve({"calls": [{"name": "write_file", "args": {"path": "a.txt"}}]}) else "no")
+        return False
+
+    def test_answer_needs_the_pending_request_id(self):
+        sid = self.new_session()
+        self.api("POST", f"/api/sessions/{sid}/send", {"text": "go"})
+        events = self.read_events(sid, until="approval")
+        request = next(e for e in events if e["type"] == "approval")["request"]
+        path = f"/api/sessions/{sid}/approve"
+        self.assertEqual(self.api("POST", path, {"allow": True, "request": request + "x"})[0], 409)
+        self.assertEqual(self.session(sid).info()["state"], "approval")
+        self.assertEqual(self.api("POST", path, {"allow": True, "request": request})[0], 200)
+        done = self.read_events(sid, until="done", headers={"Last-Event-ID": str(events[-1]["id"])})
+        self.assertEqual([e["text"] for e in done if e["type"] == "token"], ["yes"])
 
 
 class StreamEndTests(ServerCase):

@@ -14,7 +14,8 @@ API (JSON bodies, token in X-Token or Authorization: Bearer):
     GET  /api/sessions/<id>                 {"session": info}
     GET  /api/sessions/<id>/events          SSE; ?after=N or Last-Event-ID; ?token= accepted
     POST /api/sessions/<id>/send    {text}
-    POST /api/sessions/<id>/approve {allow}
+    POST /api/sessions/<id>/approve {allow, request}  request = id from the approval event;
+                                            409 if that request is not the one waiting
     POST /api/sessions/<id>/stop
     POST /api/sessions/<id>/reset
     POST /api/sessions/<id>/rename  {title}
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).resolve().parent.parent / "webui" / "dist"
 BUILD_HINT = "The web frontend is not built. Run: npm --prefix webui install && npm --prefix webui run build"
 # Bump when the API changes incompatibly; webui/src/types.ts PROTOCOL must match.
-PROTOCOL = 1
+PROTOCOL = 2  # 2: approve needs the approval event's request id
 SERVER_NAME = "coding-assistant"
 MAX_BODY = 64 * 1024
 MAX_AUDIO = 4 * 1024 * 1024  # one push-to-talk recording (compressed browser audio)
@@ -596,11 +597,16 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "approve":
             allow = data.get("allow")
 
+            request = data.get("request")
+
             if not isinstance(allow, bool):
                 return self._fail(400, "allow must be true or false")
 
-            if not session.approve(allow):
-                return self._fail(409, "Nothing is waiting for approval")
+            if not isinstance(request, str) or not request:
+                return self._fail(400, "request must be the id from the approval event")
+
+            if not session.approve(allow, request):
+                return self._fail(409, "That request is no longer waiting for approval")
         elif action == "stop":
             session.stop()
         elif action == "reset":

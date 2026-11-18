@@ -47,6 +47,7 @@ class ChatSession:
         self._cancel = threading.Event()
         self._approval: queue.Queue[bool] | None = None
         self._approval_request: dict | None = None
+        self._approval_id = ""  # id of the waiting request; an answer must name it
         self._notices: deque[tuple[str, str]] = deque()  # (model text, summary) waiting to run
         self.thread_id = self._new_thread_id()
 
@@ -151,15 +152,18 @@ class ChatSession:
 
         threading.Thread(target=self._work, args=(text, notice is not None), daemon=True).start()
 
-    def approve(self, allow: bool) -> bool:
-        """Answer the waiting tool-approval request. False if none is waiting."""
-        box = self._approval
+    def approve(self, allow: bool, request: str) -> bool:
+        """Answer the waiting tool-approval request named by `request` (the id in its approval
+        event). False if none is waiting or another one is, e.g. a stale click or a second tab."""
+        with self._cond:
+            box = self._approval
 
-        if box is None:
-            return False
+            if box is None or not request or request != self._approval_id:
+                return False
 
-        box.put(bool(allow))
-        return True
+            self._approval = None  # one answer per request
+            box.put(bool(allow))
+            return True
 
     def stop(self) -> None:
         """Cancel the running or waiting turn (no effect when idle)."""
@@ -182,9 +186,14 @@ class ChatSession:
 
     def _ask_approval(self, request: dict) -> bool:
         box: queue.Queue[bool] = queue.Queue()
-        self._approval_request = request
-        self._approval = box
-        self._emit("approval", calls=request.get("calls", []))
+        request_id = uuid.uuid4().hex[:12]
+
+        with self._cond:
+            self._approval_request = request
+            self._approval_id = request_id
+            self._approval = box
+
+        self._emit("approval", calls=request.get("calls", []), request=request_id)
 
         try:
             while True:
@@ -194,8 +203,10 @@ class ChatSession:
                     if self._cancel.is_set():
                         raise TurnCancelled from None
         finally:
-            self._approval = None
-            self._approval_request = None
+            with self._cond:
+                self._approval = None
+                self._approval_request = None
+                self._approval_id = ""
 
     def _take_slot(self) -> bool:
         """Wait for a free turn slot; False if the turn was stopped while waiting."""

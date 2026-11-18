@@ -1452,6 +1452,47 @@
       ],
       "notes": "Two causes: _collect used text read(65536), which waits for 64 KB or EOF, and _watch closed pipes a reader was blocked on. Readers now use buffer.read1 and update the sink as they go, _watch skips closing pipes of live readers, kill_tree reaches orphans on POSIX (killpg after the leader exits). Windows: taskkill /T cannot find children of a dead parent, so an orphan is left running (job still finishes, output kept); a Windows Job Object would fix that, not done.",
       "completed": "2026-11-18"
+    },
+    {
+      "id": "F030",
+      "name": "Bind approvals to a request id",
+      "description": "The web /approve answer is not tied to a pending approval request; add a request id to the approval event and require it.",
+      "status": "in_progress",
+      "created": "2026-11-18",
+      "completed": null,
+      "branch": "feature/F030-approval-request-id",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {
+          "n": 1,
+          "title": "Backend binds approval answers to a request id (PROTOCOL 2)",
+          "status": "done",
+          "tests": [
+            "tests/test_backend_session.py::ApprovalTests",
+            "tests/test_backend_server.py::SessionApiTests::test_approve_needs_a_request_id",
+            "tests/test_backend_server.py::ApprovalApiTests::test_answer_needs_the_pending_request_id"
+          ],
+          "commit": null,
+          "date": "2026-11-19"
+        },
+        {
+          "n": 2,
+          "title": "Frontend keeps and sends the approval request id",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "Docs",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        }
+      ],
+      "notes": "Review finding B1 (backend/session.py, server.py, webui/src/api.ts, PROTOCOL). Branched from F029 (F026-F029 not yet in main)."
     }
   ]
 }

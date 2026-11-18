@@ -25,6 +25,11 @@ def wait_for(session, kind, after=0, timeout=3.0):
     raise AssertionError(f"no {kind!r} event; got {[e['type'] for e in seen]}")
 
 
+def request_id(events):
+    """The request id of the last approval event."""
+    return [e for e in events if e["type"] == "approval"][-1]["request"]
+
+
 def scripted(*chunks):
     def run(app, text, config, on_text, approve, cancel=None, **kwargs):
         for chunk in chunks:
@@ -112,7 +117,7 @@ class ApprovalTests(unittest.TestCase):
         pending = session.pending_approval
         assert pending is not None
         self.assertEqual(pending["calls"][0]["name"], "write_file")
-        self.assertTrue(session.approve(True))
+        self.assertTrue(session.approve(True, approval["request"]))
         wait_for(session, "done")
         self.assertEqual(results, [True])
         self.assertIsNone(session.pending_approval)
@@ -121,14 +126,58 @@ class ApprovalTests(unittest.TestCase):
         results = []
         session = self.make(results)
         session.send("go")
-        wait_for(session, "approval")
-        session.approve(False)
+        request = request_id(wait_for(session, "approval"))
+        session.approve(False, request)
         wait_for(session, "done")
         self.assertEqual(results, [False])
 
     def test_approve_without_pending_request_is_refused(self):
         session = ChatSession(app=None, run=scripted("a"))
-        self.assertFalse(session.approve(True))
+        self.assertFalse(session.approve(True, "abc"))
+
+    def test_approval_event_carries_a_request_id(self):
+        session = self.make([])
+        session.send("go")
+        request = request_id(wait_for(session, "approval"))
+        self.assertIsInstance(request, str)
+        self.assertTrue(request)
+        session.approve(False, request)
+        wait_for(session, "done")
+
+    def test_answer_for_another_request_is_refused_and_the_turn_keeps_waiting(self):
+        results = []
+        session = self.make(results)
+        session.send("go")
+        request = request_id(wait_for(session, "approval"))
+        self.assertFalse(session.approve(True, request + "x"))
+        self.assertFalse(session.approve(True, ""))
+        self.assertIsNotNone(session.pending_approval)
+        self.assertEqual(results, [])
+        self.assertTrue(session.approve(False, request))
+        wait_for(session, "done")
+        self.assertEqual(results, [False])
+
+    def test_answer_to_an_earlier_request_does_not_answer_the_next_one(self):
+        results = []
+
+        def run(app, text, config, on_text, approve, cancel=None, **kwargs):
+            results.append(approve({"calls": [{"name": "write_file", "args": {"path": "a.txt"}}]}))
+            results.append(approve({"calls": [{"name": "delete_file", "args": {"path": "b.txt"}}]}))
+            return False
+
+        session = ChatSession(app=None, run=run)
+        session.send("go")
+        events = wait_for(session, "approval")
+        first = request_id(events)
+        self.assertTrue(session.approve(True, first))
+        second_events = wait_for(session, "approval", after=events[-1]["id"])
+        second = request_id(second_events)
+        self.assertNotEqual(first, second)
+        self.assertFalse(session.approve(True, first))  # a stale click or a second tab
+        self.assertEqual(results, [True])
+        self.assertTrue(session.approve(False, second))
+        wait_for(session, "done", after=second_events[-1]["id"])
+        self.assertEqual(results, [True, False])
 
     def test_stop_while_waiting_for_approval_cancels(self):
         results = []
@@ -295,9 +344,9 @@ class IdentityTests(unittest.TestCase):
 
         session = ChatSession(app=None, run=run)
         session.send("go")
-        wait_for(session, "approval")
+        request = request_id(wait_for(session, "approval"))
         self.assertEqual(session.info()["state"], "approval")
-        session.approve(True)
+        session.approve(True, request)
         wait_for(session, "done")
 
 

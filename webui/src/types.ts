@@ -1,7 +1,7 @@
 // Shapes of what the backend (backend/server.py, backend/session.py) sends.
 
 /** API version this page speaks; must equal backend/server.py PROTOCOL (the handshake checks). */
-export const PROTOCOL = 1;
+export const PROTOCOL = 2; // 2: approve needs the approval event's request id
 
 /** The backend's answer to the handshake (POST /api/handshake). */
 export interface ServerInfo {
