@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from retrieval import BM25, reciprocal_rank_fusion
 
 from .database import get_session_factory
+from .extractor import Episode, Fact, Procedure
 from .table import EMBEDDING_DIM, EpisodicMemory, MemorySetting, ProceduralMemory, SemanticMemory
 
 # Cosine distance: 0 = identical, 2 = opposite. Calibrated with multilingual-e5-small, which packs
@@ -72,6 +73,43 @@ def _nearest(session: Session, model, vector: list[float], max_distance: float):
     return session.scalars(stmt).first()
 
 
+def _put_fact(
+    session: Session, fact: str, vector: list[float], category: str | None, confidence: float = 1.0
+) -> tuple[SemanticMemory, bool]:
+    """Add a fact in `session`, or overwrite a near-duplicate (see `MemoryStore.add_fact`)."""
+    existing = _nearest(session, SemanticMemory, vector, FACT_DUPLICATE_DISTANCE)
+
+    if existing is not None:
+        existing.fact = fact
+        existing.embedding = vector
+        existing.category = category or existing.category
+        existing.updated_at = _now()
+        existing.confidence = max(existing.confidence, confidence)
+        return existing, False
+
+    row = SemanticMemory(fact=fact, category=category, confidence=confidence, embedding=vector)
+    session.add(row)
+    return row, True
+
+
+def _put_procedure(
+    session: Session, task: str, steps: list[str], notes: str | None, vector: list[float]
+) -> tuple[ProceduralMemory, bool]:
+    """Add a procedure in `session`, or update a similar one (see `MemoryStore.add_procedure`)."""
+    existing = _nearest(session, ProceduralMemory, vector, PROCEDURE_DUPLICATE_DISTANCE)
+
+    if existing is not None:
+        existing.steps = steps
+        existing.notes = notes or existing.notes
+        existing.success_count += 1
+        existing.last_used_at = _now()
+        return existing, False
+
+    row = ProceduralMemory(task=task, steps=steps, notes=notes, embedding=vector)
+    session.add(row)
+    return row, True
+
+
 class MemoryStore:
     """Persistence and vector search for the three long-term memory types.
 
@@ -131,22 +169,7 @@ class MemoryStore:
         vector = self._embed(fact)
 
         with self._session_factory() as session, session.begin():
-            existing = _nearest(session, SemanticMemory, vector, FACT_DUPLICATE_DISTANCE)
-
-            if existing is not None:
-                existing.fact = fact
-                existing.embedding = vector
-                existing.category = category or existing.category
-                existing.updated_at = _now()
-                existing.confidence = max(existing.confidence, confidence)
-                return existing, False
-
-            row = SemanticMemory(
-                fact=fact, category=category, confidence=confidence, embedding=vector
-            )
-            session.add(row)
-
-        return row, True
+            return _put_fact(session, fact, vector, category, confidence)
 
     def add_procedure(
         self,
@@ -158,21 +181,51 @@ class MemoryStore:
         vector = self._embed(task)
 
         with self._session_factory() as session, session.begin():
-            existing = _nearest(
-                session, ProceduralMemory, vector, PROCEDURE_DUPLICATE_DISTANCE
-            )
+            return _put_procedure(session, task, steps, notes, vector)
 
-            if existing is not None:
-                existing.steps = steps
-                existing.notes = notes or existing.notes
-                existing.success_count += 1
-                existing.last_used_at = _now()
-                return existing, False
+    def save_turn(
+        self,
+        superseded_fact_ids: list[int],
+        episode: Episode | None = None,
+        facts: list[Fact] | tuple = (),
+        procedures: list[Procedure] | tuple = (),
+        thread_id: str | None = None,
+    ) -> dict[str, int]:
+        """Store what one turn taught, all or nothing: delete the superseded facts, then add the
+        episode, facts and procedures (merged like `add_*`). Returns the counts of new rows.
 
-            row = ProceduralMemory(task=task, steps=steps, notes=notes, embedding=vector)
-            session.add(row)
+        Everything is embedded before the transaction opens, so a failing embedding or write
+        never leaves the outdated facts deleted without their replacements."""
+        saved = {"episodes": 0, "facts": 0, "procedures": 0}
+        episode_vector = self._embed(_episode_text(episode.event, episode.task)) if episode else None
+        fact_vectors = [self._embed(f.fact) for f in facts]
+        procedure_vectors = [self._embed(p.task) for p in procedures]
 
-        return row, True
+        if not (superseded_fact_ids or episode or facts or procedures):
+            return saved
+
+        with self._session_factory() as session, session.begin():
+            if superseded_fact_ids:
+                # Deleted first (and flushed before the next duplicate search) so a replacement
+                # is stored as new, not merged into the outdated row.
+                session.execute(delete(SemanticMemory).where(SemanticMemory.id.in_(superseded_fact_ids)))
+
+            if episode and episode_vector is not None:
+                session.add(EpisodicMemory(
+                    thread_id=thread_id, event=episode.event, task=episode.task, outcome=episode.outcome,
+                    importance=episode.importance, embedding=episode_vector,
+                ))
+                saved["episodes"] += 1
+
+            for fact, vector in zip(facts, fact_vectors):
+                saved["facts"] += _put_fact(session, fact.fact, vector, fact.category)[1]
+
+            for procedure, vector in zip(procedures, procedure_vectors):
+                saved["procedures"] += _put_procedure(
+                    session, procedure.task, procedure.steps, procedure.notes, vector
+                )[1]
+
+        return saved
 
     def delete_facts(self, ids: list[int]) -> int:
         if not ids:

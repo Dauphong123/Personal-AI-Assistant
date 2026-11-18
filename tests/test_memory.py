@@ -12,7 +12,8 @@ from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableLambda
-from sqlalchemy import delete
+from sqlalchemy import delete, select
+from sqlalchemy.exc import DBAPIError
 
 from memories.extractor import (
     Episode,
@@ -470,6 +471,30 @@ class StoreValidationTests(unittest.TestCase):
         store = MemoryStore(FakeEmbeddings(), session_factory=object())
         self.assertEqual(store.delete_facts([]), 0)
 
+    def test_save_turn_embeds_everything_before_opening_a_session(self):
+        # A failing embedding (here the second fact's) must leave the superseded fact in place.
+        embedded = []
+
+        def embed(text):
+            embedded.append(text)
+            if text == "second":
+                raise RuntimeError("embedding failed")
+            return [0.0] * EMBEDDING_DIM
+
+        def no_session():
+            raise AssertionError("a session was opened before every embedding was done")
+
+        store = MemoryStore(SimpleNamespace(embed_query=embed), session_factory=no_session)
+        with self.assertRaisesRegex(RuntimeError, "embedding failed"):
+            store.save_turn([7], episode=Episode(event="did it"),
+                            facts=[Fact(fact="first"), Fact(fact="second")],
+                            procedures=[Procedure(task="do it", steps=["a"])])
+        self.assertEqual(embedded, ["did it", "first", "second"])
+
+    def test_save_turn_with_nothing_to_write_never_opens_a_session(self):
+        store = MemoryStore(FakeEmbeddings(), session_factory=object())
+        self.assertEqual(store.save_turn([]), {"episodes": 0, "facts": 0, "procedures": 0})
+
     def test_empty_hits_are_falsy(self):
         self.assertFalse(MemoryHits())
         self.assertTrue(MemoryHits(procedures=[object()]))
@@ -650,6 +675,58 @@ class EmbeddingModelChangeTests(unittest.TestCase):
         self.assertIsNone(store.embedding_model())
         self.assertEqual(store.ensure_embedding_model("model-a"), 0)
         self.assertEqual(store.embedding_model(), "model-a")
+
+
+@unittest.skipUnless(_database_available(), "Postgres/pgvector not reachable (docker compose up -d)")
+class SaveTurnTests(unittest.TestCase):
+    class Same(FakeEmbeddings):
+        """Any text about tabs embeds the same, like a fact and its correction."""
+
+        def embed_query(self, text):
+            return super().embed_query("tabs-or-spaces" if "tabs" in text else text)
+
+    def setUp(self):
+        self.sessions = _rolled_back_sessions(self)
+        self.store = MemoryStore(self.Same(), session_factory=self.sessions)
+
+    def fact_texts(self):
+        from memories.table import SemanticMemory
+
+        with self.sessions() as session:
+            return sorted(session.scalars(select(SemanticMemory.fact)))
+
+    def test_save_turn_replaces_a_superseded_fact_with_a_new_row(self):
+        old, _ = self.store.add_fact("user prefers tabs over spaces", "user_preference")
+
+        saved = self.store.save_turn(
+            [old.id],
+            episode=Episode(event="switched to spaces", outcome="success"),
+            facts=[Fact(fact="user prefers spaces over tabs", category="user_preference")],
+            procedures=[Procedure(task="reformat code", steps=["run black"])],
+            thread_id="t1",
+        )
+
+        self.assertEqual(saved, {"episodes": 1, "facts": 1, "procedures": 1})
+        self.assertEqual(self.fact_texts(), ["user prefers spaces over tabs"])
+        new = self.store.search("user prefers spaces over tabs", max_distance=0.01, keywords=False).facts
+        self.assertNotEqual(new[0].id, old.id)
+        episode = self.store.search("switched to spaces", max_distance=0.01).episodes
+        self.assertEqual(episode[0].thread_id, "t1")
+
+    def test_save_turn_failure_keeps_the_superseded_fact(self):
+        old, _ = self.store.add_fact("user prefers tabs over spaces", "user_preference")
+
+        # thread_id is a VARCHAR(128): the database refuses the episode after the delete ran.
+        with self.assertRaises(DBAPIError):
+            self.store.save_turn([old.id], episode=Episode(event="switched"),
+                                 facts=[Fact(fact="user prefers spaces over tabs")], thread_id="t" * 200)
+
+        self.assertEqual(self.fact_texts(), ["user prefers tabs over spaces"])
+
+    def test_new_facts_of_one_turn_still_merge_with_each_other(self):
+        saved = self.store.save_turn([], facts=[Fact(fact="user prefers tabs"), Fact(fact="user prefers tabs now")])
+        self.assertEqual(saved["facts"], 1)
+        self.assertEqual(self.fact_texts(), ["user prefers tabs now"])
 
 
 @unittest.skipUnless(_database_available(), "Postgres/pgvector not reachable (docker compose up -d)")

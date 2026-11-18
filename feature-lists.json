@@ -1518,6 +1518,30 @@
         }
       ],
       "notes": "Review finding B1 (backend/session.py, server.py, webui/src/api.ts, PROTOCOL). Branched from F029 (F026-F029 not yet in main). PROTOCOL 1 -> 2: rebuild webui (npm --prefix webui run build). docs/PROJECT.md entry added but left unstaged (it holds the user's uncommitted edits)."
+    },
+    {
+      "id": "F031",
+      "name": "Atomic fact replacement in remember",
+      "description": "MemoryManager.remember deletes superseded facts and inserts the new ones in separate transactions; compute embeddings first, then delete and insert in one transaction.",
+      "status": "in_progress",
+      "created": "2026-11-19",
+      "completed": null,
+      "branch": "feature/F031-atomic-remember",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {"n": 1, "title": "MemoryStore.save_turn: embed first, write the turn in one transaction", "status": "done", "tests": [
+          "tests/test_memory.py::StoreValidationTests::test_save_turn_embeds_everything_before_opening_a_session",
+          "tests/test_memory.py::StoreValidationTests::test_save_turn_with_nothing_to_write_never_opens_a_session",
+          "tests/test_memory.py::SaveTurnTests::test_save_turn_replaces_a_superseded_fact_with_a_new_row",
+          "tests/test_memory.py::SaveTurnTests::test_save_turn_failure_keeps_the_superseded_fact",
+          "tests/test_memory.py::SaveTurnTests::test_new_facts_of_one_turn_still_merge_with_each_other"
+        ], "commit": null, "date": "2026-11-19"},
+        {"n": 2, "title": "remember writes through save_turn", "status": "todo", "tests": [], "commit": null},
+        {"n": 3, "title": "Docs", "status": "todo", "tests": [], "commit": null}
+      ],
+      "notes": "Branched from F030 (F026-F030 not yet in main). Review finding M1 (memories/manager.py remember, memories/store.py)."
     }
   ]
 }
