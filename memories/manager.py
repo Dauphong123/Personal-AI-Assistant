@@ -152,8 +152,7 @@ class MemoryManager:
 
     def remember(self, messages: list, thread_id: str | None = None, cancel=None) -> dict[str, int]:
         """`cancel` (a threading.Event) stops the model calls with MemoryCancelled; nothing is
-        written before they finish."""
-        saved = {"episodes": 0, "facts": 0, "procedures": 0}
+        written before they finish. The turn is then written all or nothing (`save_turn`)."""
         stop = {"cancel": cancel} if cancel is not None else {}
 
         question = next(
@@ -180,24 +179,12 @@ class MemoryManager:
                 if i in nearby
             ]
 
-        # Drop outdated facts first so a replacement is stored as new, not merged into the old row.
-        self._store.delete_facts(superseded)
-
-        if extraction.episode:
-            e = extraction.episode
-            self._store.add_episode(
-                e.event, e.task, e.outcome, e.importance, thread_id=thread_id
-            )
-            saved["episodes"] += 1
-
-        for f in extraction.facts:
-            # The category is one of FACT_CATEGORIES (validated), so it always fits the column.
-            _, created = self._store.add_fact(f.fact, f.category)
-            saved["facts"] += created
-
-        for p in extraction.procedures:
-            if p.steps:
-                _, created = self._store.add_procedure(p.task, p.steps, p.notes)
-                saved["procedures"] += created
-
-        return saved
+        # One transaction: an outdated fact is never deleted without its replacement being stored.
+        # Fact categories are FACT_CATEGORIES (validated), so they always fit the column.
+        return self._store.save_turn(
+            superseded,
+            episode=extraction.episode,
+            facts=extraction.facts,
+            procedures=[p for p in extraction.procedures if p.steps],
+            thread_id=thread_id,
+        )

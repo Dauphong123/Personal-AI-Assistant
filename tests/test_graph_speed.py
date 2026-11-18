@@ -350,7 +350,7 @@ class CancellableExtractionTests(unittest.TestCase):
             seen["cancel"] = cancel
             return MemoryExtraction()
 
-        store = SimpleNamespace(search=lambda *a, **k: SimpleNamespace(facts=[]), delete_facts=lambda ids: None)
+        store = SimpleNamespace(search=lambda *a, **k: SimpleNamespace(facts=[]), save_turn=lambda *a, **k: {})
         cancel = threading.Event()
         MemoryManager(store, SimpleNamespace(extract=extract)).remember(  # type: ignore[arg-type]
             [HumanMessage(content="I use Vim")], cancel=cancel

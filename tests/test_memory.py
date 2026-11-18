@@ -201,6 +201,21 @@ class FakeStore:
         self.calls.append(("delete", list(ids)))
         return len(ids)
 
+    def save_turn(self, superseded_fact_ids, episode=None, facts=(), procedures=(), thread_id=None):
+        # The real store writes all of this in one transaction; the fake records each write
+        # through the single-row methods so tests can check order, arguments and counts.
+        saved = {"episodes": 0, "facts": 0, "procedures": 0}
+        if superseded_fact_ids:
+            self.delete_facts(superseded_fact_ids)
+        if episode:
+            self.add_episode(episode.event, episode.task, episode.outcome, episode.importance, thread_id=thread_id)
+            saved["episodes"] += 1
+        for f in facts:
+            saved["facts"] += self.add_fact(f.fact, f.category)[1]
+        for p in procedures:
+            saved["procedures"] += self.add_procedure(p.task, p.steps, p.notes)[1]
+        return saved
+
 
 class TrivialTurnTests(unittest.TestCase):
     def test_greeting_is_skipped_but_tool_use_and_statements_are_not(self):
@@ -351,6 +366,32 @@ class ManagerTests(unittest.TestCase):
         self.assertEqual(fact_search[2], REVIEW_DISTANCE)
         writes = [c for c in store.calls if c[0] != "search"]
         self.assertEqual(writes, [("delete", [5]), ("fact", "The user's editor is Vim")])
+
+    def test_remember_writes_the_turn_with_one_save_turn_call(self):
+        # Separate writes could delete an outdated fact and then fail before its replacement.
+        class OneTransaction(FakeStore):
+            def _single_write(self, *args, **kwargs):
+                raise AssertionError("remember must write through save_turn")
+
+            add_episode = add_fact = add_procedure = delete_facts = _single_write
+
+            def save_turn(self, superseded_fact_ids, episode=None, facts=(), procedures=(), thread_id=None):
+                self.calls.append((list(superseded_fact_ids), episode.event if episode else None,
+                                   [f.fact for f in facts], [p.task for p in procedures], thread_id))
+                return {"episodes": 1, "facts": len(facts), "procedures": len(procedures)}
+
+        extraction = MemoryExtraction(
+            episode=Episode(event="Switched to spaces"),
+            facts=[Fact(fact="uses spaces")],
+            procedures=[Procedure(task="reformat", steps=["run black"]), Procedure(task="empty", steps=[])],
+            superseded_fact_ids=[7],
+        )
+        store = OneTransaction(known=[SimpleNamespace(id=7, fact="uses tabs")])
+        saved = MemoryManager(store, SimpleNamespace(extract=lambda messages, known=(): extraction)).remember(
+            [HumanMessage(content="we use spaces now")], thread_id="t1")
+
+        self.assertEqual(store.calls, [([7], "Switched to spaces", ["uses spaces"], ["reformat"], "t1")])
+        self.assertEqual(saved, {"episodes": 1, "facts": 1, "procedures": 1})
 
     def test_remember_searches_by_meaning_only(self):
         # Word matches ("user", "project") would send nearly every save to the review model.

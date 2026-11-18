@@ -1537,8 +1537,13 @@
           "tests/test_memory.py::SaveTurnTests::test_save_turn_replaces_a_superseded_fact_with_a_new_row",
           "tests/test_memory.py::SaveTurnTests::test_save_turn_failure_keeps_the_superseded_fact",
           "tests/test_memory.py::SaveTurnTests::test_new_facts_of_one_turn_still_merge_with_each_other"
+        ], "commit": "7e1d4a1", "date": "2026-11-19"},
+        {"n": 2, "title": "remember writes through save_turn", "status": "done", "tests": [
+          "tests/test_memory.py::ManagerTests::test_remember_writes_the_turn_with_one_save_turn_call",
+          "tests/test_memory.py::ManagerTests (existing, via FakeStore.save_turn)",
+          "tests/test_memory.py::StoreIntegrationTests::test_manager_remembers_then_recalls_and_replaces_a_superseded_fact",
+          "tests/test_graph_speed.py::CancellableExtractionTests::test_manager_hands_the_cancel_event_to_the_extractor"
         ], "commit": null, "date": "2026-11-19"},
-        {"n": 2, "title": "remember writes through save_turn", "status": "todo", "tests": [], "commit": null},
         {"n": 3, "title": "Docs", "status": "todo", "tests": [], "commit": null}
       ],
       "notes": "Branched from F030 (F026-F030 not yet in main). Review finding M1 (memories/manager.py remember, memories/store.py)."
