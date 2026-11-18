@@ -1,3 +1,5 @@
+import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -54,6 +56,20 @@ class JobManagerTests(unittest.TestCase):
         self.assertTrue(job.done.wait(15))
         self.assertEqual(job.status, jobs.TIMED_OUT)
         self.assertIn("timed out after 1s", job.report())
+
+    def test_orphaned_grandchild_holding_the_pipe_does_not_hang_the_job(self):
+        code = (
+            "import subprocess, sys;"
+            "c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']);"
+            "print(c.pid, flush=True)"
+        )
+        job = self.start(code)
+        self.assertTrue(job.done.wait(20), "job stayed running while a grandchild held the pipe")
+        self.assertEqual(job.status, jobs.FINISHED)
+        self.assertEqual(job.returncode, 0)
+        grandchild = int(job.stdout.split()[0])
+        self.addCleanup(subprocess.run, ["taskkill", "/PID", str(grandchild), "/F"] if os.name == "nt"
+                        else ["kill", "-9", str(grandchild)], capture_output=True)
 
     def test_cancel_unknown_or_finished_job(self):
         self.assertIn("no job", self.manager.cancel(42))

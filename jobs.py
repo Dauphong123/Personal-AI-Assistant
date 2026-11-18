@@ -1,5 +1,6 @@
 """Background shell jobs: a command that outlives the turn that started it."""
 
+import codecs
 import itertools
 import logging
 import os
@@ -55,8 +56,9 @@ def shell_args(command: str) -> list[str]:
 
 
 def kill_tree(process: subprocess.Popen) -> None:
-    """Kill the process and everything it started."""
-    if process.poll() is not None:
+    """Kill the process and everything it started. On POSIX this also reaches children that
+    outlived the process (its group stays); on Windows taskkill needs the parent alive."""
+    if os.name == "nt" and process.poll() is not None:
         return
 
     try:
@@ -70,6 +72,8 @@ def kill_tree(process: subprocess.Popen) -> None:
             import signal
 
             os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:  # nothing left in the group
+        pass
     except Exception:
         logger.warning("Could not kill process tree", exc_info=True)
         process.kill()
@@ -78,19 +82,20 @@ def kill_tree(process: subprocess.Popen) -> None:
 def _collect(stream, sink: list[str]) -> None:
     """Read a pipe to its end, keeping only the last MAX_CAPTURE_CHARS characters."""
     tail = ""
+    sink[:] = [tail]  # updated as it goes, so a reader that never ends still leaves its output
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
 
     try:
         while True:
-            chunk = stream.read(65536)
+            data = stream.buffer.read1(65536)  # returns what is there; text read(n) waits for n
 
-            if not chunk:
+            if not data:
                 break
 
-            tail = (tail + chunk)[-MAX_CAPTURE_CHARS:]
+            tail = (tail + decoder.decode(data))[-MAX_CAPTURE_CHARS:]
+            sink[:] = [tail]
     except (ValueError, OSError):  # the pipe was closed under us
         pass
-
-    sink.append(tail)
 
 
 @dataclass
@@ -200,8 +205,18 @@ class JobManager:
         for reader in readers:
             reader.join(timeout=5)  # a grandchild may still hold the pipe open
 
-        for pipe in (job.process.stdout, job.process.stderr):
-            if pipe is None:  # always set (stdout/stderr=PIPE); None only to the type checker
+        if any(reader.is_alive() for reader in readers):
+            # The command ended but something it started still holds the pipes. Kill what we
+            # can reach, then give the readers a moment to see the end of the stream.
+            kill_tree(job.process)
+
+            for reader in readers:
+                reader.join(timeout=1)
+
+        for pipe, reader in zip((job.process.stdout, job.process.stderr), readers):
+            if pipe is None or reader.is_alive():
+                # (None only for the type checker.) Closing a pipe a reader is blocked on would
+                # block here too; the daemon reader ends when the last writer does.
                 continue
 
             try:

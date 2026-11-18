@@ -1423,6 +1423,35 @@
         }
       ],
       "notes": ""
+    },
+    {
+      "id": "F029",
+      "name": "Jobs with an orphaned grandchild",
+      "description": "A grandchild holding the output pipe leaves the job running: _watch's pipe.close() blocks on a reader, and cancel/timeout cannot reach the orphan. Finish the job without blocking and kill the leftover processes.",
+      "status": "done",
+      "created": "2026-11-18",
+      "branch": "feature/F029-orphan-job-output",
+      "commit": null,
+      "files": [
+        "jobs.py",
+        "tests/test_jobs.py"
+      ],
+      "tests": [
+        "tests/test_jobs.py::JobManagerTests::test_orphaned_grandchild_holding_the_pipe_does_not_hang_the_job"
+      ],
+      "steps": [
+        {
+          "n": 1,
+          "title": "Finish jobs whose pipes an orphan holds",
+          "status": "done",
+          "tests": [
+            "tests/test_jobs.py::JobManagerTests::test_orphaned_grandchild_holding_the_pipe_does_not_hang_the_job"
+          ],
+          "commit": null
+        }
+      ],
+      "notes": "Two causes: _collect used text read(65536), which waits for 64 KB or EOF, and _watch closed pipes a reader was blocked on. Readers now use buffer.read1 and update the sink as they go, _watch skips closing pipes of live readers, kill_tree reaches orphans on POSIX (killpg after the leader exits). Windows: taskkill /T cannot find children of a dead parent, so an orphan is left running (job still finishes, output kept); a Windows Job Object would fix that, not done.",
+      "completed": "2026-11-18"
     }
   ]
 }
