@@ -1318,13 +1318,27 @@
       "id": "F027",
       "name": "Reliable tool arguments",
       "description": "Repair and check tool-call arguments before a tool runs: JSON-looking strings that langchain_ollama turned into dicts, misnamed arguments, short validation errors.",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-18",
-      "completed": null,
+      "completed": "2026-11-18",
       "branch": "feature/F027-reliable-tool-args",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "3b7ee63",
+      "files": [
+        "tool_args.py",
+        "graph/node.py",
+        "tools.py",
+        "tests/test_tool_args.py",
+        "tests/test_tools.py",
+        "tests/test_model_eval.py",
+        "README.md",
+        "CLAUDE.md",
+        "docs/PROJECT.md"
+      ],
+      "tests": [
+        "tests/test_tool_args.py",
+        "tests/test_tools.py::PathPolicyTests",
+        "tests/test_model_eval.py::ModelEvalTests::test_tool_arguments (opt-in)"
+      ],
       "steps": [
         {
           "n": 1,
@@ -1375,7 +1389,7 @@
           "tests": [
             "tests/test_model_eval.py::ModelEvalTests::test_tool_arguments (opt-in, qwen3:8b 6/6; tool choice 8/8)"
           ],
-          "commit": null,
+          "commit": "3b7ee63",
           "date": "2026-11-18"
         }
       ],

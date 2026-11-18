@@ -182,6 +182,7 @@ chat_loop.py         ChatLoop: worker thread, input queue, stop handling, approv
 turns.py             One conversation turn (UI-independent), cancellation, stop phrases, sentence streaming for speech
 jobs.py              Background shell jobs (JobManager)
 tools.py             All agent tools, the path sandbox, the approval list
+tool_args.py         Repairs and checks a tool call's arguments before it runs
 web.py               Web search and page reading (DuckDuckGo, safe fetching, caching)
 retrieval.py         Ranking shared by RAG and the page reader: BM25, rank fusion, passage splitting
 language.py          English/Vietnamese detection and localized phrases
@@ -253,7 +254,7 @@ CLAUDE.md            Notes for Claude Code
 1. **`recall_memory`** loads the user's profile facts, searches long-term memory with the newest message (and, for a follow-up, the previous question and answer) and puts the result in `memory_context`. It is sent as a separate message just before the latest user message, not in the system prompt, so the prompt start stays the same and Ollama reuses its work on the history (see [Performance](#performance)). Failures are logged, never fatal.
 2. **`route`** runs at the same time (the router does not need memory). Obvious messages are decided by rules (`quick_route`: file names, git/test/build commands, file actions in English or Vietnamese go to `code`; greetings and thanks to `direct`). Everything else, short follow-ups such as "yes, do it" and job notices included, goes to the model, which sees the last 4 messages (each cut to 300 characters). `routed` waits for both.
 3. **`direct`** answers from the model's knowledge. **`code_tools`** is the coding agent; if its reply contains tool calls, **`tool_execute`** runs them and loops back until the model answers in plain text.
-4. **`tool_execute`** never raises. An unknown tool or a tool error becomes an `ERROR: ...` tool message, output is capped, and a turn is limited to 30 tool calls (after that the model is told to answer with what it has). If any call needs approval, the node asks **once, before anything runs**, with `interrupt()`. On resume the node re-executes from the top, so nothing with side effects may happen before the interrupt.
+4. **`tool_execute`** never raises. Arguments are repaired first (`tool_args.py`): a dict or list sent for a text parameter (langchain_ollama parses JSON-looking strings) becomes JSON text again, a misnamed argument (`file_path`, `dir` for `directory`, `old_string`, ...) is renamed when exactly one parameter matches, and an unknown or invalid argument is refused with a one-line reason and the tool's signature (the user is not asked to approve a call that would be refused). An unknown tool or a tool error becomes an `ERROR: ...` tool message, output is capped, and a turn is limited to 30 tool calls (after that the model is told to answer with what it has). If any call needs approval, the node asks **once, before anything runs**, with `interrupt()`. On resume the node re-executes from the top, so nothing with side effects may happen before the interrupt.
 5. **`save_memory`** queues learning from the finished turn (if memory is enabled); it runs later, when the chat is idle (see [Remembering](#long-term-memory)).
 6. **`summarize`** runs only when the history is too long.
 
@@ -286,7 +287,7 @@ A turn costs one model call when the rules decide the route, two otherwise (the 
 
 **Safety model**
 
-- Every file argument goes through `resolve_path()`: relative paths are resolved against `PROJECT_ROOT`, `..` escapes and absolute paths outside it are rejected (`PathOutsideProjectError`), and for write operations anything under `.git` is rejected too.
+- Every file argument goes through `resolve_path()`: relative paths are resolved against `PROJECT_ROOT` (so is a path starting with `/` but naming no drive: `/voice` is the project's `voice`, not the drive root), `..` escapes and absolute paths outside it are rejected (`PathOutsideProjectError`), and for write operations anything under `.git` is rejected too.
 - `PROJECT_ROOT` defaults to the repository directory; set it in `.env` to point the agent at another project.
 - `terminal` is _not_ sandboxed beyond its working directory. It can run any command you approve, so read the approval prompt.
 - Tool output is capped at 20,000 characters, and tool failures never crash the graph.
@@ -627,8 +628,9 @@ The suite needs **no microphone, speaker, model download or network**. `tests/st
 | File                            | Covers                                                                                                                                                                                                                                       |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_graph.py`                 | `tool_execute` (errors, limits, dispatch), approval flow on the real graph, summarization                                                                                                                                                    |
+| `test_tool_args.py`             | F027: argument repair (JSON text, synonyms, unknown/invalid arguments) and approval of repaired calls                                                                                                                                        |
 | `test_graph_speed.py`           | F025: timing log, context fitting, summary model, memory scheduling and cancellation, memory placement, parallel routing, router rules, graph cleanup                                                                                        |
-| `test_model_eval.py`            | Opt-in (`RUN_MODEL_EVAL=1`, `EVAL_MODEL`): routing and first-tool accuracy and speed of a real model                                                                                                                                       |
+| `test_model_eval.py`            | Opt-in (`RUN_MODEL_EVAL=1`, `EVAL_MODEL`): routing, first-tool and tool-argument accuracy and speed of a real model                                                                                                                                       |
 | `test_tools.py`                 | Path sandbox, file/git tools, terminal and background jobs                                                                                                                                                                                   |
 | `test_jobs.py`                  | JobManager: detach, notify, cancel, timeout, truncation                                                                                                                                                                                      |
 | `test_chat_loop.py`             | Stop phrases, queueing, stop and approval handling, real-graph turns, cancellation repair                                                                                                                                                    |
