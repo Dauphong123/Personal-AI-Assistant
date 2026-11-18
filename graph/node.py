@@ -15,6 +15,7 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import interrupt
 
+import tool_args
 from chains import code_chain, direct_chain, router_chain, summerize_chain
 from data.route_query import Router
 from data.state import State
@@ -278,8 +279,13 @@ def _run_tool(call) -> str:
     if tool is None:
         return f"ERROR: unknown tool '{call['name']}'. Available: {', '.join(TOOL_BY_NAME)}"
 
+    args, error = tool_args.prepare(tool, call["args"])
+
+    if error is not None:
+        return error
+
     try:
-        output = str(tool.invoke(call["args"]))
+        output = str(tool.invoke(args))
     except Exception as e:
         # The model gets the error and usually retries; INFO keeps it off the chat console
         # but in LOG_FILE for whoever has to find out why a tool keeps failing.

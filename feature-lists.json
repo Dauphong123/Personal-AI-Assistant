@@ -1313,6 +1313,58 @@
         }
       ],
       "notes": "Branched from feature/F025-graph-speed (F024/F025 not yet in main). Plan approved 2026-11-18 (user: Start)."
+    },
+    {
+      "id": "F027",
+      "name": "Reliable tool arguments",
+      "description": "Repair and check tool-call arguments before a tool runs: JSON-looking strings that langchain_ollama turned into dicts, misnamed arguments, short validation errors.",
+      "status": "in_progress",
+      "created": "2026-11-18",
+      "completed": null,
+      "branch": "feature/F027-reliable-tool-args",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {
+          "n": 1,
+          "title": "JSON values back to text for str parameters",
+          "status": "done",
+          "tests": [
+            "tests/test_tool_args.py::JsonStringTests"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
+        },
+        {
+          "n": 2,
+          "title": "Argument synonyms; refuse unknown arguments with the signature",
+          "status": "todo",
+          "tests": [
+            "tests/test_tool_args.py::ArgumentNameTests"
+          ],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "Short validation errors",
+          "status": "todo",
+          "tests": [
+            "tests/test_tool_args.py::ValidationMessageTests"
+          ],
+          "commit": null
+        },
+        {
+          "n": 4,
+          "title": "Argument cases in the opt-in model eval",
+          "status": "todo",
+          "tests": [
+            "tests/test_model_eval.py"
+          ],
+          "commit": null
+        }
+      ],
+      "notes": "MCP considered and not chosen (more tools, not more reliable ones; adds deps, async tools, context cost). Branched from feature/F026-production-hardening (PR #5 not yet in main; user chose a). Optional step 'repeated failing call guard' left out (not observed)."
     }
   ]
 }
