@@ -261,6 +261,9 @@ def _run_tool(call) -> str:
     try:
         output = str(tool.invoke(call["args"]))
     except Exception as e:
+        # The model gets the error and usually retries; INFO keeps it off the chat console
+        # but in LOG_FILE for whoever has to find out why a tool keeps failing.
+        logger.info("Tool %s failed", call["name"], exc_info=True)
         return f"ERROR: {type(e).__name__}: {e}"
 
     if len(output) > MAX_TOOL_OUTPUT_CHARS:

@@ -1223,15 +1223,21 @@
           "tests": [
             "tests/test_typecheck.py::TypeCheckTests::test_no_type_errors (all files, PENDING removed)"
           ],
-          "commit": null,
+          "commit": "3592086",
           "date": "2026-11-18"
         },
         {
           "n": 2,
           "title": "Central logging setup + audit swallowed exceptions",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_log_setup.py::ConfigureLoggingTests (6)",
+            "tests/test_graph.py::ToolExecuteTests::test_tool_exception_is_logged_with_its_traceback",
+            "tests/test_backend_main.py::MainTests::test_logging_is_configured_from_the_environment",
+            "tests/test_backend_main.py::MainTests::test_a_bad_log_level_stops_before_loading_anything"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 3,

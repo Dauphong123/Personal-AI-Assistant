@@ -4,9 +4,10 @@ Serves the API and the built TypeScript frontend (webui/dist) on one origin.
 """
 
 import argparse
-import logging
 import sys
 from pathlib import Path
+
+from log_setup import configure_logging
 
 from .server import BUILD_HINT, LOOPBACK_HOSTS, STATIC_DIR, make_server, new_token
 from .sessions import SessionManager
@@ -91,7 +92,10 @@ def main(argv: list[str] | None = None) -> None:
     if not frontend_built():
         sys.exit(BUILD_HINT)
 
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+    try:
+        configure_logging()
+    except ValueError as exc:
+        sys.exit(str(exc))
     print("Loading models...", flush=True)
     manager = SessionManager(build_app(), max_turns=args.max_turns)
     connect_jobs(manager)

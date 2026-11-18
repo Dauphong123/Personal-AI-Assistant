@@ -37,6 +37,13 @@ class ToolExecuteTests(unittest.TestCase):
         [msg] = self.run_node(tool_call("read_file", {"path": "../../etc/passwd"}))
         self.assertIn("ERROR: PathOutsideProjectError", msg.content)
 
+    def test_tool_exception_is_logged_with_its_traceback(self):
+        with self.assertLogs("graph.node", level="INFO") as logs:
+            self.run_node(tool_call("read_file", {"path": "../../etc/passwd"}))
+        [record] = logs.records
+        self.assertIn("read_file", record.getMessage())
+        self.assertIsNotNone(record.exc_info)
+
     def test_knowledge_tool_is_dispatched(self):
         [msg] = self.run_node(tool_call("search_document", {"query": "x"}))
         self.assertEqual(msg.content, "doc")

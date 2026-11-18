@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 import sys
 import threading
@@ -10,6 +9,7 @@ from langgraph.graph.state import RunnableConfig
 from chat_loop import ChatLoop
 from graph import ModelGraph
 from graph.node import wait_for_memory
+from log_setup import configure_logging
 from tools import JOBS
 
 
@@ -46,7 +46,10 @@ def main() -> None:
         # Piped input is decoded with the console code page otherwise, which garbles Vietnamese.
         sys.stdin.reconfigure(encoding="utf-8", errors="replace")  # pyright: ignore
 
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+    try:
+        configure_logging()
+    except ValueError as exc:
+        sys.exit(str(exc))
 
     voice_config = None
 

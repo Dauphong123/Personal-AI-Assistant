@@ -53,8 +53,9 @@ class UrlTests(unittest.TestCase):
 class MainTests(unittest.TestCase):
     NO_PACKAGES = SimpleNamespace(can_transcribe=False, can_speak=False)
 
-    def run_main(self, argv, server=None, make_error=None, built=True, voice=NO_PACKAGES):
+    def run_main(self, argv, server=None, make_error=None, built=True, voice=NO_PACKAGES, log_error=None):
         out = io.StringIO()
+        configure_logging = mock.Mock(side_effect=log_error)
         build_voice = mock.Mock(return_value=voice)
         build_app = mock.Mock(return_value=SimpleNamespace())
         cleanup = mock.Mock()
@@ -62,6 +63,7 @@ class MainTests(unittest.TestCase):
         connect_jobs = mock.Mock()
 
         with (
+            mock.patch.object(entry, "configure_logging", configure_logging),
             mock.patch.object(entry, "build_app", build_app),
             mock.patch.object(entry, "cleanup", cleanup),
             mock.patch.object(entry, "make_server", make),
@@ -83,6 +85,7 @@ class MainTests(unittest.TestCase):
             make=make,
             connect_jobs=connect_jobs,
             build_voice=build_voice,
+            configure_logging=configure_logging,
             error=error,
         )
 
@@ -92,6 +95,15 @@ class MainTests(unittest.TestCase):
         self.assertIn("--allow-remote", str(result.error))
         result.build_app.assert_not_called()
         result.make.assert_not_called()
+
+    def test_logging_is_configured_from_the_environment(self):
+        result = self.run_main([], server=FakeServer())
+        result.configure_logging.assert_called_once_with()
+
+    def test_a_bad_log_level_stops_before_loading_anything(self):
+        result = self.run_main([], log_error=ValueError("LOG_LEVEL must be one of DEBUG, INFO"))
+        self.assertIn("LOG_LEVEL", str(result.error))
+        result.build_app.assert_not_called()
 
     def test_remote_host_with_flag_is_allowed(self):
         result = self.run_main(["--host", "0.0.0.0", "--allow-remote"], server=FakeServer())

@@ -485,6 +485,8 @@ All settings are environment variables (`.env` is loaded with `python-dotenv`).
 | `WEB_SEARCH_ENABLED`      | `true`                | `false` turns off `web_search` and `read_webpage`                                                              |
 | `MEMORY_IDLE_SECONDS`     | `3`                   | Memory is learned this long after a turn; a new turn cancels it and it retries later                           |
 | `LOG_TIMING`              | `false`               | `true` logs each graph step's duration and Ollama's prompt/output token counts                                 |
+| `LOG_LEVEL`               | `WARNING`             | Console log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`); an unknown value stops startup            |
+| `LOG_FILE`                | (none)                | Rotating log file (5 MB x 3) with INFO and up and timestamps, e.g. tool failures                               |
 
 ### Voice
 
