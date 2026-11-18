@@ -1344,17 +1344,18 @@
             "tests/test_tool_args.py::ArgumentNameTests",
             "tests/test_tool_args.py::ApprovalTests"
           ],
-          "commit": null,
+          "commit": "ce02b05",
           "date": "2026-11-18"
         },
         {
           "n": 3,
           "title": "Short validation errors",
-          "status": "todo",
+          "status": "done",
           "tests": [
             "tests/test_tool_args.py::ValidationMessageTests"
           ],
-          "commit": null
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 4,

@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from langchain_core.tools import BaseTool
+from pydantic import BaseModel, ValidationError
 
 
 # Names a model may use for a parameter, from other agents' tools and from this project's own
@@ -96,4 +97,29 @@ def prepare(tool: BaseTool, args: dict[str, Any]) -> tuple[dict[str, Any], str |
         if isinstance(value, (dict, list)) and "string" in accepts and not accepts & {"object", "array"}:
             fixed[name] = json.dumps(value, indent=2, ensure_ascii=False)
 
+    schema = tool.get_input_schema()
+
+    try:
+        # Checked here, not by invoke(), so a bad call never reaches the approval prompt.
+        if issubclass(schema, BaseModel):  # pydantic v1 schemas are left to invoke()
+            schema.model_validate(fixed)
+    except ValidationError as e:
+        return fixed, f"ERROR: {tool.name} got bad arguments: {_problems(e)}. Expected: {signature(tool)}"
+
     return fixed, None
+
+
+def _problems(error: ValidationError) -> str:
+    """Pydantic's errors in one line: `field: message (got value)`."""
+    problems = []
+
+    for item in error.errors():
+        problem = f"{'.'.join(str(part) for part in item['loc'])}: {item['msg']}"
+
+        if item["type"] != "missing":
+            value = repr(item["input"])
+            problem += f" (got {value if len(value) <= 60 else value[:57] + '...'})"
+
+        problems.append(problem)
+
+    return "; ".join(problems)

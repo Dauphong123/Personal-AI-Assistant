@@ -72,16 +72,16 @@ class ArgumentNameTests(unittest.TestCase):
 
     def test_each_project_directory_name_reaches_its_tool(self):
         cases = [
-            (tools.list_files, "directory", "path"),
-            (tools.search_code, "path", "directory"),
-            (tools.git_diff, "dir", "repo_path"),
-            (tools.git_log, "repo_path", "dir"),
+            (tools.list_files, "directory", "path", {}),
+            (tools.search_code, "path", "directory", {"query": "q"}),
+            (tools.git_diff, "dir", "repo_path", {}),
+            (tools.git_log, "repo_path", "dir", {}),
         ]
-        for tool, given, expected in cases:
+        for tool, given, expected, other in cases:
             with self.subTest(tool=tool.name, given=given):
-                args, error = tool_args.prepare(tool, {given: "x"})
+                args, error = tool_args.prepare(tool, {given: "x", **other})
                 self.assertIsNone(error)
-                self.assertEqual(args, {expected: "x"})
+                self.assertEqual(args, {expected: "x", **other})
 
     def test_common_names_from_other_agents(self):
         args, error = tool_args.prepare(
@@ -115,6 +115,48 @@ class ArgumentNameTests(unittest.TestCase):
         with patch.object(tools, "_git", side_effect=AssertionError("ran")):
             output = node._run_tool(call)
         self.assertIn("unknown argument 'verbose'", output)
+
+
+class ValidationMessageTests(unittest.TestCase):
+    """One line per bad field plus the signature, instead of pydantic's multi-line dump."""
+
+    def test_wrong_type(self):
+        _, error = tool_args.prepare(tools.read_file, {"path": "a.py", "start_line": "first"})
+        self.assertEqual(
+            error,
+            "ERROR: read_file got bad arguments: start_line: Input should be a valid integer, "
+            "unable to parse string as an integer (got 'first'). Expected: read_file(path: str, "
+            "start_line: int | None = None, end_line: int | None = None)",
+        )
+
+    def test_missing_argument(self):
+        _, error = tool_args.prepare(tools.write_file, {"path": "a.txt"})
+        self.assertEqual(
+            error,
+            "ERROR: write_file got bad arguments: content: Field required. "
+            "Expected: write_file(path: str, content: str)",
+        )
+
+    def test_a_long_bad_value_is_shortened(self):
+        _, error = tool_args.prepare(tools.git_log, {"limit": "x" * 500})
+        assert error is not None
+        self.assertLess(len(error), 300)
+
+    def test_values_pydantic_can_convert_still_pass(self):
+        args, error = tool_args.prepare(tools.git_log, {"limit": "3"})
+        self.assertIsNone(error)
+        self.assertEqual(args, {"limit": "3"})
+
+    def test_a_bad_call_is_not_put_to_the_user(self):
+        with patch.object(node, "interrupt", side_effect=AssertionError("asked")):
+            state: Any = {
+                "messages": [
+                    HumanMessage(content="go", id="h"),
+                    AIMessage(content="", tool_calls=[{"name": "terminal", "args": {}, "id": "1"}]),
+                ]
+            }
+            [message] = node.tool_execute(state)["messages"]
+        self.assertIn("command: Field required", message.content)
 
 
 class ApprovalTests(unittest.TestCase):
