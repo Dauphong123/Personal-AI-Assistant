@@ -63,6 +63,20 @@ class ToolExecuteTests(unittest.TestCase):
         [msg] = node.tool_execute(state)["messages"]  # type: ignore[arg-type]
         self.assertIn("limit reached", msg.content)
 
+    def test_one_message_cannot_exceed_the_limit(self):
+        limit = node.MAX_TOOL_CALLS_PER_TURN
+        calls = AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "list_files", "args": {}, "id": f"c{i}"} for i in range(limit + 2)
+            ],
+        )
+        messages = self.run_node(calls)
+        self.assertEqual(len(messages), limit + 2)
+        refused = [m for m in messages if "limit reached" in str(m.content)]
+        self.assertEqual(len(refused), 2)
+        self.assertEqual(messages[-1].tool_call_id, f"c{limit + 1}")
+
 
 class ApprovalFlowTests(unittest.TestCase):
     def run_graph(self, resume):

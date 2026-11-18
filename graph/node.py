@@ -323,10 +323,12 @@ def tool_execute(state: State):
 
     # Ask once, before anything runs: on resume this node re-executes from the top,
     # so nothing with side effects may happen before the interrupt.
-    risky = [c for c in calls if c["name"] in NEEDS_APPROVAL and c["id"] not in refused]
+    # Calls past the per-turn limit are refused below, so the user is not asked about them.
+    allowed = calls[: max(0, MAX_TOOL_CALLS_PER_TURN - used)]
+    risky = [c for c in allowed if c["name"] in NEEDS_APPROVAL and c["id"] not in refused]
     approved = True
 
-    if risky and used < MAX_TOOL_CALLS_PER_TURN:
+    if risky:
         approved = bool(
             interrupt(
                 {"calls": [{"name": c["name"], "args": c["args"]} for c in risky]}
@@ -345,6 +347,7 @@ def tool_execute(state: State):
             output = _run_tool(call)
 
         messages.append(ToolMessage(content=output, tool_call_id=call["id"]))
+        used += 1
 
     return {"messages": messages}
 

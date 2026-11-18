@@ -1394,6 +1394,35 @@
         }
       ],
       "notes": "MCP considered and not chosen (more tools, not more reliable ones; adds deps, async tools, context cost). Branched from feature/F026-production-hardening (PR #5 not yet in main; user chose a). Optional step 'repeated failing call guard' left out (not observed). Step 4 added during the step-5 eval: qwen3:8b passed '/voice' and '/graph', which Windows resolved to the drive root (outside the project)."
+    },
+    {
+      "id": "F028",
+      "name": "Tool call limit per message",
+      "description": "tool_execute counts used tool calls once before its loop, so one model message with more than 30 calls runs them all; count inside the loop.",
+      "status": "done",
+      "created": "2026-11-18",
+      "completed": "2026-11-18",
+      "branch": "feature/F028-tool-call-limit",
+      "commit": null,
+      "files": [
+        "graph/node.py",
+        "tests/test_graph.py"
+      ],
+      "tests": [
+        "tests/test_graph.py::ToolExecuteTests::test_one_message_cannot_exceed_the_limit"
+      ],
+      "steps": [
+        {
+          "n": 1,
+          "title": "Count tool calls inside the loop",
+          "status": "done",
+          "tests": [
+            "tests/test_graph.py::ToolExecuteTests::test_one_message_cannot_exceed_the_limit"
+          ],
+          "commit": null
+        }
+      ],
+      "notes": ""
     }
   ]
 }
