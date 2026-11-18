@@ -242,7 +242,7 @@ def code_tools(state: State):
     response = code_chain.invoke({"messages": _model_messages(state)})
     _log_reply("code_tools", response)
 
-    return {"messages": [response], "search_file": []}
+    return {"messages": [response]}
 
 
 def has_tools(state: State):
@@ -302,7 +302,7 @@ def tool_execute(state: State):
 
         messages.append(ToolMessage(content=output, tool_call_id=call["id"]))
 
-    return {"messages": messages, "search_file": []}
+    return {"messages": messages}
 
 
 # Requests that obviously need the repository or the machine, and messages that obviously do not.
@@ -393,7 +393,7 @@ def direct(state: State):
     response = direct_chain.invoke({"messages": _model_messages(state)})
     _log_reply("direct", response)
 
-    return {"messages": [response], "search_file": []}
+    return {"messages": [response]}
 
 
 def summarize_need(state: State):
@@ -442,9 +442,5 @@ def summarize(state: State):
         "messages": [RemoveMessage(id=m.id) for m in messages]
         + [AIMessage(content=f"Summary of the earlier conversation:\n{summary}")]
         + [m.model_copy(update={"id": str(uuid4())}) for m in recent],
-        "search_file": [],
     }
 
-
-def reverse_router(state: State):
-    return {}

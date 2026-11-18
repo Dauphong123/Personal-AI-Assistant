@@ -493,5 +493,39 @@ class QuickRouteTests(unittest.TestCase):
             self.assertEqual(node.router({"messages": [notice]}), "direct")  # type: ignore[arg-type]
 
 
+class CleanupTests(unittest.TestCase):
+    def test_no_empty_pass_through_node(self):
+        from graph import ModelGraph
+
+        self.assertNotIn("reverse_router", ModelGraph.nodes)
+
+    def test_state_has_no_unused_fields(self):
+        from data.state import State
+
+        self.assertEqual(set(State.__annotations__), {"messages", "memory_context", "route"})
+
+    def test_a_long_history_is_still_summarized_after_the_answer(self):
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        from graph import ModelGraph
+
+        long_reply = AIMessage(content=words(node.MAX_HISTORY_TOKENS + 10))
+        patches = [
+            patch.object(node, "router_chain", RunnableLambda(lambda x: SimpleNamespace(destination="direct"))),
+            patch.object(node, "direct_chain", recorder({}, long_reply)),
+            patch.object(node, "summerize_chain", RunnableLambda(lambda x: "SUMMARY")),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+        app = ModelGraph.compile(checkpointer=InMemorySaver())
+        config = {"configurable": {"thread_id": "c"}}
+        app.invoke({"messages": [HumanMessage(content="tell me")]}, config)  # type: ignore[arg-type]
+        final = app.invoke({"messages": [HumanMessage(content="and more")]}, config)  # type: ignore[arg-type]
+
+        self.assertTrue(final["messages"][0].content.endswith("SUMMARY"))
+
+
 if __name__ == "__main__":
     unittest.main()

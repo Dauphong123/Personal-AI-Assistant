@@ -83,7 +83,7 @@ class ApprovalFlowTests(unittest.TestCase):
         app = ModelGraph.compile(checkpointer=InMemorySaver())
         config = {"configurable": {"thread_id": "t"}}
         first = app.invoke(
-            {"messages": [HumanMessage(content="write it")], "search_file": []}, config  # type: ignore[arg-type]
+            {"messages": [HumanMessage(content="write it")]}, config  # type: ignore[arg-type]
         )
         self.assertIn("__interrupt__", first)
         self.assertFalse((root / "out.txt").exists(), "nothing may run before approval")

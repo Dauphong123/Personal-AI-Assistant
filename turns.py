@@ -261,7 +261,7 @@ def _run_turn(app, query, config, on_text, approve, cancel, on_speech, speech_li
     speech = SpeechStream(on_speech, speech_limit) if on_speech else None
     repair_dangling_tool_calls(app, config)
     message = HumanMessage(content=query, additional_kwargs={"notice": True} if notice else {})
-    graph_input = {"messages": [message], "search_file": []}
+    graph_input = {"messages": [message]}
 
     while True:
         stream_turn(app, graph_input, config, on_text, cancel, speech)

@@ -1154,9 +1154,12 @@
         {
           "n": 9,
           "title": "Cleanup: remove no-op reverse_router node and unused search_file state",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_graph_speed.py::CleanupTests (3)"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 10,
