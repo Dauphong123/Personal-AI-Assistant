@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import re
 import threading
 import unicodedata
@@ -197,6 +198,8 @@ class MemoryCancelled(Exception):
 
 
 _thread_loops = threading.local()
+_open_loops: list[asyncio.AbstractEventLoop] = []
+_loops_lock = threading.Lock()
 
 
 def _thread_loop() -> asyncio.AbstractEventLoop:
@@ -206,8 +209,21 @@ def _thread_loop() -> asyncio.AbstractEventLoop:
 
     if loop is None or loop.is_closed():
         loop = _thread_loops.loop = asyncio.new_event_loop()
+        with _loops_lock:
+            _open_loops.append(loop)
 
     return loop
+
+
+@atexit.register
+def close_loops() -> None:
+    """Close the loops that are not running. Left open until interpreter shutdown, Windows logs
+    "Cancelling an overlapped future failed". atexit runs after the worker threads are joined."""
+    with _loops_lock:
+        for loop in list(_open_loops):
+            if not loop.is_running():
+                loop.close()
+                _open_loops.remove(loop)
 
 
 def invoke_cancellable(chain, inputs, cancel: threading.Event | None):

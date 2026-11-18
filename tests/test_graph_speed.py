@@ -313,6 +313,26 @@ class CancellableExtractionTests(unittest.TestCase):
         self.assertIs(loops[0], loops[1])
         self.assertFalse(loops[0].is_closed())
 
+    def test_open_loops_are_closed_at_exit(self):
+        """An event loop left open until interpreter shutdown logged "Cancelling an overlapped
+        future failed" on Windows; `close_loops` runs at exit (atexit)."""
+        from memories import extractor
+
+        loops = []
+
+        async def record(inputs):
+            loops.append(asyncio.get_running_loop())
+            return inputs
+
+        chain = RunnableLambda(lambda x: x, afunc=record)
+        extractor.invoke_cancellable(chain, 1, threading.Event())
+        extractor.close_loops()
+        self.assertTrue(loops[0].is_closed())
+
+        extractor.invoke_cancellable(chain, 2, threading.Event())
+        self.assertFalse(loops[1].is_closed(), "a later call gets a new loop")
+        extractor.close_loops()
+
     def test_manager_hands_the_cancel_event_to_the_extractor(self):
         from memories.extractor import MemoryExtraction
         from memories.manager import MemoryManager
