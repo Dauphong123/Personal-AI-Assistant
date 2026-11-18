@@ -39,6 +39,20 @@ class PathPolicyTests(ToolTestCase):
             with self.assertRaises(tools.PathOutsideProjectError):
                 self.call("write_file", path=bad, content="x")
 
+    def test_a_leading_slash_means_the_project_root(self):
+        # qwen3:8b writes "/voice" for the project's voice folder (F027 model eval); on Windows
+        # that is the drive root, so the call failed as outside the project.
+        (self.root / "voice").mkdir()
+        (self.root / "voice" / "a.py").write_text("x")
+        for path in ["/voice", "\\voice", "/"]:
+            with self.subTest(path=path):
+                self.assertEqual(tools.resolve_path(path), (self.root / path.lstrip("/\\")).resolve())
+        self.assertEqual(self.call("list_files", path="/voice"), ["a.py"])
+
+    def test_a_leading_slash_cannot_climb_out(self):
+        with self.assertRaises(tools.PathOutsideProjectError):
+            tools.resolve_path("/../outside.txt")
+
     def test_git_directory_is_not_writable(self):
         (self.root / ".git").mkdir()
         with self.assertRaises(tools.PathOutsideProjectError):

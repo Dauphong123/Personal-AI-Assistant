@@ -65,6 +65,13 @@ def resolve_path(path: str, writable: bool = False) -> Path:
     """
     candidate = Path(path)
 
+    # A path that starts with a slash but names no drive ("/voice") means the project root to
+    # the model; on Windows it would be the drive root. The result is still checked below.
+    # (On Linux an absolute path inside the project is kept as it is.)
+    if candidate.root and not candidate.drive:
+        if not (candidate.is_absolute() and candidate.resolve().is_relative_to(PROJECT_ROOT)):
+            candidate = PROJECT_ROOT / path.lstrip("/\\")
+
     if not candidate.is_absolute():
         candidate = PROJECT_ROOT / candidate
 
