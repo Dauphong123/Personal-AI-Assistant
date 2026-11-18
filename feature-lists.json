@@ -1003,6 +1003,49 @@
         }
       ],
       "notes": "Branched from feature/F022-wispr-flow-voice (F022 not yet in main; user approved 2026-11-18). Tool-activity events left out (needs backend/protocol change)."
+    },
+    {
+      "id": "F024",
+      "name": "CI/CD pipeline",
+      "description": "GitHub Actions workflow that checks every push (Python tests, web frontend build and tests).",
+      "status": "in_progress",
+      "created": "2026-11-18",
+      "completed": null,
+      "branch": "feature/F024-ci",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {
+          "n": 1,
+          "title": "GitHub Actions workflow (python + webui jobs)",
+          "status": "done",
+          "tests": [
+            "tests/test_ci_workflow.py::WorkflowTests (7)"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
+        },
+        {
+          "n": 2,
+          "title": "First run green on GitHub",
+          "status": "in_progress",
+          "tests": [
+            "GitHub Actions run"
+          ],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "Docs",
+          "status": "todo",
+          "tests": [
+            "tests/test_project_docs.py"
+          ],
+          "commit": null
+        }
+      ],
+      "notes": "Approved 2026-11-18. CI only (no deploy target: local app). No dist artifact upload, no branch protection (not explicitly approved)."
     }
   ]
 }
