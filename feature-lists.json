@@ -1248,15 +1248,19 @@
             "tests/test_backend_main.py::StopSignalTests (2)",
             "tests/test_backend_main.py::MainTests::test_stop_signals_are_installed_before_serving"
           ],
-          "commit": null,
+          "commit": "602bc4c",
           "date": "2026-11-18"
         },
         {
           "n": 4,
           "title": "Startup config validation for .env values",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_settings.py (11)",
+            "tests/test_graph_speed.py::FitToContextTests::test_a_history_limit_over_the_budget_is_warned_about"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 5,

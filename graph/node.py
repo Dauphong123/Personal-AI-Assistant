@@ -23,6 +23,7 @@ from language import normalize
 from llm_options import _flag, ollama_options
 from memories.manager import memory_query
 from memories.scheduler import MEMORY_SCHEDULER
+from settings import max_history_tokens
 from tools import NEEDS_APPROVAL, TOOL_BY_NAME
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 # The model's context window is 8192 tokens by default and the coding prompt with its tool
 # schemas takes about 1,400 of them, plus room for the answer. A longer history makes Ollama
 # silently drop the oldest messages (possibly splitting a tool call from its result).
-MAX_HISTORY_TOKENS = int(os.environ.get("MAX_HISTORY_TOKENS", "5000"))
+MAX_HISTORY_TOKENS = max_history_tokens()
 MAX_TOOL_CALLS_PER_TURN = 30
 MAX_TOOL_OUTPUT_CHARS = 20000
 ROUTER_HISTORY_MESSAGES = 4
@@ -49,6 +50,25 @@ TRIM_NOTE = "\n... [trimmed to fit the context window]"
 def message_budget(env=None) -> int:
     context = ollama_options(env).get("num_ctx", DEFAULT_CONTEXT_TOKENS)
     return context - TOOL_PROMPT_TOKENS - ANSWER_RESERVE_TOKENS
+
+
+def history_budget_warning(limit: int = MAX_HISTORY_TOKENS, env=None) -> str | None:
+    """A warning when kept history alone would not fit one model call (not an error, so a
+    smaller LLM_NUM_CTX keeps working; old tool results are trimmed per call anyway)."""
+    budget = message_budget(env)
+
+    if limit <= budget:
+        return None
+
+    return (
+        f"MAX_HISTORY_TOKENS={limit} is more than the {budget} tokens a model call has for messages "
+        f"(LLM_NUM_CTX minus the tool prompt and the answer); lower it or raise LLM_NUM_CTX, "
+        "or Ollama may drop the oldest messages."
+    )
+
+
+if (_warning := history_budget_warning()) is not None:
+    logger.warning(_warning)
 
 
 def timing_level(env=None) -> int:

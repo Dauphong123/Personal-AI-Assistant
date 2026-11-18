@@ -10,17 +10,18 @@ One worker keeps saves in order.
 """
 
 import logging
-import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 
+from settings import memory_idle_seconds
+
 from .extractor import MemoryCancelled
 
 logger = logging.getLogger(__name__)
 
-IDLE_SECONDS = float(os.environ.get("MEMORY_IDLE_SECONDS", "3"))
+IDLE_SECONDS = memory_idle_seconds()
 
 
 class MemoryScheduler:

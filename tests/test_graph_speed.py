@@ -126,6 +126,13 @@ class FitToContextTests(unittest.TestCase):
     def test_history_limit_leaves_room_for_a_tool_result(self):
         self.assertLess(node.MAX_HISTORY_TOKENS, node.message_budget({}))
 
+    def test_a_history_limit_over_the_budget_is_warned_about(self):
+        self.assertIsNone(node.history_budget_warning(5000, {}))
+        warning = node.history_budget_warning(5000, {"LLM_NUM_CTX": "4096"})
+        assert warning is not None
+        self.assertIn("MAX_HISTORY_TOKENS", warning)
+        self.assertIn("LLM_NUM_CTX", warning)
+
     def test_code_tools_sends_the_fitted_messages(self):
         seen: dict = {}
         chain = recorder(seen, AIMessage(content="ok"))

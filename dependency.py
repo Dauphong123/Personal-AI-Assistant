@@ -6,10 +6,15 @@ from transformers import AutoTokenizer
 
 from llm_options import TOKENIZER_MAP, model_name, ollama_options
 from rag.rag import RAG
+from settings import check_settings, settings_error
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+_problems = check_settings()
+if _problems:
+    raise SystemExit(settings_error(_problems))
 
 MODEL_NAME = model_name()
 
