@@ -229,10 +229,10 @@ test("status: connection trouble wins over everything", () => {
 test("status: voice states and the hands-free queue", () => {
   const conv = emptyConversation();
   assert.deepEqual(statusOf({ ...idle, conv, voiceStatus: "Listening…" }), { text: "Listening…", tone: "voice" });
-  assert.deepEqual(statusOf({ ...idle, conv, handsFree: true }), { text: "Hands-free: Listening…", tone: "voice" });
+  assert.deepEqual(statusOf({ ...idle, conv, handsFree: true }), { text: "Hands-free: Listening…", tone: "listening" });
   assert.deepEqual(statusOf({ ...idle, conv, handsFree: true, transcribing: true, queued: 2 }), {
     text: "Hands-free: Transcribing… · 2 queued",
-    tone: "voice",
+    tone: "listening",
   });
   assert.deepEqual(statusOf({ ...idle, conv, queued: 1 }), { text: "Sending… · 1 queued", tone: "busy" });
 });

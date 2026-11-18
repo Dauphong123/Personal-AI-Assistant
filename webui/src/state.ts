@@ -139,7 +139,7 @@ export function isChatEvent(value: unknown): value is ChatEvent {
 
 // --- status line ----------------------------------------------------------------------------
 
-export type StatusTone = "" | "busy" | "approval" | "error" | "voice";
+export type StatusTone = "" | "busy" | "approval" | "error" | "voice" | "listening";
 
 export interface StatusInput {
   conv: Conversation;
@@ -172,7 +172,7 @@ export function statusOf(input: StatusInput): { text: string; tone: StatusTone }
   const suffix = queued ? ` · ${queued} queued` : "";
 
   if (handsFree) {
-    return { text: `Hands-free: ${text || (transcribing ? "Transcribing…" : "Listening…")}${suffix}`, tone: tone || "voice" };
+    return { text: `Hands-free: ${text || (transcribing ? "Transcribing…" : "Listening…")}${suffix}`, tone: tone || "listening" };
   }
 
   if (suffix) return { text: `${text || "Sending…"}${suffix}`, tone: tone || "busy" };

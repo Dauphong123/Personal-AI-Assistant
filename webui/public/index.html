@@ -85,6 +85,11 @@
     </section>
 
     <form id="form" class="composer" autocomplete="off">
+      <div id="voice-meter" class="voice-meter" hidden>
+        <span class="meter" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></span>
+        <span id="voice-state" class="voice-state"></span>
+        <span id="voice-time" class="voice-time"></span>
+      </div>
       <label class="sr" for="input">Message</label>
       <textarea id="input" rows="1" placeholder="Message the assistant" enterkeyhint="send"></textarea>
       <div class="composer-tools">

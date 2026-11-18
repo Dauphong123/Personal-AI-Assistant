@@ -23,8 +23,16 @@ import { sessionFromHash, tokenFrom } from "./url.ts";
 import { parseMarkdown } from "./markdown.ts";
 import { copyButton, renderBlocks, renderCalls } from "./render.ts";
 import { shortcut } from "./keys.ts";
-import { PressTracker, TAP_MAX_MS, handsFreeAction, insertDictation } from "./handsfree.ts";
-import { HandsFreeListener, Player, Recorder, canListen, canRecord, replyToSpeak } from "./voice.ts";
+import {
+  PressTracker,
+  TAP_MAX_MS,
+  handsFreeAction,
+  handsFreeLabel,
+  insertDictation,
+  meterBars,
+  recordingLabel,
+} from "./handsfree.ts";
+import { HandsFreeListener, MAX_RECORDING_MS, Player, Recorder, canListen, canRecord, replyToSpeak } from "./voice.ts";
 
 const TOKEN_KEY = "coding-assistant-token";
 const SPEAK_KEY = "coding-assistant-speak";
@@ -80,6 +88,9 @@ const ui = {
   handsFree: byId<HTMLButtonElement>("hands-free"),
   speakLabel: byId("speak-label"),
   speakAnswers: byId<HTMLInputElement>("speak-answers"),
+  voiceMeter: byId("voice-meter"),
+  voiceState: byId("voice-state"),
+  voiceTime: byId("voice-time"),
 };
 
 // --- token ---------------------------------------------------------------------
@@ -140,6 +151,12 @@ let handsFreeWork: Promise<void> = Promise.resolve(); // utterances are handled 
 let transcribing = 0; // hands-free recordings at the backend
 let sending = false; // a queued prompt was sent and its turn has not shown up yet
 let replayEnd = 0; // events up to here were history when the session was opened: never spoken
+// The meter strip in the composer while the microphone is open.
+let talkStartedAt: number | null = null; // push-to-talk recording began
+let hearing = false; // hands-free: speech is coming in now
+let answerPlaying = false; // hands-free listening is paused while an answer plays
+let meterTimer = 0;
+const bars = [...ui.voiceMeter.querySelectorAll<HTMLElement>(".meter span")];
 
 function active(): SessionInfo | undefined {
   return sessions.find((session) => session.id === activeId);
@@ -217,6 +234,44 @@ function renderHeader(): void {
   });
   ui.status.textContent = status.text;
   ui.status.dataset["tone"] = status.tone;
+  renderMeter();
+}
+
+function setBars(level: number): void {
+  meterBars(level).forEach((height, index) => {
+    const bar = bars[index];
+
+    if (bar) bar.style.transform = `scaleY(${height})`;
+  });
+}
+
+/** The strip above the message box: live level, recording time or hands-free state. */
+function renderMeter(): void {
+  let state = "";
+  let time = "";
+
+  if (talkStartedAt !== null) {
+    state = "Recording";
+    time = recordingLabel(performance.now() - talkStartedAt, MAX_RECORDING_MS);
+  } else if (handsFree) {
+    state = handsFreeLabel({ speaking: hearing, paused: answerPlaying, transcribing: transcribing > 0, queued: handsFreeQueue.length });
+  } else if (voiceStatus === "Transcribing…") {
+    state = "Transcribing";
+  }
+
+  const shown = state !== "";
+  ui.voiceMeter.hidden = !shown;
+  ui.voiceMeter.dataset["mode"] = talkStartedAt !== null ? "talk" : handsFree ? "hands-free" : "busy";
+  ui.voiceState.textContent = state;
+  ui.voiceTime.textContent = time;
+
+  if (shown && meterTimer === 0) {
+    meterTimer = window.setInterval(renderMeter, 250); // the clock moves without other events
+  } else if (!shown && meterTimer !== 0) {
+    window.clearInterval(meterTimer);
+    meterTimer = 0;
+    setBars(0);
+  }
 }
 
 /** Set the visible label of an icon button (its icon stays). */
@@ -448,6 +503,7 @@ function select(id: string): void {
   recorder.cancel();
   ctrlDown = false;
   buttonPressedAt = null;
+  talkStartedAt = null;
   player.stop();
   voiceStatus = "";
   ui.mic.setAttribute("aria-pressed", "false");
@@ -601,11 +657,13 @@ async function startTalking(): Promise<void> {
   ui.mic.setAttribute("aria-pressed", "true");
   setLabel(ui.mic, "Done");
   voiceStatus = "Listening…";
+  talkStartedAt = performance.now();
   renderHeader();
 }
 
 function cancelTalking(): void {
   talkAttempt += 1;
+  talkStartedAt = null;
   recorder.cancel();
   ui.mic.setAttribute("aria-pressed", "false");
   setLabel(ui.mic, "Talk");
@@ -624,6 +682,7 @@ async function finishTalking(): Promise<void> {
   if (!recorder.recording) return;
 
   const sessionId = activeId;
+  talkStartedAt = null;
   const recording = await recorder.stop();
   ui.mic.setAttribute("aria-pressed", "false");
   setLabel(ui.mic, "Talk");
@@ -675,6 +734,8 @@ async function startHandsFree(): Promise<void> {
   }
 
   handsFree = true;
+  hearing = false;
+  answerPlaying = false;
   showAlert(null);
   ui.handsFree.setAttribute("aria-pressed", "true");
   setLabel(ui.handsFree, "Stop hands-free");
@@ -687,6 +748,7 @@ function stopHandsFree(message: string | null = null): void {
   // Prompts already spoken stay queued and are still sent (as the CLI's ChatLoop does).
   listener.stop();
   handsFree = false;
+  hearing = false;
   transcribing = 0;
   ui.handsFree.setAttribute("aria-pressed", "false");
   setLabel(ui.handsFree, "Hands-free");
@@ -812,7 +874,21 @@ function setUpVoice(info: ServerInfo): void {
   ui.mic.hidden = !(info.features.voice.transcribe && canRecord());
   ui.handsFree.hidden = !(info.features.voice.transcribe && canListen());
   ui.speakLabel.hidden = !info.features.voice.speak;
-  player.onChange = (playing) => listener.pause(playing);
+  player.onChange = (playing) => {
+    listener.pause(playing);
+    answerPlaying = playing;
+    setBars(0);
+    renderMeter();
+  };
+  recorder.onLevel = setBars;
+  listener.onLevel = (level, speaking) => {
+    setBars(level);
+
+    if (speaking !== hearing) {
+      hearing = speaking;
+      renderMeter();
+    }
+  };
   listener.onUtterance = (recording) => {
     const sessionId = activeId;
     handsFreeWork = handsFreeWork.then(() => handleUtterance(sessionId, recording));

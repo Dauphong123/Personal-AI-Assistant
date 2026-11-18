@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { Endpointer, PressTracker, handsFreeAction, insertDictation, rms } from "../src/handsfree.ts";
+import {
+  Endpointer,
+  PressTracker,
+  formatDuration,
+  handsFreeLabel,
+  handsFreeAction,
+  insertDictation,
+  levelToUnit,
+  meterBars,
+  recordingLabel,
+  rms,
+} from "../src/handsfree.ts";
 
 test("a long press is a hold, a short one a tap, two quick taps a double tap", () => {
   const key = new PressTracker();
@@ -102,4 +113,53 @@ test("dictation is inserted at the cursor with spacing", () => {
   assert.deepEqual(insertDictation("Please", 6, 6, "open it."), { value: "Please open it.", cursor: 15 });
   assert.deepEqual(insertDictation("A  B", 2, 2, "x"), { value: "A x B", cursor: 3 });
   assert.deepEqual(insertDictation("old text", 0, 8, "New."), { value: "New.", cursor: 4 });
+});
+
+// --- voice meter ---------------------------------------------------------------------------
+
+test("formatDuration: minutes and seconds", () => {
+  assert.equal(formatDuration(0), "0:00");
+  assert.equal(formatDuration(3_400), "0:03");
+  assert.equal(formatDuration(59_999), "0:59");
+  assert.equal(formatDuration(60_000), "1:00");
+  assert.equal(formatDuration(125_000), "2:05");
+  assert.equal(formatDuration(-5), "0:00");
+});
+
+test("recordingLabel: the cap is shown only near the end", () => {
+  assert.equal(recordingLabel(5_000, 60_000), "0:05");
+  assert.equal(recordingLabel(44_000, 60_000), "0:44");
+  assert.equal(recordingLabel(50_000, 60_000), "0:50 of 1:00");
+  assert.equal(recordingLabel(70_000, 60_000), "1:00 of 1:00");
+});
+
+test("levelToUnit: silence is 0, loud speech is 1, louder is never less", () => {
+  assert.equal(levelToUnit(0), 0);
+  assert.equal(levelToUnit(0.0005), 0); // below -60 dB
+  assert.equal(levelToUnit(1), 1);
+  let previous = -1;
+  for (const level of [0.001, 0.003, 0.01, 0.03, 0.1, 0.3]) {
+    const unit = levelToUnit(level);
+    assert.ok(unit >= previous && unit >= 0 && unit <= 1, `${level} -> ${unit}`);
+    previous = unit;
+  }
+  assert.ok(levelToUnit(0.05) > 0.5); // normal speech fills most of the meter
+});
+
+test("meterBars: five bars, tallest in the middle, all small when silent", () => {
+  const loud = meterBars(0.2);
+  assert.equal(loud.length, 5);
+  assert.ok((loud[2] ?? 0) >= (loud[0] ?? 0));
+  assert.ok(loud.every((bar) => bar >= 0.12 && bar <= 1));
+  assert.deepEqual(meterBars(0), [0.12, 0.12, 0.12, 0.12, 0.12]);
+});
+
+test("handsFreeLabel: what the hands-free strip says", () => {
+  const quiet = { speaking: false, paused: false, transcribing: false, queued: 0 };
+  assert.equal(handsFreeLabel(quiet), "Listening");
+  assert.equal(handsFreeLabel({ ...quiet, speaking: true }), "Hearing you");
+  assert.equal(handsFreeLabel({ ...quiet, paused: true, speaking: true }), "Paused while the answer plays");
+  assert.equal(handsFreeLabel({ ...quiet, transcribing: true }), "Transcribing");
+  assert.equal(handsFreeLabel({ ...quiet, queued: 2 }), "Listening, 2 prompts queued");
+  assert.equal(handsFreeLabel({ ...quiet, speaking: true, queued: 1 }), "Hearing you, 1 prompt queued");
 });

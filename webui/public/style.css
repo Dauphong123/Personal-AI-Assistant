@@ -281,6 +281,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .status::before { content: ""; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: currentColor; }
 .status[data-tone="busy"] { background: var(--accent-soft); color: var(--accent); }
 .status[data-tone="voice"] { background: var(--danger-soft); color: var(--danger); }
+.status[data-tone="listening"] { background: var(--accent-soft); color: var(--accent); }
 .status[data-tone="approval"] { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
 .status[data-tone="error"] { background: var(--danger-soft); color: var(--danger); }
 
@@ -614,6 +615,36 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 .composer:focus-within { border-color: var(--accent); }
 
+/* The microphone strip: live bars, what is happening, and the recording clock. */
+.voice-meter {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.45rem 0.45rem 0;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.7rem;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.86rem;
+}
+
+.voice-meter[data-mode="hands-free"] { background: var(--accent-soft); color: var(--accent); }
+.voice-meter[data-mode="busy"] { background: var(--side); color: var(--muted); }
+
+.meter { display: inline-flex; align-items: center; gap: 3px; height: 1.1rem; }
+
+.meter span {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+  transform: scaleY(0.12);
+  transition: transform 0.08s linear;
+}
+
+.voice-state { flex: 1; font-weight: 600; }
+.voice-time { font-variant-numeric: tabular-nums; }
+
 .composer textarea {
   display: block;
   width: 100%;
@@ -655,6 +686,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .tool:hover:not(:disabled) { border-color: transparent; background: var(--side); color: var(--ink); }
 
 .mic[aria-pressed="true"] { background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+#hands-free[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 
 .speak-toggle { user-select: none; }
 .speak-toggle input { position: absolute; opacity: 0; pointer-events: none; }
@@ -722,7 +754,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   .dots span:nth-child(2) { animation-delay: 0.15s; }
   .dots span:nth-child(3) { animation-delay: 0.3s; }
 
-  .mic[aria-pressed="true"] { animation: listening 1.2s ease-in-out infinite; }
+  #mic[aria-pressed="true"] { animation: listening 1.2s ease-in-out infinite; }
 }
 
 @keyframes spine {

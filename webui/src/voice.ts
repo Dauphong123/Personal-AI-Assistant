@@ -49,7 +49,9 @@ export class Recorder {
   #chunks: Blob[] = [];
   #timer = 0;
   #done: ((blob: Blob) => void) | null = null;
+  #meter: LevelMeter | null = null;
   onAutoStop: (() => void) | null = null; // called when MAX_RECORDING_MS ends a recording
+  onLevel: ((level: number) => void) | null = null; // microphone RMS, about 16 times a second
 
   get recording(): boolean {
     return this.#recorder !== null;
@@ -74,6 +76,7 @@ export class Recorder {
     this.#recorder = recorder;
     recorder.start();
     this.#timer = window.setTimeout(() => this.onAutoStop?.(), MAX_RECORDING_MS);
+    this.#meter = LevelMeter.open(this.#stream, (level) => this.onLevel?.(level));
   }
 
   /** Finish and return the recording (an empty blob if nothing was recording). */
@@ -97,9 +100,47 @@ export class Recorder {
 
   #release(): void {
     window.clearTimeout(this.#timer);
+    this.#meter?.close();
+    this.#meter = null;
     this.#stream?.getTracks().forEach((track) => track.stop());
     this.#stream = null;
     this.#recorder = null;
+  }
+}
+
+const LEVEL_MS = 60;
+
+/** Live microphone level for the meter (push-to-talk); nothing if the browser has no Web Audio. */
+class LevelMeter {
+  #context: AudioContext;
+  #timer: number;
+
+  private constructor(stream: MediaStream, onLevel: (level: number) => void) {
+    this.#context = new AudioContext();
+    const analyser = this.#context.createAnalyser();
+    analyser.fftSize = 1024;
+    const samples = new Float32Array(analyser.fftSize);
+    this.#context.createMediaStreamSource(stream).connect(analyser);
+    void this.#context.resume().catch(() => undefined);
+    this.#timer = window.setInterval(() => {
+      analyser.getFloatTimeDomainData(samples);
+      onLevel(rms(samples));
+    }, LEVEL_MS);
+  }
+
+  static open(stream: MediaStream, onLevel: (level: number) => void): LevelMeter | null {
+    if (typeof AudioContext === "undefined") return null;
+
+    try {
+      return new LevelMeter(stream, onLevel);
+    } catch {
+      return null; // the recording still works without a meter
+    }
+  }
+
+  close(): void {
+    window.clearInterval(this.#timer);
+    void this.#context.close().catch(() => undefined);
   }
 }
 
@@ -150,6 +191,7 @@ const QUIET_RESTART_MS = 10_000; // nobody speaking: start a fresh recording so 
 export class HandsFreeListener {
   onUtterance: ((recording: Blob) => void) | null = null;
   onIdle: (() => void) | null = null;
+  onLevel: ((level: number, speaking: boolean) => void) | null = null; // each tick while not paused
   #stream: MediaStream | null = null;
   #context: AudioContext | null = null;
   #analyser: AnalyserNode | null = null;
@@ -256,7 +298,9 @@ export class HandsFreeListener {
 
     const now = performance.now();
     this.#analyser.getFloatTimeDomainData(this.#samples);
-    const event = this.#endpointer.update(rms(this.#samples), now);
+    const level = rms(this.#samples);
+    const event = this.#endpointer.update(level, now);
+    this.onLevel?.(level, this.#endpointer.speaking);
 
     if (event !== null || this.#endpointer.speaking) {
       this.#lastSpeech = now;

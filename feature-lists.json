@@ -949,20 +949,25 @@
             "webui/test/state.test.ts (describeCalls: terminal, file tools, unknown tools, non-object args)",
             "headless Chrome (fake backend): terminal + edit_file cards, delete_file danger styling, Deny focused, Allow resumes the turn"
           ],
-          "commit": null,
+          "commit": "4142fca",
           "date": "2026-11-18"
         },
         {
           "n": 5,
           "title": "Voice feedback: timer, level meter, hands-free indicator",
-          "status": "in_progress",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "webui/test/handsfree.test.ts (formatDuration, recordingLabel, levelToUnit, meterBars, handsFreeLabel)",
+            "webui/test/state.test.ts (statusOf listening tone)",
+            "headless Chrome with fake mic: Talk meter peaks and clock runs, second click puts the dictation in the box; hands-free with a tone-burst WAV goes Listening -> Hearing you -> Transcribing and sends each prompt"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 6,
           "title": "Theme switch",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [],
           "commit": null
         }

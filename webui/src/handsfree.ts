@@ -176,3 +176,55 @@ export function insertDictation(
   const inserted = `${lead}${text}${tail}`;
   return { value: before + inserted + after, cursor: before.length + lead.length + text.length };
 }
+
+// --- voice meter (what the composer shows while the microphone is open) ----------------------
+
+/** "0:03", "1:00". */
+export function formatDuration(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/** Push-to-talk time; in the last quarter the one-minute cap is shown too. */
+export function recordingLabel(ms: number, maxMs: number): string {
+  const shown = Math.min(ms, maxMs);
+  return shown >= maxMs * 0.75 ? `${formatDuration(shown)} of ${formatDuration(maxMs)}` : formatDuration(shown);
+}
+
+/** Microphone RMS to 0..1 on a decibel scale: -60 dB and below is 0, -15 dB and above is 1. */
+export function levelToUnit(level: number): number {
+  if (!(level > 0)) return 0;
+
+  const db = 20 * Math.log10(level);
+  return Math.min(1, Math.max(0, (db + 60) / 45));
+}
+
+const BAR_SHAPE = [0.55, 0.8, 1, 0.8, 0.55];
+const BAR_FLOOR = 0.12;
+
+/** Heights (0..1) of the meter's five bars for one level; never below a small floor. */
+export function meterBars(level: number): number[] {
+  const unit = levelToUnit(level);
+  return BAR_SHAPE.map((shape) => Math.max(BAR_FLOOR, Math.round(unit * shape * 100) / 100));
+}
+
+export interface HandsFreeState {
+  speaking: boolean; // the endpointer hears speech now
+  paused: boolean; // an answer is playing (listening is paused)
+  transcribing: boolean; // an utterance is at the backend
+  queued: number; // prompts waiting to be sent
+}
+
+export function handsFreeLabel(state: HandsFreeState): string {
+  const base = state.paused
+    ? "Paused while the answer plays"
+    : state.speaking
+      ? "Hearing you"
+      : state.transcribing
+        ? "Transcribing"
+        : "Listening";
+
+  if (!state.queued) return base;
+
+  return `${base}, ${state.queued} ${state.queued === 1 ? "prompt" : "prompts"} queued`;
+}
