@@ -273,16 +273,23 @@ def has_tools(state: State):
     return "continue"
 
 
-def _run_tool(call) -> str:
+def _prepare(call) -> tuple[dict, str | None]:
+    """The call's repaired arguments, or an error message instead (`tool_args.prepare`)."""
     tool = TOOL_BY_NAME.get(call["name"])
 
     if tool is None:
-        return f"ERROR: unknown tool '{call['name']}'. Available: {', '.join(TOOL_BY_NAME)}"
+        return call["args"], f"ERROR: unknown tool '{call['name']}'. Available: {', '.join(TOOL_BY_NAME)}"
 
-    args, error = tool_args.prepare(tool, call["args"])
+    return tool_args.prepare(tool, call["args"])
+
+
+def _run_tool(call) -> str:
+    args, error = _prepare(call)
 
     if error is not None:
         return error
+
+    tool = TOOL_BY_NAME[call["name"]]
 
     try:
         output = str(tool.invoke(args))
@@ -308,9 +315,15 @@ def tool_execute(state: State):
     human = _last_human_index(state["messages"])
     used = sum(isinstance(m, ToolMessage) for m in state["messages"][(human or 0) :])
 
+    # The user approves the arguments that will really run, and is not asked about a call
+    # that would be refused anyway (repairing them has no side effects).
+    prepared = [(call, *_prepare(call)) for call in calls]
+    calls = [{**call, "args": args} for call, args, _ in prepared]
+    refused = {call["id"]: error for call, _, error in prepared if error is not None}
+
     # Ask once, before anything runs: on resume this node re-executes from the top,
     # so nothing with side effects may happen before the interrupt.
-    risky = [c for c in calls if c["name"] in NEEDS_APPROVAL]
+    risky = [c for c in calls if c["name"] in NEEDS_APPROVAL and c["id"] not in refused]
     approved = True
 
     if risky and used < MAX_TOOL_CALLS_PER_TURN:
@@ -324,6 +337,8 @@ def tool_execute(state: State):
     for call in calls:
         if used >= MAX_TOOL_CALLS_PER_TURN:
             output = "ERROR: tool call limit reached for this turn. Answer with what you have."
+        elif call["id"] in refused:
+            output = refused[call["id"]]
         elif call["name"] in NEEDS_APPROVAL and not approved:
             output = "ERROR: the user declined this action."
         else:
