@@ -60,7 +60,7 @@ Each message you send is routed either to a plain chat answer or to a **coding a
 | Python 3.12                                                     | Runtime                                   |
 | [Ollama](https://ollama.com) running                            | Models                                    |
 | `ollama pull qwen3:8b`                                          | Main model                                |
-| `ollama pull qwen3:4b`                                          | Summaries (override with `SUMMARY_MODEL`) |
+| `ollama pull qwen3:4b` (optional)                               | Only for `SUMMARY_MODEL` or `MODEL=qwen3:4b` |
 | [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg` on PATH) | The `search_code` tool                    |
 | Docker (optional)                                               | Postgres for long-term memory             |
 | A microphone and speakers (optional)                            | Voice mode                                |
@@ -186,14 +186,14 @@ dependency.py        Builds model, RAG, tokenizer, memory (import-time singleton
 
 graph/
   graph.py           The LangGraph definition (nodes and edges)
-  node.py            Node functions: recall, router, direct, code_tools, tool_execute, save, summarize
+  node.py            Node functions: recall, route (rules + router), direct, code_tools, tool_execute, save, summarize
 chains/
   router_chain.py    direct-vs-code classifier (structured output)
   direct_chain.py    Plain chat answer
   code_chain.py      Coding agent prompt, model bound to the tools
   summerize_chain.py History summarizer (spelling is intentional, see gotchas)
 data/
-  state.py           Graph state: messages, search_file, memory_context
+  state.py           Graph state: messages, memory_context, route
   route_query.py     Router schema (destination: direct | code)
 rag/
   rag.py             Chroma vector store, chunking, idempotent document sync, search tool
@@ -234,28 +234,28 @@ CLAUDE.md            Notes for Claude Code
                                          ▼
                               turns.run_turn  ──►  LangGraph app
                                                         │
- START ─► recall_memory ─► router ─┬─► direct ────────────────────┐
-                                   │                              │
-                                   └─► code_tools ⇄ tool_execute  │
-                                          │  (while the reply has │
-                                          │   tool_calls)         │
-                                          ▼                       ▼
-                                      save_memory ◄───────────────┘
-                                          ▼
-                                    reverse_router ─► (history > 5000 tokens?) ─► summarize ─► END
-                                          └──────────────────────────────────────────────────► END
+ START ─┬─► recall_memory ─┐
+        └─► route ─────────┴─► routed ─┬─► direct ────────────────────┐
+           (in parallel)               │                              │
+                                       └─► code_tools ⇄ tool_execute  │
+                                              │  (while the reply has │
+                                              │   tool_calls)         │
+                                              ▼                       ▼
+                                          save_memory ◄───────────────┘
+                                              ├─► (history > 5000 tokens?) ─► summarize ─► END
+                                              └──────────────────────────────────────────► END
 ```
 
-1. **`recall_memory`** loads the user's profile facts, searches long-term memory with the newest message (and, for a follow-up, the previous question and answer) and puts the result in `memory_context`, which is injected into the system prompt. Failures are logged, never fatal.
-2. **`router`** classifies the message as `direct` or `code`, using the last 4 messages of context (each cut to 300 characters).
+1. **`recall_memory`** loads the user's profile facts, searches long-term memory with the newest message (and, for a follow-up, the previous question and answer) and puts the result in `memory_context`. It is sent as a separate message just before the latest user message, not in the system prompt, so the prompt start stays the same and Ollama reuses its work on the history (see [Performance](#performance)). Failures are logged, never fatal.
+2. **`route`** runs at the same time (the router does not need memory). Obvious messages are decided by rules (`quick_route`: file names, git/test/build commands, file actions in English or Vietnamese go to `code`; greetings and thanks to `direct`). Everything else, short follow-ups such as "yes, do it" and job notices included, goes to the model, which sees the last 4 messages (each cut to 300 characters). `routed` waits for both.
 3. **`direct`** answers from the model's knowledge. **`code_tools`** is the coding agent; if its reply contains tool calls, **`tool_execute`** runs them and loops back until the model answers in plain text.
 4. **`tool_execute`** never raises. An unknown tool or a tool error becomes an `ERROR: ...` tool message, output is capped, and a turn is limited to 30 tool calls (after that the model is told to answer with what it has). If any call needs approval, the node asks **once, before anything runs**, with `interrupt()`. On resume the node re-executes from the top, so nothing with side effects may happen before the interrupt.
-5. **`save_memory`** extracts and stores memories from the finished turn (if memory is enabled).
+5. **`save_memory`** queues learning from the finished turn (if memory is enabled); it runs later, when the chat is idle (see [Remembering](#long-term-memory)).
 6. **`summarize`** runs only when the history is too long.
 
-A turn costs at least two model calls (the router, then the answer), plus one per tool round. See [Performance](#performance).
+A turn costs one model call when the rules decide the route, two otherwise (the router, then the answer), plus one per tool round. Each call's messages are fitted into the context window: older tool results in the prompt are trimmed first, so a long tool turn cannot push the system prompt out. See [Performance](#performance).
 
-**Graph state** (`data/state.py`): `messages` (with the `add_messages` reducer, so nodes append instead of overwrite), `search_file`, `memory_context`.
+**Graph state** (`data/state.py`): `messages` (with the `add_messages` reducer, so nodes append instead of overwrite), `memory_context`, `route`.
 
 **Checkpointer**: `InMemorySaver`, one thread (`thread_id` `"1"`), `recursion_limit` 100. The conversation lives in memory, so it is lost when the program exits. Long-term memory is what persists. Keyboard and voice share this one conversation.
 
@@ -344,13 +344,13 @@ Three memory types in Postgres with 384-dimension pgvector columns and **HNSW co
 
 **Why facts are overwritten.** A fact and its negation ("uses tabs" / "uses spaces") embed almost identically (distance about 0.002), so keeping the old text would silently discard a correction.
 
-**Recall** (`recall_memory`, `MemoryManager.recall`), formatted into the system prompt:
+**Recall** (`recall_memory`, `MemoryManager.recall`), sent as a message just before the latest user message:
 
 - **Profile:** facts in the categories `user_profile`, `user_preference` and `environment` (up to 12, newest first) are listed under "About the user" on every turn, whatever the question.
 - **Search:** the newest message finds up to 3 of each type within distance 0.20. Facts are also matched by words: BM25 over all fact texts fused with the vector ranking (`rank_facts`), so ports, names and model tags are found.
 - **Follow-ups:** a second search with the previous question, the last answer (first 300 characters) and the newest message adds up to 2 more of each type (`memory_query`), so "what's its name?" still finds the cat.
 
-**Remembering** (`save_memory`), after a finished turn:
+**Remembering** (`save_memory`), after a finished turn. Extraction is a full model call (about 32 s here) and Ollama runs one generation at a time, so `memories/scheduler.py` starts it only when no turn is running and the chat has been idle for `MEMORY_IDLE_SECONDS` (3). A turn that starts cancels it (the request is closed and Ollama stops within about 2 s) and it is retried at the next idle moment; nothing is written before the model calls finish. At exit the queue is run without waiting.
 
 1. Skip unless the turn ends in a plain-text answer.
 2. Skip trivial turns (only greeting or thanks words, no tool use). "I'm Dat" is not trivial.
@@ -370,7 +370,7 @@ The database URL comes from `DATABASE_URL` or `DB_URL`. A plain `postgresql://` 
 
 ## Conversation history and summaries
 
-After every turn, if the history exceeds **5,000 tokens** (`MAX_HISTORY_TOKENS`; it must fit the 8192-token context window together with the ~1,400-token tool prompt and the answer, or Ollama silently drops the oldest messages) (counted with the Qwen3 tokenizer), `summarize` condenses everything _before the latest turn_ into one summary message using the small model (`SUMMARY_MODEL`, default `qwen3:4b`). The latest turn is kept whole, so a tool call is never separated from its result. Messages are replaced via `RemoveMessage` plus re-added copies with fresh ids so that order is preserved.
+After every turn, if the history exceeds **5,000 tokens** (`MAX_HISTORY_TOKENS`; it must fit the 8192-token context window together with the ~1,400-token tool prompt and the answer, or Ollama silently drops the oldest messages) (counted with the Qwen3 tokenizer), `summarize` condenses everything _before the latest turn_ into one summary message using the main model (`SUMMARY_MODEL` picks another; on a 4 GB GPU a second model makes Ollama unload the main one, about 8 s to load it back). The latest turn is kept whole, so a tool call is never separated from its result. Messages are replaced via `RemoveMessage` plus re-added copies with fresh ids so that order is preserved.
 
 ---
 
@@ -475,7 +475,7 @@ All settings are environment variables (`.env` is loaded with `python-dotenv`).
 | Variable                  | Default               | Meaning                                                                                                        |
 | ------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `MODEL`                   | (required)            | Ollama model; must be a key of `TOKENIZER_MAP`                                                                 |
-| `SUMMARY_MODEL`           | `qwen3:4b`            | Model for history summaries                                                                                    |
+| `SUMMARY_MODEL`           | the main model        | Model for history summaries; another model makes Ollama swap models on a small GPU                             |
 | `LLM_REASONING`           | `false`               | `true` lets Qwen3 "think" before answering: smarter but several times slower (see [Performance](#performance)) |
 | `LLM_KEEP_ALIVE`          | `30m`                 | How long Ollama keeps the model loaded after a message                                                         |
 | `LLM_NUM_CTX`             | Ollama default (8192) | Context window; smaller uses less GPU memory                                                                   |
@@ -483,6 +483,8 @@ All settings are environment variables (`.env` is loaded with `python-dotenv`).
 | `DB_URL` / `DATABASE_URL` | none                  | Postgres URL; without it memory is disabled                                                                    |
 | `PROJECT_ROOT`            | repository dir        | Directory the coding tools may touch                                                                           |
 | `WEB_SEARCH_ENABLED`      | `true`                | `false` turns off `web_search` and `read_webpage`                                                              |
+| `MEMORY_IDLE_SECONDS`     | `3`                   | Memory is learned this long after a turn; a new turn cancels it and it retries later                           |
+| `LOG_TIMING`              | `false`               | `true` logs each graph step's duration and Ollama's prompt/output token counts                                 |
 
 ### Voice
 
@@ -522,6 +524,7 @@ Invalid voice values raise a clear error, but only when voice mode is requested,
 | History before summarizing | 5,000 tokens (`MAX_HISTORY_TOKENS`)        | `graph/node.py`         |
 | Tool calls per turn        | 30                                         | `graph/node.py`         |
 | Tool output                | 20,000 characters                          | `graph/node.py`         |
+| Messages per model call    | context − 1,400 (tools) − 1,500 (answer); older tool results trimmed first | `graph/node.py` |
 | Graph recursion limit      | 100                                        | `main.py`               |
 | Router context             | last 4 messages, 300 characters each       | `graph/node.py`         |
 | `read_file`                | 400 lines per call                         | `tools.py`              |
@@ -590,11 +593,19 @@ What changed:
 - **History limit lowered to 5,000 tokens** so a prompt always fits the context window. Prompt processing itself is fast (about 470 tokens/s), so long history costs seconds, not minutes.
 - **Plain answers are asked to be concise**, because every 100 words of reply costs about 25 s at this speed.
 
-What still dominates: **long answers**. A detailed explanation of a file can take a couple of minutes at 4 tokens/s, and each tool round adds a model call. Memory extraction (a full model call after each non-trivial turn) adds more once Postgres is running. Check the split with `ollama ps`: anything other than `100% GPU` means part of the model is on the CPU. Ways to go faster, from least to most disruptive:
+F025 (measured with `LOG_TIMING=true` and probe scripts on this machine):
+
+- **Memory in a user-role message, not the system prompt.** Ollama reuses its work only for an unchanged prompt start; a new memory text in the system prompt made it re-read the whole history (8.0 s for 3,700 tokens). A system message elsewhere does not help: the qwen3 template renders all system messages at the top. Now a changed memory costs 0.7 s.
+- **Memory extraction no longer holds up the next turn** (it waited up to 32 s); see Remembering above.
+- **Summaries on the main model**: `qwen3:4b` could not stay loaded beside `qwen3:8b`, so every summary cost a model reload (~8 s).
+- **Router rules** skip the routing call (1.8 to 3 s) for obvious messages, and memory recall (0.2 to 0.4 s) runs beside routing.
+- **Prompts are fitted to the context window**, so a big tool result no longer makes Ollama drop the system prompt (its runner uses `--context-shift --keep 4`).
+
+What still dominates: **long answers**. A detailed explanation of a file can take a couple of minutes at 4 tokens/s, and each tool round adds a model call. Memory extraction (a full model call after each non-trivial turn) runs only while the chat is idle and gives way to a new turn. Check the split with `ollama ps`: anything other than `100% GPU` means part of the model is on the CPU. Ways to go faster, from least to most disruptive:
 
 0. Shrinking the context window (`LLM_NUM_CTX=4096` or `2048`) was measured and barely helps: the GPU share only moved from 36% to 39% and speed stayed within noise, so the default is unchanged.
 1. Ask for short answers ("briefly").
-2. Use a model that fits fully in your GPU memory (for example a 3B model on 4 GB). Models in the Qwen3 family keep thinking even when asked not to, so `qwen3:4b` was not faster in practice.
+2. Use a model that fits fully in your GPU memory (for example a 3B model on 4 GB). `MODEL=qwen3:4b` is supported, but `RUN_MODEL_EVAL=1` (`tests/test_model_eval.py`) measured it at 12/12 routing in 16 s (8b: 32 s) and only 6/8 first tool choices in 428 s (8b: 8/8 in 55 s): with tools it still thinks, so it is slower for the coding agent.
 3. Add a card or run on a machine with more VRAM.
 
 ---
@@ -610,6 +621,8 @@ The suite needs **no microphone, speaker, model download or network**. `tests/st
 | File                            | Covers                                                                                                                                                                                                                                       |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_graph.py`                 | `tool_execute` (errors, limits, dispatch), approval flow on the real graph, summarization                                                                                                                                                    |
+| `test_graph_speed.py`           | F025: timing log, context fitting, summary model, memory scheduling and cancellation, memory placement, parallel routing, router rules, graph cleanup                                                                                        |
+| `test_model_eval.py`            | Opt-in (`RUN_MODEL_EVAL=1`, `EVAL_MODEL`): routing and first-tool accuracy and speed of a real model                                                                                                                                       |
 | `test_tools.py`                 | Path sandbox, file/git tools, terminal and background jobs                                                                                                                                                                                   |
 | `test_jobs.py`                  | JobManager: detach, notify, cancel, timeout, truncation                                                                                                                                                                                      |
 | `test_chat_loop.py`             | Stop phrases, queueing, stop and approval handling, real-graph turns, cancellation repair                                                                                                                                                    |

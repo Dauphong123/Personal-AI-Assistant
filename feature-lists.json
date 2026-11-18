@@ -1062,13 +1062,39 @@
       "id": "F025",
       "name": "Faster LangGraph turns",
       "description": "Cut per-turn latency of the graph on a CPU-bound Ollama: measured costs (memory extraction holding Ollama, model swaps, prompt-cache misses, router call, tool output overflowing the context).",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-18",
-      "completed": null,
+      "completed": "2026-11-18",
       "branch": "feature/F025-graph-speed",
       "commit": null,
-      "files": [],
-      "tests": [],
+      "files": [
+        "graph/node.py",
+        "graph/graph.py",
+        "data/state.py",
+        "turns.py",
+        "chains/code_chain.py",
+        "chains/direct_chain.py",
+        "chains/summerize_chain.py",
+        "memories/scheduler.py",
+        "memories/extractor.py",
+        "memories/manager.py",
+        "llm_options.py",
+        ".env.example",
+        "tests/test_graph_speed.py",
+        "tests/test_model_eval.py",
+        "tests/test_llm_options.py",
+        "tests/test_hardening.py",
+        "tests/test_graph.py",
+        "README.md",
+        "CLAUDE.md",
+        "memories/CLAUDE.md",
+        "docs/PROJECT.md"
+      ],
+      "tests": [
+        "tests/test_graph_speed.py (41)",
+        "tests/test_llm_options.py",
+        "tests/test_model_eval.py (opt-in)"
+      ],
       "steps": [
         {
           "n": 1,
@@ -1077,7 +1103,7 @@
           "tests": [
             "tests/test_graph_speed.py::TimingLogTests (5)"
           ],
-          "commit": null,
+          "commit": "98df893",
           "date": "2026-11-18"
         },
         {
@@ -1087,7 +1113,7 @@
           "tests": [
             "tests/test_graph_speed.py::FitToContextTests (7)"
           ],
-          "commit": null,
+          "commit": "809d2fd",
           "date": "2026-11-18"
         },
         {
@@ -1097,7 +1123,7 @@
           "tests": [
             "tests/test_graph_speed.py::SummaryModelTests (3)"
           ],
-          "commit": null,
+          "commit": "30f515e",
           "date": "2026-11-18"
         },
         {
@@ -1109,7 +1135,7 @@
             "tests/test_graph_speed.py::CancellableExtractionTests (4)",
             "real Ollama: cancelled at 3.1 s, next call 1.0 s"
           ],
-          "commit": null,
+          "commit": "d3dc41b",
           "date": "2026-11-18"
         },
         {
@@ -1120,7 +1146,7 @@
             "tests/test_graph_speed.py::StablePrefixTests (4)",
             "real qwen3:8b: changed memory 0.7 s prompt vs 8.0 s; answers use memory (en + vi)"
           ],
-          "commit": null,
+          "commit": "f0fb36c",
           "date": "2026-11-18"
         },
         {
@@ -1130,15 +1156,18 @@
           "tests": [
             "tests/test_graph_speed.py::ParallelRouteTests (3)"
           ],
-          "commit": null,
+          "commit": "b0f5115",
           "date": "2026-11-18"
         },
         {
           "n": 7,
           "title": "Rule-based router shortcut for obvious requests",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_graph_speed.py::QuickRouteTests (6)"
+          ],
+          "commit": "7b15821",
+          "date": "2026-11-18"
         },
         {
           "n": 8,
@@ -1148,7 +1177,7 @@
             "tests/test_llm_options.py::test_qwen3_4b_is_supported_with_the_shared_qwen3_tokenizer",
             "tests/test_model_eval.py (opt-in RUN_MODEL_EVAL=1): qwen3:8b routing 12/12 32s, tools 8/8 55s; qwen3:4b routing 12/12 16s, tools 6/8 428s -> default stays qwen3:8b"
           ],
-          "commit": null,
+          "commit": "24200ac",
           "date": "2026-11-18"
         },
         {
@@ -1158,18 +1187,22 @@
           "tests": [
             "tests/test_graph_speed.py::CleanupTests (3)"
           ],
-          "commit": null,
+          "commit": "19f544b",
           "date": "2026-11-18"
         },
         {
           "n": 10,
           "title": "Docs",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_project_docs.py",
+            "tests/test_ci_workflow.py"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         }
       ],
-      "notes": "Branched from feature/F024-ci (not yet in main) so feature-lists.json and CI stay in step. Approved 2026-11-18 (user: do every step, tests for each). Measured: 8b 5.4-6.2 tok/s, 4b 14.2 tok/s, router 3.0 s, memory extraction 32 s, model reload ~8 s, prompt re-read ~8 s/3.7k tokens, cancelled Ollama request frees it in 1.7 s."
+      "notes": "Branched from feature/F024-ci (not yet in main) so feature-lists.json and CI stay in step. Approved 2026-11-18 (user: do every step, tests for each). Measured: 8b 5.4-6.2 tok/s, 4b 14.2 tok/s, router 3.0 s, memory extraction 32 s, model reload ~8 s, prompt re-read ~8 s/3.7k tokens, cancelled Ollama request frees it in 1.7 s. Results: memory change 0.7 s vs 8.0 s prompt; extraction cancelled in 3.1 s (next call 1.0 s) instead of blocking up to 32 s; router rule 0.00 s vs 1.8-3 s; qwen3:4b eval tools 6/8 in 428 s so default stays qwen3:8b. Pre-existing flaky test: test_backend_voice test_transcribe_size_limits."
     }
   ]
 }

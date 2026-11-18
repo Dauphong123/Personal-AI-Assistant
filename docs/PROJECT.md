@@ -5,6 +5,7 @@ Shared memory across sessions. Read at session start (imported by root `CLAUDE.m
 Tags: **[verified]** checked in code/tests/docs (cite where) · **[assumed]** believed, not checked · **[unknown]** open.
 
 ## Current state
+- 2026-11-18: F025 (faster graph turns) on `feature/F025-graph-speed`, branched from `feature/F024-ci` (F024 not yet in `main`; merge F024 first). Suite 777 OK, 13 skipped. [verified: unittest discover]
 - 2026-11-18: F019-F023 all fast-forwarded into `main` (F022 Wispr Flow-style voice, F023 web UI redesign); feature branches kept on origin. No merge commits. [verified: git log]
 - Test status 2026-11-18: full suite 726 OK, 11 skipped (opt-in memory eval and voice engine tests); web unit tests 118; memory eval (`RUN_MEMORY_EVAL=1`) 40/40 on 2026-11-17. [verified: unittest discover, npm test]
 - 2026-11-18: the long-uncommitted edits were committed: a Pyright cleanup (`pyrightconfig.json`, `tests/test_typecheck.py`; regex flag names, list-literal word sets, `Any`/`None` guards), `tests/test_project_docs.py`, `docs/agents/`, Postgres port-15432 docs. [verified: git diff]
@@ -13,6 +14,7 @@ Tags: **[verified]** checked in code/tests/docs (cite where) · **[assumed]** be
 
 ## Decisions
 Format: `date — decision — why — alternatives rejected`.
+- 2026-11-18 — F025 graph speed, chosen from measurements (probe scripts, `LOG_TIMING`): memory as a user-role message before the latest user message; memory saves scheduled for idle and cancelled by a new turn (`memories/scheduler.py`); summaries on the main model; `fit_to_context` per model call; recall ∥ route; `quick_route` rules; `qwen3:4b` supported but not default — a system message for memory rejected (template hoists it); skipping extraction or shrinking its output rejected (memory eval risk); dropping the router rejected (architecture change, tool-bound model on plain questions); `LLM_NUM_CTX=4096` rejected (5.4 vs 5.6 tok/s); `qwen3:4b` as default rejected (eval: tools 6/8 in 428 s vs 8b 8/8 in 55 s).
 - 2026-11-18 — F024 CI: GitHub Actions `.github/workflows/ci.yml`, every push + PRs to `main`; `python` job on windows-latest in a real `.venv` with `requirements.txt` + `requirements_voice.txt` (Pyright needs the voice imports) + pyright + ripgrep + built `webui/`; `webui` job on Ubuntu (check/test/build) — no CD (local app, nothing to deploy); `main` protected (user approved): required checks `python` + `webui`, branch up to date, linear history, no force push/deletion, applies to admins, no review requirement (solo); a `dist` artifact not added — Ubuntu for the Python job rejected (WinDLL, `.venv\Scripts` paths); skipping Pyright in CI rejected.
 - 2026-11-17 — Instructions split: root `CLAUDE.md` + `voice/CLAUDE.md` + `memories/CLAUDE.md` + skills; roles are skills — keeps always-loaded context small; solo project needs no agent fleet.
 
@@ -41,6 +43,10 @@ Format: `date — decision — why — alternatives rejected`.
 - `ctypes.WinDLL("user32").GetAsyncKeyState(0xA3)` reads Right Ctrl from the venv without extra packages (`voice.build_key`). [verified 2026-11-17]
 - Web Talk/Hands-free buttons were missing because web voice was opt-in (`--voice`): without it the handshake reports `voice.transcribe=false` (`backend/server.py` `describe`) and `webui/src/main.ts` `setUpVoice` hides them. Now on by default when the packages are installed, `--no-voice` to turn off (`tests/test_backend_main.py::MainTests`). [verified 2026-11-18, real handshake]
 - Headless Chrome over DevTools: `navigator.clipboard` fails with NotAllowedError until `Emulation.setFocusEmulationEnabled` and `Browser.grantPermissions` (`clipboardReadWrite`, with the page origin) are sent; with them, the web chat's Copy buttons can be checked. The F022 tone-burst fake microphone also drives the F023 voice meter (Listening → Hearing you → Transcribing). [verified 2026-11-18, scratchpad scripts]
+- Ollama 0.40.16 / qwen3:8b on this machine: 2.36 of 6.6 GB on the GPU; 5.4-6.2 tok/s out, ~460 tok/s prompt; `qwen3:4b` 14.2 tok/s plain but thinks with tools; only one model loaded at a time (loading 4b unloaded 8b; reload ~8 s); runner flags `-np 1 --context-shift --keep 4` (server.log). [verified 2026-11-18, scratchpad probes]
+- Ollama's qwen3 template renders all system messages at the top (`.System`), so a mid-conversation system message changes the prompt start (2,247 → 2,249 tokens, full re-read). Prompt reuse: identical prompt 0.2 s, changed tail 1.6-2.8 s, changed start 4.8 s (2.2k tokens). [verified 2026-11-18, `/api/show` + `/api/chat` probes]
+- Cancelling an async Ollama request (closing the HTTP connection) stops generation: the next call started in 1.0-1.7 s instead of waiting ~30 s. ChatOllama's async client is bound to the first event loop; a closed loop breaks later calls ("Event loop is closed"), and a loop left open logs "Cancelling an overlapped future failed" at exit on Windows (`tests/test_graph_speed.py::CancellableExtractionTests`). [verified 2026-11-18]
+- `tests.test_backend_voice.VoiceRouteTests.test_transcribe_size_limits` is flaky (~1 in 8-16 runs, read error on the 413 response), also on the F024 commit, so not from F025. [verified 2026-11-18, repeated runs]
 - (add: finding — evidence file:line or test)
 
 ## Dependencies and conflicts
@@ -50,4 +56,6 @@ Format: `date — decision — why — alternatives rejected`.
 
 ## Open questions
 - `tools.read_file`: `end_line=0` reads the whole file (`end_line or len(lines)`). Harmless; left as is.
-- Are Superpowers, Serena and Pyright installed here? [unknown]
+- Are Superpowers, Serena and Pyright installed here? [unknown] (Pyright: yes, `.venv/Scripts/pyright`, verified 2026-11-18)
+- Flaky `test_transcribe_size_limits` (see Verified findings): root cause not investigated. [unknown]
+- Real turn-time gain of F025 over many turns with memory on is not benchmarked; per-call numbers only. [unknown]

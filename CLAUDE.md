@@ -21,7 +21,7 @@ Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama wit
 
 `.env` (gitignored; copy `.env.example`): `MODEL` must be a key in `TOKENIZER_MAP` (`llm_options.py`; `model_name()` fails at startup with a clear message otherwise). DB URL from `DATABASE_URL` or `DB_URL`; `postgresql://` is rewritten to `postgresql+psycopg://` (only psycopg 3 installed). `PROJECT_ROOT` changes the directory the coding tools may touch.
 
-**Speed.** `llm_options.py` sets `reasoning=False` on every `ChatOllama` (thinking made routing take 113 s vs 3 s), `keep_alive=30m`, optional `LLM_NUM_CTX`. `MAX_HISTORY_TOKENS` (default 5000) must stay below the context window (8192) minus the ~1,400-token tool prompt and the answer, or Ollama silently drops the oldest messages. This machine (RTX 3050 4 GB): `qwen3:8b` ~4 tok/s, ~64% CPU, so output length is the main cost; `qwen3:4b` still thinks.
+**Speed.** `llm_options.py` sets `reasoning=False` on every `ChatOllama` (thinking made routing take 113 s vs 3 s), `keep_alive=30m`, optional `LLM_NUM_CTX`. `MAX_HISTORY_TOKENS` (default 5000) must stay below the context window (8192) minus the ~1,400-token tool prompt and the answer, or Ollama silently drops the oldest messages. This machine (RTX 3050 4 GB): `qwen3:8b` ~4-6 tok/s, ~64% CPU, so output length is the main cost; only one model fits (a second one unloads it, ~8 s reload), so summaries use the main model; `qwen3:4b` still thinks with tools (`tests/test_model_eval.py`, opt-in). Ollama reuses work only for an unchanged prompt start and its qwen3 template puts every system message at the top, so memory goes in a user-role message before the latest one (`with_memory`). `LOG_TIMING=true` logs node durations and token counts.
 
 **Port gotcha.** A native Windows `postgres` also listens on `localhost:5432`, so connections hit the wrong server ("password authentication failed" while the container is fine). `compose.yaml` therefore publishes the container on host port **15432** (native servers also own 5433, and Windows lets them bind beside Docker; 50000-55633 are reserved by Windows); `DB_URL` must use `localhost:15432`. `python -m memories.check` diagnoses a failing connection (names the port owner, prints the fix); the memory startup warning includes the same hint.
 
@@ -29,10 +29,10 @@ Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama wit
 
 **Import-time singleton.** `dependency.py` builds model, RAG, tokenizer and memory manager on import (`dependency = dependency_init()`); `chains/*`, `tools.py`, `graph/node.py` use `from dependency import dependency`. Importing nearly any module loads models and syncs `./documents/` into Chroma (idempotent: stable chunk ids, stale chunks deleted). `dependency.py` must not import `graph` (circular). `main.py` compiles the graph.
 
-**Graph** (`graph/graph.py`, `graph/node.py`, state `data/state.py` = `{messages (add_messages), search_file, memory_context}`):
+**Graph** (`graph/graph.py`, `graph/node.py`, state `data/state.py` = `{messages (add_messages), memory_context, route}`):
 
-- `START → recall_memory → router → direct | code_tools`; router sees the last few messages.
-- `code_tools ⇄ tool_execute` while the AI message has `tool_calls`; then `→ save_memory → reverse_router`. `direct → save_memory`.
+- `START → recall_memory ∥ route → routed → direct | code_tools`; `route` uses `quick_route` rules for obvious messages, else the router model (sees the last few messages).
+- `code_tools ⇄ tool_execute` while the AI message has `tool_calls`; then `→ save_memory`. `direct → save_memory`. Each model call's messages go through `fit_to_context` (older tool results trimmed; budget = context − 1,400 − 1,500).
 - History over `MAX_HISTORY_TOKENS` (counts text and tool-call args): `summarize` condenses everything before the latest turn; the latest turn stays whole (tool calls never split from results).
 - `tool_execute` never raises: unknown tools/errors become `ERROR:` tool messages, output capped, max 30 tool calls per turn. Tools in `NEEDS_APPROVAL` (`tools.py`: terminal, write/edit/delete/move) pause via `interrupt()`; `ChatLoop` asks y/N (voice asks aloud) and resumes with `Command(resume=bool)`.
 - `main.py` uses `InMemorySaver` (thread_id `"1"`); `turns.py` streams chunks from `direct`, `code_tools`, `tool_execute`.
@@ -45,7 +45,7 @@ Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama wit
 
 **Vietnamese.** `language.py` (`detect_language`, `say`, NFC `normalize`) is shared by `chat_loop.py`, `turns.py`, `voice/`. Prompts say to answer in the user's language. RAG embeddings are English-only (weak Vietnamese recall), so the code prompt says to search documents in English; memory embeddings are multilingual (`memories/CLAUDE.md`). Speech-language settings: `voice/CLAUDE.md`.
 
-**Hardening.** Job notices reach the model as a flagged, fenced message (`additional_kwargs["notice"]`); memory neither recalls for nor learns from them. `ChatLoop.close()` cancels; `wait_idle()` lets piped input finish. `JobManager.close()` kills running jobs; job output is a bounded tail. `save_memory` runs in a one-worker background pool (`wait_for_memory()` at exit). `read_file`/`search_code` refuse credential files (`SECRET_FILE_PATTERNS`).
+**Hardening.** Job notices reach the model as a flagged, fenced message (`additional_kwargs["notice"]`); memory neither recalls for nor learns from them. `ChatLoop.close()` cancels; `wait_idle()` lets piped input finish. `JobManager.close()` kills running jobs; job output is a bounded tail. `save_memory` queues on `memories/scheduler.py` (one worker; starts after `MEMORY_IDLE_SECONDS` with no turn; `run_turn` cancels a running save, which retries; `wait_for_memory()` at exit runs the queue). `read_file`/`search_code` refuse credential files (`SECRET_FILE_PATTERNS`).
 
 **Adding a tool:** `@tool` in `tools.py` + add to `TOOLS` at the bottom (binding and dispatch derive from it); add a line in the code prompt in `chains/code_chain.py` (a test checks every tool named there exists); add to `NEEDS_APPROVAL` if it changes state or runs commands; file args go through `resolve_path()` (rejects paths outside `PROJECT_ROOT`).
 
