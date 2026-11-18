@@ -1457,13 +1457,28 @@
       "id": "F030",
       "name": "Bind approvals to a request id",
       "description": "The web /approve answer is not tied to a pending approval request; add a request id to the approval event and require it.",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-18",
-      "completed": null,
+      "completed": "2026-11-19",
       "branch": "feature/F030-approval-request-id",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "c78d7c2",
+      "files": [
+        "backend/session.py",
+        "backend/server.py",
+        "webui/src/types.ts",
+        "webui/src/state.ts",
+        "webui/src/api.ts",
+        "webui/src/main.ts",
+        "backend/CLAUDE.md",
+        "webui/CLAUDE.md"
+      ],
+      "tests": [
+        "tests/test_backend_session.py::ApprovalTests",
+        "tests/test_backend_server.py::ApprovalApiTests",
+        "tests/test_backend_server.py::SessionApiTests::test_approve_needs_a_request_id",
+        "webui/test/state.test.ts",
+        "webui/test/api.test.ts"
+      ],
       "steps": [
         {
           "n": 1,
@@ -1487,18 +1502,22 @@
             "webui/test/state.test.ts::isChatEvent accepts known events and rejects junk",
             "webui/test/api.test.ts::session actions post to their route"
           ],
-          "commit": null,
+          "commit": "c78d7c2",
           "date": "2026-11-19"
         },
         {
           "n": 3,
           "title": "Docs",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "python -m unittest discover -s tests -t .",
+            "npm --prefix webui test"
+          ],
+          "commit": null,
+          "date": "2026-11-19"
         }
       ],
-      "notes": "Review finding B1 (backend/session.py, server.py, webui/src/api.ts, PROTOCOL). Branched from F029 (F026-F029 not yet in main)."
+      "notes": "Review finding B1 (backend/session.py, server.py, webui/src/api.ts, PROTOCOL). Branched from F029 (F026-F029 not yet in main). PROTOCOL 1 -> 2: rebuild webui (npm --prefix webui run build). docs/PROJECT.md entry added but left unstaged (it holds the user's uncommitted edits)."
     }
   ]
 }
