@@ -69,6 +69,14 @@ def words(n, tag="w"):
     return " ".join(f"{tag}{i}" for i in range(n))
 
 
+def recorder(seen: dict, reply):
+    def run(inputs: dict):
+        seen.update(inputs)
+        return reply
+
+    return RunnableLambda(run)
+
+
 class FitToContextTests(unittest.TestCase):
     """The stub tokenizer counts words, so budgets here are in words."""
 
@@ -116,8 +124,8 @@ class FitToContextTests(unittest.TestCase):
         self.assertLess(node.MAX_HISTORY_TOKENS, node.message_budget({}))
 
     def test_code_tools_sends_the_fitted_messages(self):
-        seen = {}
-        chain = RunnableLambda(lambda x: seen.update(x) or AIMessage(content="ok"))
+        seen: dict = {}
+        chain = recorder(seen, AIMessage(content="ok"))
 
         with patch.object(node, "code_chain", chain), patch.object(node, "MESSAGE_BUDGET", 500):
             node.code_tools({"messages": self.turn()})  # type: ignore[arg-type]
@@ -125,8 +133,8 @@ class FitToContextTests(unittest.TestCase):
         self.assertLessEqual(node.count_message_tokens(seen["messages"]), 500)
 
     def test_direct_sends_the_fitted_messages(self):
-        seen = {}
-        chain = RunnableLambda(lambda x: seen.update(x) or AIMessage(content="ok"))
+        seen: dict = {}
+        chain = recorder(seen, AIMessage(content="ok"))
         messages = self.turn() + [AIMessage(content="done"), HumanMessage(content="thanks")]
 
         with patch.object(node, "direct_chain", chain), patch.object(node, "MESSAGE_BUDGET", 500):
