@@ -20,7 +20,7 @@ from chains import code_chain, direct_chain, router_chain, summerize_chain
 from data.route_query import Router
 from data.state import State
 from dependency import dependency
-from llm_options import _flag
+from llm_options import _flag, ollama_options
 from memories.manager import memory_query
 from tools import NEEDS_APPROVAL, TOOL_BY_NAME
 
@@ -33,6 +33,21 @@ MAX_HISTORY_TOKENS = int(os.environ.get("MAX_HISTORY_TOKENS", "5000"))
 MAX_TOOL_CALLS_PER_TURN = 30
 MAX_TOOL_OUTPUT_CHARS = 20000
 ROUTER_HISTORY_MESSAGES = 4
+
+# What one model call may spend on messages: the context window minus the system prompt with its
+# tool schemas and room for the answer. Within a turn, tool results can push the messages past it
+# (history is only summarized after the turn); Ollama would then drop the start of the prompt,
+# system prompt included (`--context-shift --keep 4` in its server log).
+DEFAULT_CONTEXT_TOKENS = 8192
+TOOL_PROMPT_TOKENS = 1400
+ANSWER_RESERVE_TOKENS = 1500
+TRIMMED_TOOL_CHARS = 300
+TRIM_NOTE = "\n... [trimmed to fit the context window]"
+
+
+def message_budget(env=None) -> int:
+    context = ollama_options(env).get("num_ctx", DEFAULT_CONTEXT_TOKENS)
+    return context - TOOL_PROMPT_TOKENS - ANSWER_RESERVE_TOKENS
 
 
 def timing_level(env=None) -> int:
@@ -101,6 +116,59 @@ def count_message_tokens(messages):
     )
 
 
+MESSAGE_BUDGET = message_budget()
+
+
+def _trimmed(message, chars: int):
+    return message.model_copy(update={"content": str(message.content)[:chars] + TRIM_NOTE})
+
+
+def fit_to_context(messages, budget: int):
+    """The messages to send so they fit `budget` tokens; the state itself is not changed.
+
+    Tool results are trimmed oldest first; the newest one is kept whole when the others make
+    enough room, and cut to what fits otherwise. Call/result pairs and ids stay intact.
+    """
+    total = count_message_tokens(messages)
+
+    if total <= budget:
+        return messages
+
+    fitted = list(messages)
+    tool_indexes = [i for i, m in enumerate(fitted) if isinstance(m, ToolMessage)]
+
+    for i in tool_indexes[:-1]:
+        if total <= budget:
+            return fitted
+
+        before = count_message_tokens([fitted[i]])
+        if len(str(fitted[i].content)) > TRIMMED_TOOL_CHARS:
+            fitted[i] = _trimmed(fitted[i], TRIMMED_TOOL_CHARS)
+            total += count_message_tokens([fitted[i]]) - before
+
+    if total > budget and tool_indexes:
+        last = tool_indexes[-1]
+        original = messages[last]
+        size = count_message_tokens([original])
+        rest = total - count_message_tokens([fitted[last]])
+        allowed = budget - rest
+        chars = len(str(original.content))
+
+        while chars > 0:
+            chars = int(chars * max(allowed, 0) / max(size, 1) * 0.9)
+            fitted[last] = _trimmed(original, chars)
+            size = count_message_tokens([fitted[last]])
+            if rest + size <= budget:
+                break
+
+        total = rest + count_message_tokens([fitted[last]])
+
+    if total > budget:
+        logger.warning("Messages still exceed the context budget (%d > %d tokens)", total, budget)
+
+    return fitted
+
+
 def _last_human_index(messages) -> int | None:
     for index in range(len(messages) - 1, -1, -1):
         if isinstance(messages[index], HumanMessage):
@@ -162,7 +230,7 @@ def wait_for_memory(timeout: float = 60) -> bool:
 def code_tools(state: State):
     response = code_chain.invoke(
         {
-            "messages": state["messages"],
+            "messages": fit_to_context(state["messages"], MESSAGE_BUDGET),
             "memory": state.get("memory_context", ""),
         }
     )
@@ -253,7 +321,7 @@ def router(state: State):
 def direct(state: State):
     response = direct_chain.invoke(
         {
-            "messages": state["messages"],
+            "messages": fit_to_context(state["messages"], MESSAGE_BUDGET),
             "memory": state.get("memory_context", ""),
         }
     )

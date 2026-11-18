@@ -1083,9 +1083,12 @@
         {
           "n": 2,
           "title": "Fit each model prompt into the context window (trim old tool results)",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_graph_speed.py::FitToContextTests (7)"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 3,
