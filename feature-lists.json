@@ -923,20 +923,28 @@
             "tests/test_webui_frontend.py::StyleTests::test_dark_theme_defines_every_colour",
             "headless Chrome screenshots: light, dark, 390px mobile, thinking placeholder, writing spine (fake backend)"
           ],
-          "commit": null,
+          "commit": "b0fd8ab",
           "date": "2026-11-18"
         },
         {
           "n": 3,
           "title": "Interaction: copy, jump to latest, menu, dialogs, relative times, shortcuts",
-          "status": "in_progress",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "webui/test/keys.test.ts",
+            "webui/test/state.test.ts (relativeTime)",
+            "tests/test_webui_frontend.py::PageTests::test_no_browser_popups",
+            "tests/test_webui_frontend.py::PageTests::test_session_actions_are_a_menu",
+            "headless Chrome (fake backend): copy code/answer to clipboard, jump button, menu + Escape, inline rename, clear/delete dialogs, Escape stops a turn, '/' focuses the box, 390px header"
+          ],
+          "commit": null,
+          "date": "2026-11-18",
+          "notes": "New-session shortcut dropped: Ctrl+Shift+O and similar are browser shortcuts; '/' (focus box) added instead."
         },
         {
           "n": 4,
           "title": "Approval card",
-          "status": "todo",
+          "status": "in_progress",
           "tests": [],
           "commit": null
         },

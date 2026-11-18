@@ -9,6 +9,7 @@ import {
   formatCalls,
   isChatEvent,
   isThinking,
+  relativeTime,
   statusOf,
   sortSessions,
   stateLabel,
@@ -254,4 +255,26 @@ test("thinking: after a tool approval the answer goes on, so no new placeholder"
   // Approved: the event that follows clears the approval while the turn goes on.
   const resumed = apply(conv, { id: 4, type: "token", text: " Done." });
   assert.equal(isThinking(resumed), false);
+});
+
+// --- relative times in the sidebar --------------------------------------------------------
+
+test("relativeTime: recent times count up", () => {
+  const now = Date.UTC(2026, 10, 18, 12, 0, 0);
+  const ago = (seconds: number): number => now / 1000 - seconds;
+  assert.equal(relativeTime(ago(5), now), "just now");
+  assert.equal(relativeTime(ago(59), now), "just now");
+  assert.equal(relativeTime(ago(60), now), "1 min ago");
+  assert.equal(relativeTime(ago(59 * 60), now), "59 min ago");
+  assert.equal(relativeTime(ago(2 * 3600 + 5), now), "2 h ago");
+  assert.equal(relativeTime(ago(23 * 3600), now), "23 h ago");
+  assert.equal(relativeTime(ago(30 * 3600), now), "yesterday");
+  assert.equal(relativeTime(ago(5 * 86400), now), "5 days ago");
+});
+
+test("relativeTime: older dates and clock skew", () => {
+  const now = Date.UTC(2026, 10, 18, 12, 0, 0);
+  assert.equal(relativeTime(Date.UTC(2026, 9, 2, 12) / 1000, now), "2 Oct");
+  assert.equal(relativeTime(Date.UTC(2025, 9, 2, 12) / 1000, now), "2 Oct 2025");
+  assert.equal(relativeTime(now / 1000 + 30, now), "just now"); // the server clock is a bit ahead
 });

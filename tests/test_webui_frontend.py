@@ -70,6 +70,7 @@ CONTROLS = [
     "sidebar", "sessions", "new-session", "toggle-sidebar", "session-title", "status", "rename", "clear-chat",
     "delete-session", "scroll", "empty", "log", "alert", "approval", "approval-calls", "allow", "deny",
     "form", "input", "send", "stop", "mic", "speak-label", "speak-answers",
+    "session-menu", "session-menu-list", "title-input", "confirm", "confirm-ok", "confirm-cancel", "jump",
 ]
 
 
@@ -115,6 +116,18 @@ class PageTests(unittest.TestCase):
         self.assertIn("state-${session.state}", MAIN)
         for state in ("running", "waiting", "approval"):
             self.assertIn(f".session-state.state-{state}", CSS)
+
+    def test_no_browser_popups(self):
+        # Rename and confirmations are part of the page (a prompt() box blocks the whole tab).
+        for popup in ("window.prompt", "window.confirm", "window.alert", "prompt(", "confirm(\"", "alert("):
+            self.assertNotIn(popup, MAIN, popup)
+
+    def test_session_actions_are_a_menu(self):
+        menu = HTML[HTML.index('id="session-menu-list"'):]
+        menu = menu[:menu.index("</div>")]
+        for item in ("rename", "clear-chat", "delete-session"):
+            self.assertIn(f'id="{item}"', menu, item)
+        self.assertEqual(menu.count('role="menuitem"'), 3)
 
     def test_token_is_kept_out_of_the_address_bar(self):
         self.assertIn("history.replaceState", MAIN)

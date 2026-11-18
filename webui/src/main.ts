@@ -11,6 +11,7 @@ import {
   formatCalls,
   isChatEvent,
   isThinking,
+  relativeTime,
   sortSessions,
   stateLabel,
   statusOf,
@@ -19,7 +20,8 @@ import type { Conversation, Item } from "./state.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
 import { sessionFromHash, tokenFrom } from "./url.ts";
 import { parseMarkdown } from "./markdown.ts";
-import { renderBlocks } from "./render.ts";
+import { copyButton, renderBlocks } from "./render.ts";
+import { shortcut } from "./keys.ts";
 import { PressTracker, TAP_MAX_MS, handsFreeAction, insertDictation } from "./handsfree.ts";
 import { HandsFreeListener, Player, Recorder, canListen, canRecord, replyToSpeak } from "./voice.ts";
 
@@ -44,6 +46,15 @@ const ui = {
   newSession: byId<HTMLButtonElement>("new-session"),
   toggleSidebar: byId<HTMLButtonElement>("toggle-sidebar"),
   title: byId("session-title"),
+  titleInput: byId<HTMLInputElement>("title-input"),
+  menuButton: byId<HTMLButtonElement>("session-menu"),
+  menu: byId("session-menu-list"),
+  confirm: byId<HTMLDialogElement>("confirm"),
+  confirmTitle: byId("confirm-title"),
+  confirmText: byId("confirm-text"),
+  confirmOk: byId<HTMLButtonElement>("confirm-ok"),
+  confirmCancel: byId<HTMLButtonElement>("confirm-cancel"),
+  jump: byId<HTMLButtonElement>("jump"),
   status: byId("status"),
   rename: byId<HTMLButtonElement>("rename"),
   clear: byId<HTMLButtonElement>("clear-chat"),
@@ -108,6 +119,7 @@ let source: EventSource | null = null;
 let connection = ""; // stream trouble shown in the status line
 let rendered: { item: Item; node: HTMLElement }[] = [];
 let writingNode: HTMLElement | null = null; // the answer still being written (its spine moves)
+const messageText = new WeakMap<HTMLElement, string>(); // what a message's Copy button copies
 let shownApproval: Conversation["approval"] = null;
 const drafts = new Map<string, string>();
 const recorder = new Recorder();
@@ -150,14 +162,23 @@ function renderSidebar(): void {
     name.textContent = session.title;
     button.append(name);
 
+    const meta = document.createElement("span");
+    meta.className = "session-meta";
     const label = stateLabel(session.state);
 
     if (label) {
       const state = document.createElement("span");
       state.className = `session-state state-${session.state}`;
       state.textContent = label;
-      button.append(state);
+      meta.append(state);
+    } else {
+      const time = document.createElement("span");
+      time.className = "session-time";
+      time.textContent = relativeTime(session.created);
+      meta.append(time);
     }
+
+    button.append(meta);
 
     const li = document.createElement("li");
     li.append(button);
@@ -173,6 +194,7 @@ function renderHeader(): void {
   document.title = session ? `${session.title} · Coding assistant` : "Coding assistant";
 
   const none = session === undefined || !launch.token;
+  ui.menuButton.disabled = none;
   ui.rename.disabled = none;
   ui.clear.disabled = none || conv.busy;
   ui.remove.disabled = none || conv.busy;
@@ -224,6 +246,12 @@ function renderMessage(item: Item): HTMLElement {
     // The model writes markdown; it is parsed into a tree and built with textContent only.
     message.classList.add("md");
     message.append(...renderBlocks(parseMarkdown(item.text)));
+
+    const actions = document.createElement("div");
+    actions.className = "msg-actions";
+    actions.append(copyButton("copy-msg", "Copy answer"));
+    message.append(actions);
+    messageText.set(message, item.text);
     return message;
   }
 
@@ -308,6 +336,13 @@ function renderConversation(): void {
   if (stick) {
     ui.scroll.scrollTop = ui.scroll.scrollHeight;
   }
+
+  updateJump();
+}
+
+/** "Jump to latest" shows while the newest messages are out of view. */
+function updateJump(): void {
+  ui.jump.hidden = nearBottom() || conv.items.length === 0;
 }
 
 // --- the active session's event stream -----------------------------------------------
@@ -401,6 +436,8 @@ function select(id: string): void {
   }
 
   closeStream();
+  closeMenu();
+  endRename(false);
   stopHandsFree();
   handsFreeQueue.length = 0; // spoken for the session we are leaving
   recorder.cancel();
@@ -892,40 +929,245 @@ ui.speakAnswers.addEventListener("change", () => {
 ui.stop.addEventListener("click", () => void run((id) => api.stop(id)));
 ui.allow.addEventListener("click", () => void run((id) => api.approve(id, true)));
 ui.deny.addEventListener("click", () => void run((id) => api.approve(id, false)));
-ui.clear.addEventListener("click", () => void run((id) => api.reset(id)));
 ui.newSession.addEventListener("click", () => void createSession());
 
-ui.rename.addEventListener("click", () => {
-  const title = window.prompt("Session name", active()?.title ?? "");
+// --- session menu, rename, confirm ---------------------------------------------------------
 
-  if (title !== null && title.trim()) {
-    void run((id) => api.rename(id, title));
+function menuItems(): HTMLButtonElement[] {
+  return [...ui.menu.querySelectorAll<HTMLButtonElement>("[role=menuitem]")].filter((item) => !item.disabled);
+}
+
+function openMenu(): void {
+  ui.menu.hidden = false;
+  ui.menuButton.setAttribute("aria-expanded", "true");
+  menuItems()[0]?.focus();
+}
+
+function closeMenu(focusButton = false): void {
+  if (ui.menu.hidden) return;
+
+  ui.menu.hidden = true;
+  ui.menuButton.setAttribute("aria-expanded", "false");
+
+  if (focusButton) ui.menuButton.focus();
+}
+
+ui.menuButton.addEventListener("click", () => (ui.menu.hidden ? openMenu() : closeMenu()));
+
+ui.menu.addEventListener("keydown", (event) => {
+  const items = menuItems();
+  const at = items.indexOf(document.activeElement as HTMLButtonElement);
+  const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+
+  if (step) {
+    event.preventDefault();
+    items[(at + step + items.length) % items.length]?.focus();
+  } else if (event.key === "Tab") {
+    closeMenu();
   }
 });
 
-ui.remove.addEventListener("click", () => {
+document.addEventListener("pointerdown", (event) => {
+  if (!ui.menu.hidden && event.target instanceof Node && !ui.menu.parentElement?.contains(event.target)) {
+    closeMenu();
+  }
+});
+
+let renaming = false;
+
+function startRename(): void {
   const session = active();
 
-  if (session && window.confirm(`Delete "${session.title}"? Its conversation is lost.`)) {
-    void (async () => {
-      const result = await api.remove(session.id);
+  if (!session || renaming) return;
 
-      if (!result.ok) {
-        showAlert(result.error);
-        return;
-      }
+  closeMenu();
+  renaming = true;
+  ui.titleInput.value = session.title;
+  ui.title.hidden = true;
+  ui.titleInput.hidden = false;
+  ui.titleInput.focus();
+  ui.titleInput.select();
+}
 
-      drafts.delete(session.id);
-      closeStream();
-      await sessionGone();
-    })();
+/** Leave the rename box; `save` sends the new name if it changed. */
+function endRename(save: boolean): void {
+  if (!renaming) return;
+
+  renaming = false;
+  const title = ui.titleInput.value.trim();
+  ui.titleInput.hidden = true;
+  ui.title.hidden = false;
+
+  if (save && title && title !== active()?.title) {
+    ui.title.textContent = title; // shown at once; the next poll brings the server's version
+    void run((id) => api.rename(id, title));
   }
+}
+
+ui.titleInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    endRename(true);
+    ui.input.focus();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    endRename(false);
+    ui.input.focus();
+  }
+});
+
+ui.titleInput.addEventListener("blur", () => endRename(true));
+ui.title.addEventListener("dblclick", startRename);
+ui.rename.addEventListener("click", startRename);
+
+/** Ask in a modal dialog; resolves true when the user confirms. */
+function confirmAction(title: string, text: string, ok: string): Promise<boolean> {
+  ui.confirmTitle.textContent = title;
+  ui.confirmText.textContent = text;
+  ui.confirmOk.textContent = ok;
+
+  return new Promise((resolve) => {
+    const finish = (answer: boolean): void => {
+      ui.confirmOk.removeEventListener("click", yes);
+      ui.confirmCancel.removeEventListener("click", no);
+      ui.confirm.removeEventListener("close", no);
+
+      if (ui.confirm.open) ui.confirm.close();
+
+      resolve(answer);
+    };
+    const yes = (): void => finish(true);
+    const no = (): void => finish(false);
+
+    ui.confirmOk.addEventListener("click", yes);
+    ui.confirmCancel.addEventListener("click", no);
+    ui.confirm.addEventListener("close", no); // Escape closes the dialog
+    ui.confirm.showModal();
+    ui.confirmCancel.focus(); // Enter on the focused button keeps things as they are
+  });
+}
+
+ui.clear.addEventListener("click", () => {
+  closeMenu();
+
+  void (async () => {
+    const ok = await confirmAction(
+      "Clear this conversation?",
+      "The messages are removed and the assistant starts fresh in this session. Long-term memory is kept.",
+      "Clear",
+    );
+
+    if (ok) await run((id) => api.reset(id));
+  })();
+});
+
+ui.remove.addEventListener("click", () => {
+  closeMenu();
+  const session = active();
+
+  if (!session) return;
+
+  void (async () => {
+    const ok = await confirmAction(`Delete "${session.title}"?`, "The session and its conversation are removed.", "Delete");
+
+    if (!ok) return;
+
+    const result = await api.remove(session.id);
+
+    if (!result.ok) {
+      showAlert(result.error);
+      return;
+    }
+
+    drafts.delete(session.id);
+    closeStream();
+    await sessionGone();
+  })();
+});
+
+// --- copy and jump --------------------------------------------------------------------------
+
+async function copyText(button: HTMLElement, text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    showAlert("Could not copy: the browser blocked the clipboard.");
+    return;
+  }
+
+  const label = button.querySelector(".label");
+
+  if (!label) return;
+
+  label.textContent = "Copied";
+  button.classList.add("copied");
+  window.setTimeout(() => {
+    label.textContent = "Copy";
+    button.classList.remove("copied");
+  }, 1500);
+}
+
+ui.log.addEventListener("click", (event) => {
+  const button = event.target instanceof Element ? event.target.closest<HTMLElement>(".copy") : null;
+
+  if (!button) return;
+
+  if (button.classList.contains("copy-code")) {
+    const code = button.closest("figure")?.querySelector("code");
+    void copyText(button, code?.textContent ?? "");
+  } else {
+    const message = button.closest<HTMLElement>(".msg");
+    void copyText(button, (message && messageText.get(message)) ?? "");
+  }
+});
+
+ui.scroll.addEventListener("scroll", updateJump, { passive: true });
+
+ui.jump.addEventListener("click", () => {
+  const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  ui.scroll.scrollTo({ top: ui.scroll.scrollHeight, behavior: smooth ? "smooth" : "auto" });
 });
 
 ui.toggleSidebar.addEventListener("click", () => setDrawer(!ui.sidebar.classList.contains("open")));
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") setDrawer(false);
+  const target = event.target;
+  const typing =
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLInputElement ||
+    (target instanceof HTMLElement && target.isContentEditable);
+
+  const action = shortcut({
+    key: event.key,
+    ctrl: event.ctrlKey,
+    alt: event.altKey,
+    meta: event.metaKey,
+    typing,
+    menuOpen: !ui.menu.hidden,
+    drawerOpen: ui.sidebar.classList.contains("open"),
+    dialogOpen: ui.confirm.open,
+    renaming,
+    busy: activeId !== null && conv.busy,
+  });
+
+  switch (action) {
+    case "close-menu":
+      closeMenu(true);
+      break;
+    case "close-drawer":
+      setDrawer(false);
+      break;
+    case "stop":
+      void run((id) => api.stop(id));
+      break;
+    case "focus-input":
+      ui.input.focus();
+      break;
+    case null:
+      return;
+  }
+
+  event.preventDefault();
 });
 
 window.addEventListener("hashchange", () => {

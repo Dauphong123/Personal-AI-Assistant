@@ -28,18 +28,27 @@
       <button id="toggle-sidebar" type="button" class="icon-button narrow-only" aria-controls="sidebar" aria-expanded="false" aria-label="Sessions">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
-      <h2 id="session-title" class="title"></h2>
+      <h2 id="session-title" class="title" title="Double-click to rename"></h2>
+      <input id="title-input" class="title-input" type="text" maxlength="60" aria-label="Session name" hidden>
       <span id="status" class="status" role="status"></span>
-      <div class="bar-actions">
-        <button id="rename" type="button" class="icon-button" aria-label="Rename session" title="Rename">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
+      <div class="menu-wrap">
+        <button id="session-menu" type="button" class="icon-button" aria-haspopup="menu" aria-expanded="false" aria-controls="session-menu-list" aria-label="Session actions" title="Session actions">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle class="dot" cx="5" cy="12" r="1.7"/><circle class="dot" cx="12" cy="12" r="1.7"/><circle class="dot" cx="19" cy="12" r="1.7"/></svg>
         </button>
-        <button id="clear-chat" type="button" class="icon-button" aria-label="Clear conversation" title="Clear">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>
-        </button>
-        <button id="delete-session" type="button" class="icon-button danger" aria-label="Delete session" title="Delete">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
-        </button>
+        <div id="session-menu-list" class="menu" role="menu" aria-label="Session actions" hidden>
+          <button id="rename" type="button" role="menuitem">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
+            Rename
+          </button>
+          <button id="clear-chat" type="button" role="menuitem">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>
+            Clear conversation
+          </button>
+          <button id="delete-session" type="button" role="menuitem" class="danger">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+            Delete session
+          </button>
+        </div>
       </div>
     </header>
 
@@ -58,6 +67,11 @@
         <p><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span> Thinking…</p>
       </div>
     </main>
+
+    <button id="jump" type="button" class="jump" hidden>
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/></svg>
+      Jump to latest
+    </button>
 
     <p id="alert" class="alert" role="alert" hidden></p>
 
@@ -101,6 +115,15 @@
     </form>
   </div>
 </div>
+
+<dialog id="confirm" class="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+  <h3 id="confirm-title"></h3>
+  <p id="confirm-text"></p>
+  <div class="actions">
+    <button id="confirm-cancel" type="button">Cancel</button>
+    <button id="confirm-ok" type="button" class="destructive">Confirm</button>
+  </div>
+</dialog>
 
 <script type="module" src="/main.js"></script>
 </body>

@@ -11,6 +11,28 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): 
   return node;
 }
 
+const SVG = "http://www.w3.org/2000/svg";
+
+/** A small "Copy" button; the page's click handler finds what to copy by its class. */
+export function copyButton(className: string, label: string): HTMLButtonElement {
+  const button = el("button", `copy ${className}`);
+  button.type = "button";
+  button.setAttribute("aria-label", label);
+
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(SVG, "path");
+  path.setAttribute("d", "M9 9h10v11H9zM5 15V4h10");
+  svg.append(path);
+
+  const text = el("span", "label");
+  text.textContent = "Copy";
+  button.append(svg, text);
+  return button;
+}
+
 export function renderInlines(inlines: readonly Inline[]): Node[] {
   return inlines.map((inline): Node => {
     switch (inline.kind) {
@@ -70,14 +92,21 @@ export function renderBlocks(blocks: readonly MdBlock[]): HTMLElement[] {
         return heading;
       }
       case "code": {
-        const pre = el("pre", block.open ? "code-block open" : "code-block");
+        // <figure class="code"> <div class="code-head">lang [Copy]</div> <pre><code>…</code></pre>
+        const figure = el("figure", block.open ? "code open" : "code");
+        const head = el("div", "code-head");
+        const lang = el("span", "code-lang");
+        lang.textContent = block.lang || "code";
+        head.append(lang);
+
+        if (!block.open) head.append(copyButton("copy-code", "Copy code"));
+
+        const pre = el("pre", "code-block");
         const code = el("code");
-
-        if (block.lang) pre.dataset["lang"] = block.lang;
-
         code.textContent = block.text;
         pre.append(code);
-        return pre;
+        figure.append(head, pre);
+        return figure;
       }
       case "list": {
         const list = block.ordered ? el("ol") : el("ul");

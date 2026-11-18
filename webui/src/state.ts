@@ -184,3 +184,22 @@ export function statusOf(input: StatusInput): { text: string; tone: StatusTone }
 export function isThinking(conv: Conversation): boolean {
   return conv.busy && !conv.waiting && conv.approval === null && conv.items.at(-1)?.kind !== "assistant";
 }
+
+// --- relative times ---------------------------------------------------------------------------
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "just now", "5 min ago", "3 h ago", "yesterday", "4 days ago", then a date ("2 Oct"). */
+export function relativeTime(epochSeconds: number, nowMs: number = Date.now()): string {
+  const seconds = Math.max(0, nowMs / 1000 - epochSeconds);
+
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
+  if (seconds < 2 * 86400) return "yesterday";
+  if (seconds < 7 * 86400) return `${Math.floor(seconds / 86400)} days ago`;
+
+  const then = new Date(epochSeconds * 1000);
+  const day = `${then.getDate()} ${MONTHS[then.getMonth()]}`;
+  return then.getFullYear() === new Date(nowMs).getFullYear() ? day : `${day} ${then.getFullYear()}`;
+}

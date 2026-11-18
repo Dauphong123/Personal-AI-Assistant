@@ -140,6 +140,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   color: var(--muted);
 }
 
+.icon .dot { fill: currentColor; stroke: none; }
+
 .icon-button:hover:not(:disabled) { border-color: transparent; background: var(--side); color: var(--ink); }
 .icon-button.danger:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
 
@@ -152,6 +154,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 
 .chat {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -234,6 +237,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   white-space: nowrap;
 }
 
+.session-meta { display: flex; gap: 0.5rem; font-size: 0.78rem; color: var(--faint); }
 .session-state { font-size: 0.78rem; color: var(--muted); }
 .session-state::before { content: "\25CF\00a0"; }
 .session-state.state-running { color: var(--run); }
@@ -280,7 +284,54 @@ button:disabled { opacity: 0.4; cursor: default; }
 .status[data-tone="approval"] { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
 .status[data-tone="error"] { background: var(--danger-soft); color: var(--danger); }
 
-.bar-actions { display: flex; gap: 0.1rem; }
+.title-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.3rem;
+  padding: 0 0.6rem;
+  margin-left: -0.6rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.45rem;
+  background: var(--surface);
+  font: 600 1rem/1.3 var(--display);
+}
+
+.title-input:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.menu-wrap { position: relative; }
+
+.menu {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 13rem;
+  padding: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.4rem;
+  padding: 0 0.7rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  font-size: 0.92rem;
+  text-align: left;
+}
+
+.menu button .icon { color: var(--muted); }
+.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--side); outline: none; }
+.menu button.danger, .menu button.danger .icon { color: var(--danger); }
+.menu button.danger:hover:not(:disabled), .menu button.danger:focus-visible { background: var(--danger-soft); }
 
 .narrow-only { display: none; }
 
@@ -336,8 +387,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .dots { display: inline-flex; gap: 0.22rem; }
 .dots span { width: 0.38rem; height: 0.38rem; border-radius: 50%; background: var(--accent); opacity: 0.35; }
 
-.msg pre,
-.code-block {
+.msg pre {
   margin: 0 0 0.85em;
   padding: 0.75rem 0.95rem;
   overflow-x: auto;
@@ -348,12 +398,56 @@ button:disabled { opacity: 0.4; cursor: default; }
   font: 0.86rem/1.55 var(--mono);
 }
 
-.code-block[data-lang]::before {
-  content: attr(data-lang);
-  display: block;
-  margin: -0.2rem 0 0.4rem;
+/* A code block in an answer: language and Copy on a header strip, code below. */
+.code {
+  margin: 0 0 0.85em;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--code-bg);
+}
+
+.code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.1rem;
+  padding: 0 0.35rem 0 0.95rem;
+  border-bottom: 1px solid var(--line);
   color: var(--faint);
-  font: 0.75rem/1.2 var(--sans);
+  font-size: 0.78rem;
+}
+
+.msg .code pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 1.85rem;
+  padding: 0 0.55rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.copy .icon { width: 0.95rem; height: 0.95rem; }
+.copy:hover:not(:disabled) { background: var(--side); color: var(--ink); }
+.copy.copied { color: var(--run); }
+
+.msg-actions { display: flex; gap: 0.25rem; margin-top: 0.35rem; margin-left: -0.55rem; opacity: 0; }
+.msg:hover .msg-actions, .msg-actions:focus-within, .msg:last-child .msg-actions { opacity: 1; }
+.msg.writing .msg-actions { display: none; }
+
+@media (hover: none) {
+  .msg-actions { opacity: 1; }
 }
 
 .note { margin: 0 0 1.75rem; color: var(--muted); font-size: 0.92rem; }
@@ -395,6 +489,42 @@ button:disabled { opacity: 0.4; cursor: default; }
 .md th { background: var(--code-bg); font-weight: 600; }
 .md .align-right { text-align: right; }
 .md .align-center { text-align: center; }
+
+.jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: center;
+  min-height: 2.2rem;
+  margin: -2.9rem 0 0.7rem;
+  padding: 0 0.9rem;
+  border-color: var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--muted);
+  font-size: 0.85rem;
+  z-index: 1;
+}
+
+.jump .icon { width: 1rem; height: 1rem; }
+
+/* --- confirm dialog ---------------------------------------------------------------- */
+
+.confirm {
+  width: min(26rem, calc(100% - 2rem));
+  padding: 1.2rem 1.25rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.confirm::backdrop { background: rgb(10 14 20 / 0.45); }
+.confirm h3 { margin: 0 0 0.4rem; font: 600 1.05rem/1.3 var(--display); overflow-wrap: anywhere; }
+.confirm p { margin: 0 0 1.2rem; color: var(--muted); font-size: 0.93rem; }
+.destructive { border-color: var(--danger); background: var(--danger); color: var(--surface); }
 
 /* --- alert and approval -------------------------------------------------------- */
 
