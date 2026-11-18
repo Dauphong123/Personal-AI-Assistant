@@ -54,6 +54,7 @@ class WorkflowTests(unittest.TestCase):
         script = run_lines(job)
         self.assertIn("python -m venv .venv", script)
         self.assertIn("-r requirements.txt", script)
+        self.assertIn("-r requirements_voice.txt", script)  # pyright resolves the voice imports
         self.assertRegex(script, r"pyright==\d")
         self.assertIn("python -m unittest discover -s tests -t .", script)
 

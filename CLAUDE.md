@@ -13,6 +13,8 @@ python -m unittest discover -s tests -t .   # tests (Postgres test skipped if DB
 docker compose up -d                        # pgvector Postgres 17 (db agent_memory, user agent)
 ```
 
+CI: `.github/workflows/ci.yml` runs the unittest suite (Windows, `.venv` with `requirements.txt` + `requirements_voice.txt`, pyright, ripgrep, built `webui/`) and the `webui` check/test/build on every push and on PRs to `main`; no Ollama/Postgres/voice engines there. Keep it in step with these commands (`tests/test_ci_workflow.py`).
+
 Voice commands (`--voice`, `voice.enroll`, `voice.check`, voice engine tests): `voice/CLAUDE.md`.
 
 Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama with `qwen3:8b` (main) and `qwen3:4b` (summaries; `SUMMARY_MODEL`), and `rg` (ripgrep) for `search_code`. First run downloads the `Qwen/Qwen3-8B` tokenizer, `BAAI/bge-small-en-v1.5` (RAG) and `intfloat/multilingual-e5-small` (memory) embeddings.
