@@ -1008,13 +1008,22 @@
       "id": "F024",
       "name": "CI/CD pipeline",
       "description": "GitHub Actions workflow that checks every push (Python tests, web frontend build and tests).",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-18",
-      "completed": null,
+      "completed": "2026-11-18",
       "branch": "feature/F024-ci",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "cf7fedc",
+      "files": [
+        ".github/workflows/ci.yml",
+        "tests/test_ci_workflow.py",
+        "README.md",
+        "CLAUDE.md",
+        "docs/PROJECT.md"
+      ],
+      "tests": [
+        "tests/test_ci_workflow.py::WorkflowTests",
+        "GitHub Actions CI run 44238642576"
+      ],
       "steps": [
         {
           "n": 1,
@@ -1023,26 +1032,28 @@
           "tests": [
             "tests/test_ci_workflow.py::WorkflowTests (7)"
           ],
-          "commit": null,
+          "commit": "d1bbe7e",
           "date": "2026-11-18"
         },
         {
           "n": 2,
           "title": "First run green on GitHub",
-          "status": "in_progress",
+          "status": "done",
           "tests": [
-            "GitHub Actions run"
+            "GitHub Actions run 44238642576: success (run 44216525455 failed on Pyright: voice deps missing)"
           ],
-          "commit": null
+          "commit": "cf7fedc",
+          "date": "2026-11-18"
         },
         {
           "n": 3,
           "title": "Docs",
-          "status": "todo",
+          "status": "done",
           "tests": [
             "tests/test_project_docs.py"
           ],
-          "commit": null
+          "commit": "cf7fedc",
+          "date": "2026-11-18"
         }
       ],
       "notes": "Approved 2026-11-18. CI only (no deploy target: local app). No dist artifact upload, no branch protection (not explicitly approved)."
