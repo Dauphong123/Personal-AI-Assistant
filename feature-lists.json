@@ -1236,15 +1236,20 @@
             "tests/test_backend_main.py::MainTests::test_logging_is_configured_from_the_environment",
             "tests/test_backend_main.py::MainTests::test_a_bad_log_level_stops_before_loading_anything"
           ],
-          "commit": null,
+          "commit": "2cfbeba",
           "date": "2026-11-18"
         },
         {
           "n": 3,
-          "title": "Backend hardening: /healthz, structured errors, graceful shutdown",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "title": "Backend hardening: /api/health, 500 on handler crash (logged), socket timeout, SIGTERM/Ctrl+Break shutdown",
+          "status": "done",
+          "tests": [
+            "tests/test_backend_server.py::RobustnessTests (6)",
+            "tests/test_backend_main.py::StopSignalTests (2)",
+            "tests/test_backend_main.py::MainTests::test_stop_signals_are_installed_before_serving"
+          ],
+          "commit": null,
+          "date": "2026-11-18"
         },
         {
           "n": 4,

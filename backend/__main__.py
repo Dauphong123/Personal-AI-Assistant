@@ -4,8 +4,10 @@ Serves the API and the built TypeScript frontend (webui/dist) on one origin.
 """
 
 import argparse
+import signal
 import sys
 from pathlib import Path
+from typing import Any
 
 from log_setup import configure_logging
 
@@ -77,6 +79,20 @@ def cleanup() -> None:
     wait_for_memory()  # a save that is still running should finish
 
 
+def install_stop_signals(signals: Any = signal) -> None:
+    """SIGTERM and Ctrl+Break (Windows SIGBREAK) stop the server like Ctrl+C, so the
+    shutdown below still runs: turns stopped, background jobs killed, memory saved."""
+
+    def stop(signum, frame):
+        raise KeyboardInterrupt
+
+    for name in ("SIGTERM", "SIGBREAK"):
+        number = getattr(signals, name, None)
+
+        if number is not None:
+            signals.signal(number, stop)
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
 
@@ -131,6 +147,7 @@ def main(argv: list[str] | None = None) -> None:
         host, port = server.server_address[:2]
         print(f"Open {build_url(args.host, port, token)}")
         print("Press Ctrl+C to stop.", flush=True)
+        install_stop_signals()
 
         try:
             server.serve_forever()

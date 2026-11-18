@@ -5,12 +5,13 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests import stubs
 
 stubs.install()
 
-from backend.server import make_server  # noqa: E402
+from backend.server import KEEPALIVE_SECONDS, Handler, make_server  # noqa: E402
 from backend.sessions import SessionManager  # noqa: E402
 from tests.test_backend_session import scripted  # noqa: E402
 
@@ -400,6 +401,44 @@ class StreamEndTests(ServerCase):
         listener.join(5)
         self.assertFalse(listener.is_alive())
         self.assertEqual(seen[-1]["type"], "gone")
+
+
+class RobustnessTests(ServerCase):
+    def test_health_needs_no_token(self):
+        status, data = self.api("GET", "/api/health", token=False)
+        self.assertEqual((status, data), (200, {"status": "ok"}))
+
+    def test_health_still_checks_the_host(self):
+        status, _ = self.api("GET", "/api/health", token=False, host="evil.example")
+        self.assertEqual(status, 403)
+
+    def test_health_is_get_only(self):
+        status, _ = self.api("POST", "/api/health", {})
+        self.assertEqual(status, 405)
+
+    def test_a_crashing_handler_answers_500_and_logs(self):
+        with (
+            mock.patch.object(self.manager, "list", side_effect=RuntimeError("secret detail")),
+            self.assertLogs("backend.server", level="ERROR") as logs,
+        ):
+            status, data = self.api("GET", "/api/sessions")
+
+        self.assertEqual(status, 500)
+        self.assertEqual(data, {"error": "Internal server error"})  # no exception text to the client
+        self.assertIn("GET /api/sessions", logs.output[0])
+        self.assertIn("secret detail", "\n".join(logs.output))  # the traceback is in the log
+        self.assertNotIn("token", logs.output[0].lower())
+
+    def test_the_server_keeps_working_after_a_crash(self):
+        with mock.patch.object(self.manager, "list", side_effect=RuntimeError("boom")), self.assertLogs("backend.server"):
+            self.api("GET", "/api/sessions")
+        status, _ = self.api("GET", "/api/sessions")
+        self.assertEqual(status, 200)
+
+    def test_idle_connections_time_out_but_outlast_the_keepalive(self):
+        timeout = Handler.timeout
+        assert timeout is not None
+        self.assertGreater(timeout, KEEPALIVE_SECONDS)
 
 
 if __name__ == "__main__":

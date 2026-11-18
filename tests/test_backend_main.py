@@ -50,12 +50,30 @@ class UrlTests(unittest.TestCase):
         self.assertEqual(entry.build_url("0.0.0.0", 8000, "abc"), "http://localhost:8000/?token=abc")
 
 
+class StopSignalTests(unittest.TestCase):
+    def test_sigterm_and_ctrl_break_stop_like_ctrl_c(self):
+        installed = {}
+        signals = SimpleNamespace(SIGTERM=15, SIGBREAK=21, signal=lambda n, h: installed.__setitem__(n, h))
+        entry.install_stop_signals(signals)
+        self.assertEqual(set(installed), {15, 21})
+
+        with self.assertRaises(KeyboardInterrupt):
+            installed[21](21, None)
+
+    def test_a_platform_without_sigbreak_still_gets_sigterm(self):
+        installed = {}
+        signals = SimpleNamespace(SIGTERM=15, signal=lambda n, h: installed.__setitem__(n, h))
+        entry.install_stop_signals(signals)
+        self.assertEqual(set(installed), {15})
+
+
 class MainTests(unittest.TestCase):
     NO_PACKAGES = SimpleNamespace(can_transcribe=False, can_speak=False)
 
     def run_main(self, argv, server=None, make_error=None, built=True, voice=NO_PACKAGES, log_error=None):
         out = io.StringIO()
         configure_logging = mock.Mock(side_effect=log_error)
+        install_stop_signals = mock.Mock()
         build_voice = mock.Mock(return_value=voice)
         build_app = mock.Mock(return_value=SimpleNamespace())
         cleanup = mock.Mock()
@@ -64,6 +82,7 @@ class MainTests(unittest.TestCase):
 
         with (
             mock.patch.object(entry, "configure_logging", configure_logging),
+            mock.patch.object(entry, "install_stop_signals", install_stop_signals),
             mock.patch.object(entry, "build_app", build_app),
             mock.patch.object(entry, "cleanup", cleanup),
             mock.patch.object(entry, "make_server", make),
@@ -86,6 +105,7 @@ class MainTests(unittest.TestCase):
             connect_jobs=connect_jobs,
             build_voice=build_voice,
             configure_logging=configure_logging,
+            install_stop_signals=install_stop_signals,
             error=error,
         )
 
@@ -99,6 +119,10 @@ class MainTests(unittest.TestCase):
     def test_logging_is_configured_from_the_environment(self):
         result = self.run_main([], server=FakeServer())
         result.configure_logging.assert_called_once_with()
+
+    def test_stop_signals_are_installed_before_serving(self):
+        result = self.run_main([], server=FakeServer())
+        result.install_stop_signals.assert_called_once_with()
 
     def test_a_bad_log_level_stops_before_loading_anything(self):
         result = self.run_main([], log_error=ValueError("LOG_LEVEL must be one of DEBUG, INFO"))

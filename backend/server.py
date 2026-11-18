@@ -22,6 +22,9 @@ API (JSON bodies, token in X-Token or Authorization: Bearer):
     POST /api/voice/transcribe  audio/*     {"text"}; 503 unless started with --voice;
                                             ?dictate=1 adds {"prompt", "hands_free", "answer"} (backend.voice.dictation)
     POST /api/voice/speak       {text}      audio/wav (204: nothing speakable)
+    GET  /api/health                        {"status": "ok"}; no token (Host still checked)
+
+A handler that raises answers 500 {"error": "Internal server error"} and is logged.
 """
 
 import hmac
@@ -49,6 +52,9 @@ MAX_AUDIO = 4 * 1024 * 1024  # one push-to-talk recording (compressed browser au
 DISCARD_LIMIT = 1024 * 1024  # how much of a refused body is read so the client sees our answer
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost"}
 KEEPALIVE_SECONDS = 10
+# A socket read or write that stalls this long ends the connection (idle keep-alive, slow
+# clients). Longer than KEEPALIVE_SECONDS so an open event stream is never cut.
+REQUEST_TIMEOUT = 30
 
 # Only these file types are served from the build directory.
 CONTENT_TYPES = {
@@ -72,6 +78,7 @@ SECURITY_HEADERS = {
 }
 
 HANDSHAKE_PATH = "/api/handshake"
+HEALTH_PATH = "/api/health"  # no token: says only that the server answers
 VOICE_PATHS = {"/api/voice/transcribe", "/api/voice/speak"}
 API_ROUTE = re.compile(r"^/api/sessions(?:/(?P<id>[0-9a-f]{12})(?:/(?P<action>[a-z]+))?)?$")
 POST_ACTIONS = {"send", "approve", "stop", "reset", "rename", "delete"}
@@ -172,8 +179,40 @@ def static_file(static_dir: Path, url_path: str) -> Path | None:
 class Handler(BaseHTTPRequestHandler):
     server: WebServer  # pyright: ignore
 
+    timeout = REQUEST_TIMEOUT
+    _response_started = False
+
     def log_message(self, format, *args):  # noqa: A002  (request lines carry the token)
         pass
+
+    def send_response(self, code, message=None):
+        self._response_started = True
+        super().send_response(code, message)
+
+    def _guarded(self, handle) -> None:
+        """Run one request; a bug becomes a logged 500 instead of a dropped connection."""
+        self._response_started = False
+
+        try:
+            handle()
+        except (ConnectionError, TimeoutError):
+            self.close_connection = True  # the client went away; nothing to answer
+        except Exception:
+            # The path only: the query string can carry the token.
+            logger.exception("Request failed: %s %s", self.command, urlsplit(self.path).path)
+            self.close_connection = True
+
+            if not self._response_started:
+                try:
+                    self._json(500, {"error": "Internal server error"})
+                except OSError:
+                    pass
+
+    def do_GET(self) -> None:
+        self._guarded(self._get)
+
+    def do_POST(self) -> None:
+        self._guarded(self._post)
 
     # --- responses ---------------------------------------------------------------
 
@@ -313,12 +352,15 @@ class Handler(BaseHTTPRequestHandler):
 
     # --- routing -----------------------------------------------------------------
 
-    def do_GET(self) -> None:
+    def _get(self) -> None:
         url = urlsplit(self.path)
         query = parse_qs(url.query)
 
         if not self._host_ok():
             return self._fail(403, "Forbidden host")
+
+        if url.path == HEALTH_PATH:
+            return self._json(200, {"status": "ok"})
 
         if not url.path.startswith("/api/"):
             return self._static(url.path)
@@ -355,12 +397,15 @@ class Handler(BaseHTTPRequestHandler):
 
         self._fail(405, "Use POST")
 
-    def do_POST(self) -> None:
+    def _post(self) -> None:
         url = urlsplit(self.path)
         self._body_read = False  # the handler serves every request of a keep-alive connection
 
         if not self._host_ok():
             return self._fail(403, "Forbidden host")
+
+        if url.path == HEALTH_PATH:
+            return self._fail(405, "Use GET")
 
         if not url.path.startswith("/api/"):
             return self._fail(405, "Use GET")
