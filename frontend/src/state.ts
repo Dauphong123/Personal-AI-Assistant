@@ -255,6 +255,19 @@ export function activeTool(conv: Conversation): ToolItem | null {
   return null;
 }
 
+/** What Retry / Try again would send: the prompt of the turn that just ended with an answer or
+ * a stop/error note. Null while a turn is running or waiting, and for a background job's
+ * notice turn (not something the user asked). */
+export function retryPrompt(conv: Conversation): string | null {
+  const last = conv.items.at(-1);
+
+  if (conv.busy || conv.waiting || conv.gone || conv.approval !== null) return null;
+  if (last?.kind !== "assistant" && last?.kind !== "note") return null;
+
+  const opener = conv.items[turnStart(conv.items) - 1];
+  return opener?.kind === "user" && opener.text.trim() ? opener.text.trim() : null;
+}
+
 // --- tool cards -------------------------------------------------------------------------------
 
 export interface ToolView {

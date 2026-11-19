@@ -12,6 +12,7 @@ import {
   formatCalls,
   isChatEvent,
   isThinking,
+  retryPrompt,
   relativeTime,
   sortSessions,
   stateLabel,
@@ -21,7 +22,7 @@ import type { Conversation, Item } from "./state.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
 import { apiFrom, sessionFromHash, tokenFrom } from "./url.ts";
 import { parseMarkdown } from "./markdown.ts";
-import { copyButton, renderBlocks, renderCalls, renderTool } from "./render.ts";
+import { actionButton, copyButton, ICONS, renderBlocks, renderCalls, renderTool } from "./render.ts";
 import { shortcut } from "./keys.ts";
 import { nextTheme, parseTheme, themeLabel } from "./theme.ts";
 import type { Theme } from "./theme.ts";
@@ -310,6 +311,8 @@ function renderMessage(item: Item): HTMLElement {
     const note = document.createElement("p");
     note.className = item.error ? "note error" : "note";
     note.textContent = item.text;
+    // Shown only while it is the last item and nothing runs (log class `can-retry`).
+    note.append(actionButton("retry", "Try again", ICONS.retry, "Send the same message again"));
     return note;
   }
 
@@ -323,7 +326,10 @@ function renderMessage(item: Item): HTMLElement {
 
     const actions = document.createElement("div");
     actions.className = "msg-actions";
-    actions.append(copyButton("copy-msg", "Copy answer"));
+    actions.append(
+      copyButton("copy-msg", "Copy answer"),
+      actionButton("retry", "Retry", ICONS.retry, "Ask the same question again"),
+    );
     message.append(actions);
     messageText.set(message, item.text);
     return message;
@@ -342,6 +348,14 @@ function renderMessage(item: Item): HTMLElement {
       paragraph.textContent = block.text;
       message.append(paragraph);
     }
+  }
+
+  if (item.kind === "user") {
+    const actions = document.createElement("div");
+    actions.className = "msg-actions";
+    actions.append(actionButton("edit-msg", "Edit", ICONS.edit, "Put this message back in the message box"));
+    message.append(actions);
+    messageText.set(message, item.text);
   }
 
   return message;
@@ -382,6 +396,7 @@ function renderConversation(): void {
 
   ui.empty.hidden = conv.items.length > 0;
   ui.thinking.hidden = !isThinking(conv);
+  ui.log.classList.toggle("can-retry", retryPrompt(conv) !== null);
 
   const last = rendered.at(-1);
   const writing = conv.busy && last?.item.kind === "assistant" ? last.node : null;
@@ -613,21 +628,26 @@ async function sessionGone(): Promise<void> {
 
 // --- actions ---------------------------------------------------------------------
 
-async function send(): Promise<void> {
-  const text = ui.input.value.trim();
+/** Send the message box, or `text` (Retry: the box and its draft stay as they are). */
+async function send(text?: string): Promise<void> {
+  const fromBox = text === undefined;
+  const message = (text ?? ui.input.value).trim();
 
-  if (!text || !activeId || conv.busy) return;
+  if (!message || !activeId || conv.busy) return;
 
   const id = activeId;
-  const result = await api.send(id, text);
+  const result = await api.send(id, message);
 
   if (result.ok) {
-    if (activeId === id) {
-      ui.input.value = "";
-      autosize();
+    if (fromBox) {
+      if (activeId === id) {
+        ui.input.value = "";
+        autosize();
+      }
+
+      drafts.delete(id);
     }
 
-    drafts.delete(id);
     showAlert(null);
   } else {
     showAlert(result.error);
@@ -1219,7 +1239,17 @@ ui.log.addEventListener("click", (event) => {
 
   if (!button) return;
 
-  if (button.classList.contains("copy-code")) {
+  if (button.classList.contains("retry")) {
+    const prompt = retryPrompt(conv);
+    if (prompt !== null) void send(prompt);
+  } else if (button.classList.contains("edit-msg")) {
+    const message = button.closest<HTMLElement>(".msg");
+    if (ui.input.disabled || !message) return;
+    ui.input.value = messageText.get(message) ?? "";
+    autosize();
+    ui.input.focus();
+    ui.input.setSelectionRange(ui.input.value.length, ui.input.value.length);
+  } else if (button.classList.contains("copy-code")) {
     const code = button.closest("figure")?.querySelector("code");
     void copyText(button, code?.textContent ?? "");
   } else {

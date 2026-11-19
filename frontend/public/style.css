@@ -464,6 +464,15 @@ button:disabled { opacity: 0.4; cursor: default; }
 .msg:hover .msg-actions, .msg-actions:focus-within, .msg:last-child .msg-actions { opacity: 1; }
 .msg.writing .msg-actions { display: none; }
 
+/* The user's bubble keeps its shape: Edit hangs just below it, on the right. */
+.msg.user { position: relative; }
+.msg.user .msg-actions { position: absolute; top: 100%; right: 0; margin: 0.1rem -0.3rem 0 0; }
+
+/* Retry / Try again: only on the newest item, once the turn is over (main.ts sets can-retry). */
+.retry { display: none; }
+.log.can-retry > :last-child .retry { display: inline-flex; }
+.note .retry { margin-left: 0.6rem; vertical-align: middle; color: inherit; }
+
 @media (hover: none) {
   .msg-actions { opacity: 1; }
 }

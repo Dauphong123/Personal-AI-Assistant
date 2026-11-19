@@ -1631,9 +1631,9 @@
       "tests": [],
       "steps": [
         {"n": 1, "title": "Backend sends tool activity as its own `tool` events (run_turn on_tool; protocol 2 -> 3)", "status": "done", "tests": ["tests/test_tool_activity.py (7)", "tests/test_backend_session.py::ToolEventTests (3)", "tests/test_backend_handshake.py::HandshakeTests::test_protocol_3_carries_tool_events", "npm test 137 pass, npm run check clean", "full suite 889 run, 31 skipped (Postgres down)"], "commit": "d7210e0", "date": "2026-11-19"},
-        {"n": 2, "title": "Activity cards in the chat + live status naming the running tool", "status": "done", "tests": ["frontend/test/activity.test.ts (11)", "npm test 148 pass, npm run check clean", "full suite OK (31 skipped, Postgres down)", "browser: stub agent API + real frontend server, cards running/done/failed, approval, expand output, no console errors"], "commit": null, "date": "2026-11-19"},
-        {"n": 3, "title": "Message actions: Edit, Retry, Try again", "status": "in_progress", "tests": [], "commit": null},
-        {"n": 4, "title": "Live progress: elapsed time while working, duration when done", "status": "todo", "tests": [], "commit": null},
+        {"n": 2, "title": "Activity cards in the chat + live status naming the running tool", "status": "done", "tests": ["frontend/test/activity.test.ts (11)", "npm test 148 pass, npm run check clean", "full suite OK (31 skipped, Postgres down)", "browser: stub agent API + real frontend server, cards running/done/failed, approval, expand output, no console errors"], "commit": "bc32e28", "date": "2026-11-19"},
+        {"n": 3, "title": "Message actions: Edit, Retry, Try again", "status": "done", "tests": ["frontend/test/actions.test.ts (6)", "npm test 154 pass, npm run check clean", "full suite 889 OK (31 skipped, Postgres down)", "browser: Edit fills the box, Retry resends and keeps the draft, Stop marks the running card Stopped, Try again only on the last note"], "commit": null, "date": "2026-11-19"},
+        {"n": 4, "title": "Live progress: elapsed time while working, duration when done", "status": "in_progress", "tests": [], "commit": null},
         {"n": 5, "title": "Command palette (Ctrl+K) and slash commands", "status": "todo", "tests": [], "commit": null},
         {"n": 6, "title": "Docs and browser check", "status": "todo", "tests": [], "commit": null}
       ],

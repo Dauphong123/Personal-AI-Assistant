@@ -35,9 +35,26 @@ export function copyButton(className: string, label: string): HTMLButtonElement 
   return button;
 }
 
+/** A small text+icon button for a message (Edit, Retry); the page's click handler acts on
+ * its class. Styled like Copy. */
+export function actionButton(className: string, text: string, d: string, title: string): HTMLButtonElement {
+  const button = el("button", `copy action ${className}`);
+  button.type = "button";
+  button.title = title;
+  const label = el("span", "label");
+  label.textContent = text;
+  button.append(icon("", d), label);
+  return button;
+}
+
+export const ICONS = {
+  edit: "M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4",
+  retry: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5",
+};
+
 function icon(className: string, d: string): SVGSVGElement {
   const svg = document.createElementNS(SVG, "svg");
-  svg.setAttribute("class", `icon ${className}`);
+  svg.setAttribute("class", className ? `icon ${className}` : "icon");
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("aria-hidden", "true");
   const path = document.createElementNS(SVG, "path");
