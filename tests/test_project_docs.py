@@ -82,5 +82,15 @@ class RosterTests(unittest.TestCase):
             self.assertIn("(none yet)", section)
 
 
+class WebChatDocsTests(unittest.TestCase):
+    """The web chat is two parts (agent API and frontend server); the docs say how to start both."""
+
+    def test_commands_start_both_parts(self):
+        for name in ("CLAUDE.md", "README.md"):
+            text = (ROOT / name).read_text(encoding="utf-8")
+
+            for command in ("python -m backend", "npm --prefix frontend start", "--serve-frontend"):
+                self.assertIn(command, text, f"{name}: {command}")
+
 if __name__ == "__main__":
     unittest.main()

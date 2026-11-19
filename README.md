@@ -110,19 +110,22 @@ python -m backend           # chat in the browser (see Web chat below; build the
 
 ### Web chat
 
-The web chat has two parts: a **TypeScript frontend** in `frontend/` and the Python app as its **backend** (`backend/`, an HTTP API that also serves the built frontend). Build the frontend once (needs Node.js; after that only when `frontend/` changes):
+The web chat has two separate parts that talk only over HTTP: the **backend** (`backend/`, the agent's HTTP API: sessions, approvals, streamed answers, voice) and the **frontend** (`frontend/`, a TypeScript page with its own small web server). Build the frontend once (needs Node.js; after that only when `frontend/` changes), then start both, each in its own terminal:
 
 ```powershell
 npm --prefix frontend install
 npm --prefix frontend run build
-python -m backend
+python -m backend               # terminal 1: the agent API on 127.0.0.1:8000
+npm --prefix frontend start     # terminal 2: the page on 127.0.0.1:5173
 ```
 
-`python -m backend` loads the models, then prints a link such as `http://127.0.0.1:8000/?token=...`. Open it in a browser. The sidebar holds **sessions**: each is a separate conversation with its own history, named after its first message (rename it from the **⋯** menu or by double-clicking the title). **New session** starts another; switching keeps each session's draft, and a session keeps running while you look at another one. Answers stream in as formatted text (headings, lists, tables, code blocks with a **Copy** button); a card asks **Allow** or **Deny** before the assistant runs a command or edits a file and shows the command or the change. **Stop** (or Esc) cancels the current turn; **Clear conversation** and **Delete session** in the **⋯** menu ask first. The sidebar marks sessions that are working, waiting or need approval; the button at its bottom switches between the system, light and dark themes. All sessions use the same graph, tools and long-term memory as the keyboard chat.
+`python -m backend` loads the models, then prints a link such as `http://127.0.0.1:5173/?api=http://127.0.0.1:8000&token=...`. Open it in a browser. The sidebar holds **sessions**: each is a separate conversation with its own history, named after its first message (rename it from the **⋯** menu or by double-clicking the title). **New session** starts another; switching keeps each session's draft, and a session keeps running while you look at another one. Answers stream in as formatted text (headings, lists, tables, code blocks with a **Copy** button); a card asks **Allow** or **Deny** before the assistant runs a command or edits a file and shows the command or the change. **Stop** (or Esc) cancels the current turn; **Clear conversation** and **Delete session** in the **⋯** menu ask first. The sidebar marks sessions that are working, waiting or need approval; the button at its bottom switches between the system, light and dark themes. All sessions use the same graph, tools and long-term memory as the keyboard chat.
 
 Only one turn runs on the model at a time; a session that sends while another is working shows "Waiting" and starts when the model is free (`--max-turns N` allows N at once, which mostly makes each slower on a small GPU). Sessions live in memory: restarting the backend forgets them. At most 50 sessions.
 
-Because the assistant can run commands and edit files, the server is locked down: it listens on loopback only, every request needs the random token printed at launch (a new one each time; the page keeps it for the tab, out of the address bar), requests with a foreign `Host` or `Origin` are refused, and the page runs under a CSP that forbids inline script. Model output is inserted as text, never as HTML. `--port N` changes the port; `--allow-remote` is required to listen on any other address (do that only on a network you trust). If the port is taken the launch fails instead of sharing it.
+**How the two parts are linked.** The link names the API address (`api=`) and carries the token; the page keeps both for the tab (out of the address bar) and sends every call there. The backend accepts browser calls only from the frontend's origins (`--frontend-origin`, default `http://127.0.0.1:5173` and `http://localhost:5173`; it answers their CORS preflights), and the frontend server's CSP lets the page connect only to itself and the API named by its `--api` (default `http://127.0.0.1:8000`). When you change a port, the backend prints the matching `npm --prefix frontend start -- --api ... --port ...` command. To serve everything from one address instead, run `python -m backend --serve-frontend` (needs the build) and open the link it prints.
+
+Because the assistant can run commands and edit files, both servers are locked down: they listen on loopback only, every API request needs the random token printed at launch (a new one each time), requests with a foreign `Host` are refused, so are API calls from any origin other than the frontend's, and the page runs under a CSP that forbids inline script. Model output is inserted as text, never as HTML. `--port N` changes the port; `--allow-remote` is required to listen on any other address (do that only on a network you trust). If the port is taken the launch fails instead of sharing it.
 
 When a command the assistant started moves to the background and later finishes, its session gets a **job notice** (shown in the conversation) and the assistant reports the outcome, as in the keyboard chat. The notice goes to the session that started the job; if that session is busy, it runs right after the current turn.
 
@@ -176,8 +179,8 @@ A cancelled turn can leave a tool call without a result, which models reject. Th
 
 ```
 main.py              Entry point: reads the keyboard, optionally starts voice mode
-backend/             Web chat API: session.py (one conversation as events), sessions.py (many sessions, turn limit), server.py (HTTP + SSE, security checks), __main__.py
-frontend/               Web chat frontend (TypeScript): src/ (api, state, markdown, render, keys, theme, voice, main), public/ (html, css), test/ (node --test); builds to dist/
+backend/             Agent web API: session.py (one conversation as events), sessions.py (many sessions, turn limit), server.py (HTTP + SSE, security checks, CORS for the frontend), __main__.py
+frontend/            Web chat frontend (TypeScript): src/ (api, state, markdown, render, keys, theme, voice, main), public/ (html, css), scripts/serve.ts (its own web server), test/ (node --test); builds to dist/
 chat_loop.py         ChatLoop: worker thread, input queue, stop handling, approvals, job notices
 turns.py             One conversation turn (UI-independent), cancellation, stop phrases, sentence streaming for speech
 jobs.py              Background shell jobs (JobManager)

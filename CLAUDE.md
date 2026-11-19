@@ -8,7 +8,8 @@ Local LLM agent: LangChain + LangGraph on Ollama (default `qwen3:8b`). Interacti
 .\.venv\Scripts\Activate.ps1
 python main.py                              # interactive chat; "exit" or "quit" stops
 npm --prefix frontend install; npm --prefix frontend run build   # once: build the TypeScript web frontend
-python -m backend [--no-voice]              # browser chat on 127.0.0.1:8000, many sessions, job notices, voice if installed (link with token is printed)
+python -m backend [--no-voice]              # agent web API on 127.0.0.1:8000: many sessions, job notices, voice if installed; prints the frontend link (api + token)
+npm --prefix frontend start                 # web frontend on 127.0.0.1:5173, calls the API (python -m backend --serve-frontend = both on :8000 instead)
 python -m unittest discover -s tests -t .   # tests (Postgres test skipped if DB unreachable)
 docker compose up -d                        # pgvector Postgres 17 (db agent_memory, user agent)
 ```
@@ -87,7 +88,7 @@ Solo project: roles are skills (`architect`, `implement`, `test`, `debug`, `docs
 
 - Label claims verified (cite code/test/doc), assumed, or unknown. Investigate uncertainty; surface what stays unresolved to the user rather than guessing.
 - Verify important findings against source, tests, or authoritative docs.
-- Directory notes: `voice/CLAUDE.md`, `memories/CLAUDE.md`, `backend/CLAUDE.md` (web API, Python), `frontend/CLAUDE.md` (web frontend, TypeScript).
+- Directory notes: `voice/CLAUDE.md`, `memories/CLAUDE.md`, `backend/CLAUDE.md` (web API, Python), `frontend/CLAUDE.md` (web frontend, TypeScript). The two web parts meet only at the HTTP API: the frontend's own server (`frontend/scripts/serve.ts`, :5173) serves the page; the page calls the backend (:8000) cross-origin (CORS for `--frontend-origin`, token in `X-Token`).
 
 @docs/ROSTER.md
 @docs/PROJECT.md
