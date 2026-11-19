@@ -11,7 +11,7 @@ from tests import stubs
 
 stubs.install()
 
-from backend.server import KEEPALIVE_SECONDS, Handler, make_server  # noqa: E402
+from backend.server import KEEPALIVE_SECONDS, Handler, make_server, parse_origin  # noqa: E402
 from backend.sessions import SessionManager  # noqa: E402
 from tests.test_backend_session import scripted  # noqa: E402
 
@@ -21,6 +21,7 @@ TOKEN = "test-token-123"
 class ServerCase(unittest.TestCase):
     run_fn = staticmethod(scripted("Hel", "lo"))
     max_turns = 1
+    frontend_origins: tuple[str, ...] = ()
 
     def setUp(self):
         self.static = tempfile.TemporaryDirectory()
@@ -31,7 +32,7 @@ class ServerCase(unittest.TestCase):
         (root / "lib").mkdir()
         (root / "lib" / "api.js").write_text("// api", encoding="utf-8")
         self.manager = SessionManager(app=None, run=self.run_fn, max_turns=self.max_turns)
-        self.server = make_server(self.manager, TOKEN, port=0, static_dir=root)
+        self.server = make_server(self.manager, TOKEN, port=0, static_dir=root, frontend_origins=self.frontend_origins)
         self.port = self.server.server_address[1]
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True)
         self.thread.start()
@@ -233,6 +234,116 @@ class SecurityTests(ServerCase):
         self.assertEqual(conn.getresponse().status, 200)
         conn.close()
         self.assertEqual(self.request("GET", f"/api/sessions?token={TOKEN}", token=False)[0], 401)
+
+
+FRONTEND = "http://127.0.0.1:5173"
+
+
+class ParseOriginTests(unittest.TestCase):
+    def test_scheme_host_and_port_are_kept(self):
+        self.assertEqual(parse_origin("http://127.0.0.1:5173"), "http://127.0.0.1:5173")
+        self.assertEqual(parse_origin("https://chat.example"), "https://chat.example")
+
+    def test_it_is_normalized_like_a_browser_sends_it(self):
+        self.assertEqual(parse_origin("HTTP://LocalHost:5173/"), "http://localhost:5173")
+
+    def test_anything_but_a_plain_origin_is_refused(self):
+        for bad in ("", "*", "null", "localhost:5173", "ftp://x", "http://", "http://x/app", "http://x?a=1",
+                    "http://x#top", "http://user@x", "http://x:notaport"):
+            with self.assertRaises(ValueError, msg=bad):
+                parse_origin(bad)
+
+
+class ApiOnlyTests(ServerCase):
+    def setUp(self):
+        super().setUp()
+        self.server.static_dir = None
+
+    def test_pages_are_not_served(self):
+        status, _, body = self.request("GET", "/", token=False)
+        self.assertEqual(status, 404)
+        self.assertIn(b"API", body)
+
+    def test_the_api_still_answers(self):
+        self.assertEqual(self.request("GET", "/api/health", token=False)[0], 200)
+        self.assertEqual(self.request("GET", "/api/sessions")[0], 200)
+
+    def test_make_server_is_api_only_by_default(self):
+        server = make_server(self.manager, TOKEN, port=0)
+        try:
+            self.assertIsNone(server.static_dir)
+            self.assertEqual(server.frontend_origins, frozenset())
+        finally:
+            server.server_close()
+
+
+class CrossOriginTests(ServerCase):
+    """The frontend runs on its own origin and reaches the agent only through this API."""
+
+    frontend_origins = (FRONTEND,)
+
+    def preflight(self, origin=FRONTEND, path="/api/sessions", method="POST", host=None):
+        headers = {"Origin": origin, "Access-Control-Request-Method": method,
+                   "Access-Control-Request-Headers": "content-type,x-token"}
+        return self.request("OPTIONS", path, headers=headers, token=False, host=host)
+
+    def test_preflight_from_the_frontend_is_allowed(self):
+        status, resp, _ = self.preflight()
+        self.assertEqual(status, 204)
+        self.assertEqual(resp.getheader("Access-Control-Allow-Origin"), FRONTEND)
+        self.assertIn("POST", resp.getheader("Access-Control-Allow-Methods", ""))
+        headers = resp.getheader("Access-Control-Allow-Headers", "").lower()
+        self.assertIn("x-token", headers)
+        self.assertIn("content-type", headers)
+        self.assertIn("Origin", resp.getheader("Vary", ""))
+
+    def test_preflight_from_another_origin_is_refused(self):
+        status, resp, _ = self.preflight(origin="http://evil.example")
+        self.assertEqual(status, 403)
+        self.assertIsNone(resp.getheader("Access-Control-Allow-Origin"))
+
+    def test_preflight_needs_our_host(self):
+        self.assertEqual(self.preflight(host="evil.example")[0], 403)
+
+    def test_preflight_is_only_for_the_api(self):
+        self.assertEqual(self.preflight(path="/")[0], 404)
+
+    def test_api_answers_carry_the_frontend_origin(self):
+        status, resp, _ = self.request("POST", "/api/sessions", {}, headers={"Origin": FRONTEND})
+        self.assertEqual(status, 201)
+        self.assertEqual(resp.getheader("Access-Control-Allow-Origin"), FRONTEND)
+        self.assertIn("Origin", resp.getheader("Vary", ""))
+
+    def test_errors_carry_it_too_so_the_page_can_read_them(self):
+        status, resp, _ = self.request("GET", "/api/sessions", headers={"Origin": FRONTEND}, token=False)
+        self.assertEqual(status, 401)
+        self.assertEqual(resp.getheader("Access-Control-Allow-Origin"), FRONTEND)
+
+    def test_the_frontend_still_needs_the_token(self):
+        status, _, _ = self.request("POST", "/api/sessions", {}, headers={"Origin": FRONTEND}, token=False)
+        self.assertEqual(status, 401)
+        self.assertEqual(self.manager.list(), [])
+
+    def test_another_origin_is_still_refused(self):
+        status, resp, _ = self.request("POST", "/api/sessions", {}, headers={"Origin": "http://localhost:9999"})
+        self.assertEqual(status, 403)
+        self.assertIsNone(resp.getheader("Access-Control-Allow-Origin"))
+        self.assertEqual(self.manager.list(), [])
+
+    def test_same_origin_answers_need_no_cors_header(self):
+        status, resp, _ = self.request("GET", "/api/sessions", headers={"Origin": f"http://127.0.0.1:{self.port}"})
+        self.assertEqual(status, 200)
+        self.assertIsNone(resp.getheader("Access-Control-Allow-Origin"))
+
+    def test_event_stream_is_open_to_the_frontend(self):
+        sid = self.new_session()
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.request("GET", f"/api/sessions/{sid}/events?token={TOKEN}",
+                     headers={"Host": f"127.0.0.1:{self.port}", "Origin": FRONTEND})
+        resp = conn.getresponse()
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.getheader("Access-Control-Allow-Origin"), FRONTEND)
+        conn.close()
 
 
 class SessionApiTests(ServerCase):

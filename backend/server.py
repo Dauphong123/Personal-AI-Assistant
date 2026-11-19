@@ -1,10 +1,12 @@
 """HTTP + Server-Sent Events API over SessionManager, standard library only.
 
-It also serves the built TypeScript frontend (frontend/dist) so the page and the API share one
-origin. The agent can run commands and write files, so the server is locked down: it binds to
-loopback, every API call needs the launch token, the Host header must be ours (DNS
-rebinding) and a browser Origin must be ours (cross-site requests). Pages are served with a
-CSP that forbids inline script and style.
+The frontend (frontend/) is a separate app on its own origin that reaches the agent only through
+this API; its origins are listed in frontend_origins (CORS). With static_dir set the server also
+serves the built frontend on its own origin (--serve-frontend). The agent can run commands and
+write files, so the server is locked down: it binds to loopback, every API call needs the launch
+token, the Host header must be ours (DNS rebinding) and a browser Origin must be ours or a listed
+frontend origin (cross-site requests). Pages are served with a CSP that forbids inline script
+and style.
 
 API (JSON bodies, token in X-Token or Authorization: Bearer):
     POST /api/handshake       {protocol}    {protocol, server, features, limits}; 409 if the
@@ -24,6 +26,7 @@ API (JSON bodies, token in X-Token or Authorization: Bearer):
                                             ?dictate=1 adds {"prompt", "hands_free", "answer"} (backend.voice.dictation)
     POST /api/voice/speak       {text}      audio/wav (204: nothing speakable)
     GET  /api/health                        {"status": "ok"}; no token (Host still checked)
+    OPTIONS /api/...                        CORS preflight: 204 for a listed frontend origin, else 403
 
 A handler that raises answers 500 {"error": "Internal server error"} and is logged.
 """
@@ -34,6 +37,7 @@ import logging
 import re
 import secrets
 import time
+from collections.abc import Iterable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -81,6 +85,15 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
 }
 
+# CORS answers for a listed frontend origin (the page sends the token in X-Token).
+CORS_METHODS = "GET, POST"
+CORS_HEADERS = "Content-Type, X-Token, Authorization"
+CORS_MAX_AGE = "600"
+API_ONLY_HINT = (
+    "Not found: this server is the agent API only. Start the frontend (npm --prefix frontend start) "
+    "or run the backend with --serve-frontend."
+)
+
 HANDSHAKE_PATH = "/api/handshake"
 HEALTH_PATH = "/api/health"  # no token: says only that the server answers
 VOICE_PATHS = {"/api/voice/transcribe", "/api/voice/speak"}
@@ -92,6 +105,31 @@ def new_token() -> str:
     return secrets.token_urlsafe(24)
 
 
+def parse_origin(value: str) -> str:
+    """A browser origin as the Origin header sends it ("http://127.0.0.1:5173"): scheme, host
+    and optional port, lowercased, no path, query, fragment or user. ValueError otherwise."""
+    problem = f"Not an origin: {value!r} (expected e.g. http://127.0.0.1:5173)"
+
+    try:
+        parts = urlsplit(value.strip())
+        port = parts.port  # ValueError for a port that is not a number
+    except ValueError:
+        raise ValueError(problem) from None
+
+    if (
+        parts.scheme.lower() not in {"http", "https"}
+        or not parts.hostname
+        or parts.username is not None
+        or parts.path not in {"", "/"}
+        or "?" in value
+        or "#" in value
+    ):
+        raise ValueError(problem)
+
+    origin = f"{parts.scheme.lower()}://{parts.hostname.lower()}"
+    return origin if port is None else f"{origin}:{port}"
+
+
 class WebServer(ThreadingHTTPServer):
     daemon_threads = True  # an open event stream must not keep the process alive
     allow_reuse_address = False  # on Windows SO_REUSEADDR lets a second process share the port
@@ -101,15 +139,17 @@ class WebServer(ThreadingHTTPServer):
         address,
         manager: SessionManager,
         token: str,
-        static_dir: Path,
+        static_dir: Path | None,
         allow_remote: bool,
         notices: bool = False,
         voice=None,
+        frontend_origins: Iterable[str] = (),
     ):
         super().__init__(address, Handler)
         self.manager = manager
         self.token = token
-        self.static_dir = static_dir
+        self.static_dir = static_dir  # None: API only, the frontend runs on its own origin
+        self.frontend_origins = frozenset(parse_origin(origin) for origin in frontend_origins)
         self.allow_remote = allow_remote
         self.notices = notices  # background-job notices are routed to sessions
         self.voice = voice  # backend.voice.WebVoice or None
@@ -144,15 +184,27 @@ def make_server(
     token: str,
     host: str = "127.0.0.1",
     port: int = 8000,
-    static_dir: Path = STATIC_DIR,
+    static_dir: Path | None = None,
     allow_remote: bool = False,
     notices: bool = False,
     voice=None,
+    frontend_origins: Iterable[str] = (),
 ) -> WebServer:
+    """static_dir=None: API only (the frontend runs on its own origin, listed in
+    frontend_origins); a build directory also serves the page on this origin."""
     if host not in LOOPBACK_HOSTS and not allow_remote:
         raise ValueError(f"Refusing to listen on {host!r}: only loopback is allowed without allow_remote.")
 
-    return WebServer((host, port), manager, token, Path(static_dir), allow_remote, notices, voice)
+    return WebServer(
+        (host, port),
+        manager,
+        token,
+        None if static_dir is None else Path(static_dir),
+        allow_remote,
+        notices,
+        voice,
+        frontend_origins,
+    )
 
 
 def static_file(static_dir: Path, url_path: str) -> Path | None:
@@ -218,18 +270,31 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         self._guarded(self._post)
 
+    def do_OPTIONS(self) -> None:
+        self._guarded(self._options)
+
     # --- responses ---------------------------------------------------------------
 
     def _send(self, status: int, body: bytes, content_type: str) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self._common_headers()
+        self.end_headers()
+        self.wfile.write(body)
 
+    def _common_headers(self) -> None:
+        """Security headers on every answer; CORS headers when a listed frontend origin asks."""
         for name, value in SECURITY_HEADERS.items():
             self.send_header(name, value)
 
-        self.end_headers()
-        self.wfile.write(body)
+        if self.server.frontend_origins:
+            self.send_header("Vary", "Origin")
+
+        origin = self._frontend_origin()
+
+        if origin is not None:
+            self.send_header("Access-Control-Allow-Origin", origin)
 
     def _json(self, status: int, payload: dict) -> None:
         self._send(status, json.dumps(payload).encode("utf-8"), "application/json")
@@ -262,10 +327,15 @@ class Handler(BaseHTTPRequestHandler):
 
         return self.headers.get("Host", "") in self.server.allowed_hosts()
 
+    def _frontend_origin(self) -> str | None:
+        """The request's Origin when it is a listed frontend origin, else None."""
+        origin = self.headers.get("Origin")
+        return origin if origin is not None and origin in self.server.frontend_origins else None
+
     def _origin_ok(self) -> bool:
         origin = self.headers.get("Origin")
 
-        if origin is None or self.server.allow_remote:
+        if origin is None or self.server.allow_remote or self._frontend_origin() is not None:
             return True
 
         return origin in {f"http://{host}" for host in self.server.allowed_hosts()}
@@ -401,6 +471,26 @@ class Handler(BaseHTTPRequestHandler):
 
         self._fail(405, "Use POST")
 
+    def _options(self) -> None:
+        """CORS preflight: the frontend's origin may call the API with the token header. The
+        preflight itself carries no token; the real request is still checked in full."""
+        if not self._host_ok():
+            return self._fail(403, "Forbidden host")
+
+        if not urlsplit(self.path).path.startswith("/api/"):
+            return self._fail(404, "Not found")
+
+        if self._frontend_origin() is None:
+            return self._fail(403, "Forbidden origin")
+
+        self.send_response(204)
+        self._common_headers()
+        self.send_header("Access-Control-Allow-Methods", CORS_METHODS)
+        self.send_header("Access-Control-Allow-Headers", CORS_HEADERS)
+        self.send_header("Access-Control-Max-Age", CORS_MAX_AGE)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _post(self) -> None:
         url = urlsplit(self.path)
         self._body_read = False  # the handler serves every request of a keep-alive connection
@@ -462,10 +552,15 @@ class Handler(BaseHTTPRequestHandler):
     # --- handlers ----------------------------------------------------------------
 
     def _static(self, path: str) -> None:
-        if not self.server.static_dir.is_dir():
+        static_dir = self.server.static_dir
+
+        if static_dir is None:
+            return self._fail(404, API_ONLY_HINT)
+
+        if not static_dir.is_dir():
             return self._send(503, BUILD_HINT.encode("utf-8"), "text/plain; charset=utf-8")
 
-        file = static_file(self.server.static_dir, path)
+        file = static_file(static_dir, path)
 
         if file is None:
             return self._fail(404, "Not found")
@@ -563,10 +658,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if not audio:
             self.send_response(204)
-
-            for name, value in SECURITY_HEADERS.items():
-                self.send_header(name, value)
-
+            self._common_headers()
             self.end_headers()
             return
 
@@ -641,10 +733,7 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
-
-        for name, value in SECURITY_HEADERS.items():
-            self.send_header(name, value)
-
+        self._common_headers()
         self.end_headers()
         last_write = time.monotonic()
 
