@@ -56,6 +56,17 @@ class SendTests(unittest.TestCase):
         ids = [e["id"] for e in events]
         self.assertEqual(ids, sorted(set(ids)))
 
+    def test_events_carry_their_time(self):
+        before = time.time()
+        session = ChatSession(app=None, run=scripted("a", "b"))
+        session.send("x")
+        events = wait_for(session, "done")
+        stamps = [e["at"] for e in events]
+        self.assertTrue(all(isinstance(at, float) for at in stamps))
+        self.assertEqual(stamps, sorted(stamps))
+        self.assertGreaterEqual(stamps[0], before - 1)
+        self.assertLessEqual(stamps[-1], time.time() + 1)
+
     def test_events_after_filters(self):
         session = ChatSession(app=None, run=scripted("a"))
         session.send("x")

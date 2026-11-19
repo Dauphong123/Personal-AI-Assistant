@@ -2,8 +2,9 @@
 
 Events are dicts with a growing `id` and a `type`: user, notice (a finished background job
 starts a turn), waiting, token, tool (a tool call started or finished: call, name, args, status
-running|done|error, text), approval, done, cancelled, error, reset. A client reads them with
-`events_after(last_id)`, so a reconnect resumes.
+running|done|error, text), approval, done, cancelled, error, reset. Each also has `at`, its
+time in seconds since the epoch. A client reads them with `events_after(last_id)`, so a
+reconnect resumes.
 """
 
 import logging
@@ -117,7 +118,8 @@ class ChatSession:
 
     def _emit(self, type_: str, **fields) -> None:
         with self._cond:
-            self._events.append({"id": self._next_id, "type": type_, **fields})
+            # `at` (seconds since the epoch) lets a page that opens mid-turn show how long it has run.
+            self._events.append({"id": self._next_id, "type": type_, **fields, "at": round(time.time(), 3)})
             self._next_id += 1
             self._cond.notify_all()
 

@@ -17,13 +17,14 @@ export interface ToolItem {
 export type Item =
   | { kind: "user"; text: string }
   | { kind: "notice"; text: string } // what a finished background job reported
-  | { kind: "assistant"; text: string }
+  | { kind: "assistant"; text: string; seconds?: number } // seconds: the turn's time, on its final answer
   | { kind: "note"; text: string; error: boolean }
   | ToolItem;
 
 export interface Conversation {
   readonly items: readonly Item[];
   readonly busy: boolean; // a turn is running (or waiting for the model)
+  readonly turnStartedAt: number | null; // the running turn's start (event `at`), if known
   readonly waiting: boolean; // queued behind another session's turn
   readonly approval: readonly ToolCall[] | null; // tool calls waiting for allow/deny
   readonly approvalRequest: string | null; // id of that request; the answer names it
@@ -32,14 +33,25 @@ export interface Conversation {
 }
 
 export function emptyConversation(): Conversation {
-  return { items: [], busy: false, waiting: false, approval: null, approvalRequest: null, lastEventId: 0, gone: false };
+  return { items: [], busy: false, turnStartedAt: null, waiting: false, approval: null, approvalRequest: null, lastEventId: 0, gone: false };
+}
+
+/** The finished turn's final answer, stamped with how long the turn took (when both times
+ * are known). */
+function timeAnswer(conv: Conversation, endedAt: number | undefined): readonly Item[] {
+  const last = conv.items.at(-1);
+
+  if (last?.kind !== "assistant" || conv.turnStartedAt === null || endedAt === undefined) return conv.items;
+
+  const seconds = Math.max(0, Math.round((endedAt - conv.turnStartedAt) * 10) / 10);
+  return [...conv.items.slice(0, -1), { ...last, seconds }];
 }
 
 /** The conversation after one event. Events at or before lastEventId are ignored, so a
  * replay after a reconnect changes nothing. */
 export function apply(conv: Conversation, event: ChatEvent): Conversation {
   if (event.type === "gone") {
-    return { ...conv, gone: true, busy: false, waiting: false, approval: null, approvalRequest: null };
+    return { ...conv, gone: true, busy: false, turnStartedAt: null, waiting: false, approval: null, approvalRequest: null };
   }
 
   if (event.id <= conv.lastEventId) {
@@ -50,9 +62,9 @@ export function apply(conv: Conversation, event: ChatEvent): Conversation {
 
   switch (event.type) {
     case "user":
-      return { ...next, items: [...conv.items, { kind: "user", text: event.text }], busy: true, waiting: false };
+      return { ...next, items: [...conv.items, { kind: "user", text: event.text }], busy: true, turnStartedAt: event.at ?? null, waiting: false };
     case "notice":
-      return { ...next, items: [...conv.items, { kind: "notice", text: event.text }], busy: true, waiting: false };
+      return { ...next, items: [...conv.items, { kind: "notice", text: event.text }], busy: true, turnStartedAt: event.at ?? null, waiting: false };
     case "waiting":
       return { ...next, waiting: true };
     case "token": {
@@ -72,13 +84,13 @@ export function apply(conv: Conversation, event: ChatEvent): Conversation {
     case "approval":
       return { ...next, approval: event.calls, approvalRequest: event.request, waiting: false };
     case "done":
-      return { ...next, busy: false, waiting: false };
+      return { ...next, items: timeAnswer(next, event.at), busy: false, turnStartedAt: null, waiting: false };
     case "cancelled":
       return { ...endTurn(next, "Stopped.", false) };
     case "error":
       return { ...endTurn(next, event.text, true) };
     case "reset":
-      return { ...next, items: [], busy: false, waiting: false };
+      return { ...next, items: [], busy: false, turnStartedAt: null, waiting: false };
   }
 }
 
@@ -109,7 +121,7 @@ function endTurn(conv: Conversation, text: string, error: boolean): Conversation
   const items = conv.items.map((item, index): Item =>
     index >= start && item.kind === "tool" && item.status === "running" ? { ...item, status: "stopped" } : item,
   );
-  return { ...conv, items: [...items, { kind: "note", text, error }], busy: false, waiting: false };
+  return { ...conv, items: [...items, { kind: "note", text, error }], busy: false, turnStartedAt: null, waiting: false };
 }
 
 export function applyAll(conv: Conversation, events: readonly ChatEvent[]): Conversation {
@@ -163,6 +175,7 @@ export function isChatEvent(value: unknown): value is ChatEvent {
   if (!isRecord(value)) return false;
   if (value["type"] === "gone") return true;
   if (typeof value["id"] !== "number") return false;
+  if (value["at"] !== undefined && typeof value["at"] !== "number") return false;
 
   switch (value["type"]) {
     case "user":
@@ -202,10 +215,22 @@ export interface StatusInput {
   handsFree: boolean;
   transcribing: boolean; // a hands-free recording is at the backend
   queued: number; // spoken prompts waiting to be sent
+  now?: number; // ms since the epoch: adds how long the running turn has taken
+}
+
+/** "9 s", "1 min 5 s", "12 min" (whole seconds; seconds dropped from 10 min on). */
+export function elapsedLabel(seconds: number): string {
+  const whole = Math.max(0, Math.floor(seconds));
+
+  if (whole < 60) return `${whole} s`;
+
+  const minutes = Math.floor(whole / 60);
+  const rest = whole % 60;
+  return minutes >= 10 || rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
 }
 
 /** The header's status text and how it should look. */
-export function statusOf(input: StatusInput): { text: string; tone: StatusTone } {
+export function statusOf(input: StatusInput): { text: string; tone: StatusTone; elapsed?: string } {
   const { conv, connection, voiceStatus, handsFree, transcribing, queued } = input;
 
   if (connection) return { text: connection, tone: "error" };
@@ -223,6 +248,10 @@ export function statusOf(input: StatusInput): { text: string; tone: StatusTone }
     const tool = activeTool(conv);
     const view = tool && describeTool(tool.name, tool.args);
     [text, tone] = [view ? `${view.doing}${view.target === null ? "" : ` ${view.target}`}…` : "Working…", "busy"];
+
+    if (input.now !== undefined && conv.turnStartedAt !== null && !handsFree && !queued) {
+      return { text, tone, elapsed: elapsedLabel(input.now / 1000 - conv.turnStartedAt) };
+    }
   }
 
   const suffix = queued ? ` · ${queued} queued` : "";

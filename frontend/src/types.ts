@@ -34,8 +34,9 @@ export interface ToolCall {
 }
 
 // One entry of a session's event log (GET /api/sessions/<id>/events). `gone` has no id:
-// the session was deleted and the stream ends.
-export type ChatEvent =
+// the session was deleted and the stream ends. `at`: when it happened, in seconds since the
+// epoch (the backend stamps every logged event; optional so older logs and tests still fit).
+export type ChatEvent = { at?: number } & (
   | { id: number; type: "user"; text: string }
   | { id: number; type: "notice"; text: string } // a finished background job starts a turn
   | { id: number; type: "waiting" }
@@ -48,4 +49,5 @@ export type ChatEvent =
   | { id: number; type: "cancelled" }
   | { id: number; type: "error"; text: string }
   | { id: number; type: "reset" }
-  | { type: "gone" };
+  | { type: "gone" }
+);

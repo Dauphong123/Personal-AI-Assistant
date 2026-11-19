@@ -37,6 +37,7 @@
       <h2 id="session-title" class="title" title="Double-click to rename"></h2>
       <input id="title-input" class="title-input" type="text" maxlength="60" aria-label="Session name" hidden>
       <span id="status" class="status" role="status"></span>
+      <span id="elapsed" class="elapsed" aria-hidden="true" hidden></span>
       <div class="menu-wrap">
         <button id="session-menu" type="button" class="icon-button" aria-haspopup="menu" aria-expanded="false" aria-controls="session-menu-list" aria-label="Session actions" title="Session actions">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle class="dot" cx="5" cy="12" r="1.7"/><circle class="dot" cx="12" cy="12" r="1.7"/><circle class="dot" cx="19" cy="12" r="1.7"/></svg>
@@ -70,7 +71,7 @@
       </section>
       <div id="log" class="log" role="log"></div>
       <div id="thinking" class="msg assistant thinking" hidden>
-        <p><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span> Thinking…</p>
+        <p><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span> Thinking… <span id="thinking-time" class="thinking-time" aria-hidden="true"></span></p>
       </div>
     </main>
 

@@ -302,6 +302,11 @@ button:disabled { opacity: 0.4; cursor: default; }
 .status[data-tone="approval"] { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
 .status[data-tone="error"] { background: var(--danger-soft); color: var(--danger); }
 
+/* How long the running turn has taken; beside the status, not inside its live region. */
+.elapsed, .thinking-time, .msg-time { color: var(--faint); font-size: 0.8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.elapsed { margin-left: -0.35rem; }
+.msg-time { align-self: center; margin-left: 0.35rem; }
+
 .title-input {
   flex: 1;
   min-width: 0;

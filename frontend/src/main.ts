@@ -11,6 +11,7 @@ import {
   emptyConversation,
   formatCalls,
   isChatEvent,
+  elapsedLabel,
   isThinking,
   retryPrompt,
   relativeTime,
@@ -80,6 +81,8 @@ const ui = {
   examples: byId("examples"),
   log: byId("log"),
   thinking: byId("thinking"),
+  thinkingTime: byId("thinking-time"),
+  elapsed: byId("elapsed"),
   alert: byId("alert"),
   approval: byId("approval"),
   approvalCalls: byId("approval-calls"),
@@ -245,10 +248,30 @@ function renderHeader(): void {
     handsFree,
     transcribing: transcribing > 0,
     queued: handsFreeQueue.length,
+    now: Date.now(),
   });
   ui.status.textContent = status.text;
   ui.status.dataset["tone"] = status.tone;
+  // The running time ticks every second: kept out of the status region so it is not announced.
+  ui.elapsed.textContent = status.elapsed ?? "";
+  ui.elapsed.hidden = status.elapsed === undefined;
+  ui.thinkingTime.textContent = status.elapsed ?? "";
   renderMeter();
+  tickWhileBusy();
+}
+
+let ticker: number | undefined;
+
+/** Redraw the header every second while a timed turn runs (its running time). */
+function tickWhileBusy(): void {
+  const timed = conv.busy && conv.turnStartedAt !== null;
+
+  if (timed && ticker === undefined) {
+    ticker = window.setInterval(renderHeader, 1000);
+  } else if (!timed && ticker !== undefined) {
+    window.clearInterval(ticker);
+    ticker = undefined;
+  }
 }
 
 function setBars(level: number): void {
@@ -330,6 +353,14 @@ function renderMessage(item: Item): HTMLElement {
       copyButton("copy-msg", "Copy answer"),
       actionButton("retry", "Retry", ICONS.retry, "Ask the same question again"),
     );
+
+    if (item.seconds !== undefined) {
+      const took = document.createElement("span");
+      took.className = "msg-time";
+      took.textContent = elapsedLabel(item.seconds);
+      took.title = "Time to answer";
+      actions.append(took);
+    }
     message.append(actions);
     messageText.set(message, item.text);
     return message;
