@@ -1622,20 +1622,20 @@
       "id": "F035",
       "name": "More interactive web frontend",
       "description": "Redesign the web chat frontend so the user can interact more with the agent and its answers.",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-19",
-      "completed": null,
+      "completed": "2026-11-19",
       "branch": "feature/F035-interactive-frontend",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "5dafe83",
+      "files": ["turns.py", "backend/session.py", "backend/server.py", "frontend/src/types.ts", "frontend/src/state.ts", "frontend/src/render.ts", "frontend/src/main.ts", "frontend/src/keys.ts", "frontend/src/commands.ts", "frontend/public/index.html", "frontend/public/style.css", "README.md", "CLAUDE.md", "backend/CLAUDE.md", "frontend/CLAUDE.md", "docs/PROJECT.md"],
+      "tests": ["tests/test_tool_activity.py", "tests/test_backend_session.py::ToolEventTests", "tests/test_backend_session.py::SendTests::test_events_carry_their_time", "tests/test_backend_handshake.py::HandshakeTests::test_protocol_3_carries_tool_events", "frontend/test/activity.test.ts", "frontend/test/actions.test.ts", "frontend/test/progress.test.ts", "frontend/test/commands.test.ts", "frontend/test/keys.test.ts"],
       "steps": [
         {"n": 1, "title": "Backend sends tool activity as its own `tool` events (run_turn on_tool; protocol 2 -> 3)", "status": "done", "tests": ["tests/test_tool_activity.py (7)", "tests/test_backend_session.py::ToolEventTests (3)", "tests/test_backend_handshake.py::HandshakeTests::test_protocol_3_carries_tool_events", "npm test 137 pass, npm run check clean", "full suite 889 run, 31 skipped (Postgres down)"], "commit": "d7210e0", "date": "2026-11-19"},
         {"n": 2, "title": "Activity cards in the chat + live status naming the running tool", "status": "done", "tests": ["frontend/test/activity.test.ts (11)", "npm test 148 pass, npm run check clean", "full suite OK (31 skipped, Postgres down)", "browser: stub agent API + real frontend server, cards running/done/failed, approval, expand output, no console errors"], "commit": "bc32e28", "date": "2026-11-19"},
         {"n": 3, "title": "Message actions: Edit, Retry, Try again", "status": "done", "tests": ["frontend/test/actions.test.ts (6)", "npm test 154 pass, npm run check clean", "full suite 889 OK (31 skipped, Postgres down)", "browser: Edit fills the box, Retry resends and keeps the draft, Stop marks the running card Stopped, Try again only on the last note"], "commit": "b2667f8", "date": "2026-11-19"},
         {"n": 4, "title": "Live progress: elapsed time while working, duration when done (backend stamps events with `at`)", "status": "done", "tests": ["frontend/test/progress.test.ts (6)", "tests/test_backend_session.py::SendTests::test_events_carry_their_time", "npm test 160 pass, npm run check clean", "full suite 890 OK (31 skipped, Postgres down)", "browser: header names the running tool + ticking time outside the status live region, answer shows its time, timer clears at the end"], "commit": "271f22a", "date": "2026-11-19"},
         {"n": 5, "title": "Command palette (Ctrl+K) and slash commands", "status": "done", "tests": ["frontend/test/commands.test.ts (6)", "frontend/test/keys.test.ts (Ctrl+K)", "npm test 167 pass, npm run check clean", "full suite 890 OK (31 skipped, Postgres down)", "browser: Ctrl+K palette, 'dark' + Enter switches to dark, /re suggests /rename, Tab + name + Enter renames without sending, dark theme check, no console errors"], "commit": "1821c34", "date": "2026-11-19"},
-        {"n": 6, "title": "Docs and browser check", "status": "done", "tests": ["tests/test_project_docs.py", "tests/test_webui_frontend.py", "full suite 890 OK (31 skipped, Postgres down)", "npm test 167 pass", "browser at 390 px: no sideways scroll, cards/status/composer fit; Ctrl+K hint moved from the placeholder to the composer hint"], "commit": null, "date": "2026-11-19"}
+        {"n": 6, "title": "Docs and browser check", "status": "done", "tests": ["tests/test_project_docs.py", "tests/test_webui_frontend.py", "full suite 890 OK (31 skipped, Postgres down)", "npm test 167 pass", "browser at 390 px: no sideways scroll, cards/status/composer fit; Ctrl+K hint moved from the placeholder to the composer hint"], "commit": "5dafe83", "date": "2026-11-19"}
       ],
       "notes": "User request: \"Redesign the website for a more interactive website with user\". Plan approved 2026-11-19 (\"Okay\"): protocol bump 2 -> 3, branched from feature/F034-separate-frontend (F034 not yet in main), no new dependencies, look unchanged. Left out: 'always allow' approvals, model-suggested follow-ups, feedback buttons."
     }
