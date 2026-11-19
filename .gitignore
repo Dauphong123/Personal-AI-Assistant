@@ -3,8 +3,8 @@ __pycache__/
 .venv
 chroma_db
 .env
-webui/node_modules/
-webui/dist/
+frontend/node_modules/
+frontend/dist/
 
 # LOG_FILE output
 logs/

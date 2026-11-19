@@ -7,13 +7,13 @@ Local LLM agent: LangChain + LangGraph on Ollama (default `qwen3:8b`). Interacti
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python main.py                              # interactive chat; "exit" or "quit" stops
-npm --prefix webui install; npm --prefix webui run build   # once: build the TypeScript web frontend
+npm --prefix frontend install; npm --prefix frontend run build   # once: build the TypeScript web frontend
 python -m backend [--no-voice]              # browser chat on 127.0.0.1:8000, many sessions, job notices, voice if installed (link with token is printed)
 python -m unittest discover -s tests -t .   # tests (Postgres test skipped if DB unreachable)
 docker compose up -d                        # pgvector Postgres 17 (db agent_memory, user agent)
 ```
 
-CI: `.github/workflows/ci.yml` runs the unittest suite (Windows, `.venv` with `requirements.txt` + `requirements_voice.txt` locked by `constraints.txt` (`pip freeze`; regenerate after changing requirements), pyright, ripgrep, built `webui/`) and the `webui` check/test/build on every push and on PRs to `main`; no Ollama/Postgres/voice engines there. `main` is protected: `python` and `webui` must pass, linear history, no force push (fast-forward a green branch or merge the PR). Keep it in step with these commands (`tests/test_ci_workflow.py`).
+CI: `.github/workflows/ci.yml` runs the unittest suite (Windows, `.venv` with `requirements.txt` + `requirements_voice.txt` locked by `constraints.txt` (`pip freeze`; regenerate after changing requirements), pyright, ripgrep, built `frontend/`) and the `webui` job (check/test/build of `frontend/`; job id kept because it is a required check) on every push and on PRs to `main`; no Ollama/Postgres/voice engines there. `main` is protected: `python` and `webui` must pass, linear history, no force push (fast-forward a green branch or merge the PR). Keep it in step with these commands (`tests/test_ci_workflow.py`).
 
 Voice commands (`--voice`, `voice.enroll`, `voice.check`, voice engine tests): `voice/CLAUDE.md`.
 
@@ -87,7 +87,7 @@ Solo project: roles are skills (`architect`, `implement`, `test`, `debug`, `docs
 
 - Label claims verified (cite code/test/doc), assumed, or unknown. Investigate uncertainty; surface what stays unresolved to the user rather than guessing.
 - Verify important findings against source, tests, or authoritative docs.
-- Directory notes: `voice/CLAUDE.md`, `memories/CLAUDE.md`, `backend/CLAUDE.md` (web API, Python), `webui/CLAUDE.md` (web frontend, TypeScript).
+- Directory notes: `voice/CLAUDE.md`, `memories/CLAUDE.md`, `backend/CLAUDE.md` (web API, Python), `frontend/CLAUDE.md` (web frontend, TypeScript).
 
 @docs/ROSTER.md
 @docs/PROJECT.md

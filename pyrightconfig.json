@@ -2,5 +2,5 @@
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.12",
-  "exclude": [".venv", "**/node_modules", "webui/dist", "chroma_db", "**/__pycache__"]
+  "exclude": [".venv", "**/node_modules", "frontend/dist", "chroma_db", "**/__pycache__"]
 }

@@ -1,6 +1,6 @@
 """Start the web chat backend: python -m backend [--port N] [--max-turns N]
 
-Serves the API and the built TypeScript frontend (webui/dist) on one origin.
+Serves the API and the built TypeScript frontend (frontend/dist) on one origin.
 """
 
 import argparse

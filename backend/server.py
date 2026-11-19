@@ -1,6 +1,6 @@
 """HTTP + Server-Sent Events API over SessionManager, standard library only.
 
-It also serves the built TypeScript frontend (webui/dist) so the page and the API share one
+It also serves the built TypeScript frontend (frontend/dist) so the page and the API share one
 origin. The agent can run commands and write files, so the server is locked down: it binds to
 loopback, every API call needs the launch token, the Host header must be ours (DNS
 rebinding) and a browser Origin must be ours (cross-site requests). Pages are served with a
@@ -43,9 +43,9 @@ from .sessions import SessionManager
 
 logger = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "webui" / "dist"
-BUILD_HINT = "The web frontend is not built. Run: npm --prefix webui install && npm --prefix webui run build"
-# Bump when the API changes incompatibly; webui/src/types.ts PROTOCOL must match.
+STATIC_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+BUILD_HINT = "The web frontend is not built. Run: npm --prefix frontend install && npm --prefix frontend run build"
+# Bump when the API changes incompatibly; frontend/src/types.ts PROTOCOL must match.
 PROTOCOL = 2  # 2: approve needs the approval event's request id
 SERVER_NAME = "coding-assistant"
 MAX_BODY = 64 * 1024
@@ -489,7 +489,7 @@ class Handler(BaseHTTPRequestHandler):
                 409,
                 {
                     "error": f"The page speaks protocol {protocol}, this backend speaks {PROTOCOL}. "
-                    "Rebuild the frontend (npm --prefix webui run build) and reload the page.",
+                    "Rebuild the frontend (npm --prefix frontend run build) and reload the page.",
                     "protocol": PROTOCOL,
                 },
             )

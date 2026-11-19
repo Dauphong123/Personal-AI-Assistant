@@ -1,5 +1,5 @@
 {
-  "name": "coding-assistant-webui",
+  "name": "coding-assistant-frontend",
   "private": true,
   "version": "1.0.0",
   "description": "TypeScript browser frontend for the coding assistant; talks to python -m backend.",

@@ -97,19 +97,22 @@ class WorkflowTests(unittest.TestCase):
 
     def test_python_job_builds_the_frontend_its_tests_check(self):
         script = run_lines(self.jobs["python"])
-        self.assertIn("npm --prefix webui ci", script)
-        self.assertIn("npm --prefix webui run build", script)
+        self.assertIn("npm --prefix frontend ci", script)
+        self.assertIn("npm --prefix frontend run build", script)
 
     def test_python_job_installs_ripgrep(self):
         self.assertIn("ripgrep", run_lines(self.jobs["python"]))
 
     def test_webui_job_checks_tests_and_builds(self):
+        # The job id stays "webui": it is a required status check on the protected main branch.
         job = self.jobs["webui"]
         self.assertTrue(any(u.startswith("actions/setup-node") for u in uses(job)))
         script = run_lines(job)
         for command in ("npm ci", "npm run check", "npm test", "npm run build"):
             self.assertIn(command, script)
-        self.assertEqual(job["defaults"]["run"]["working-directory"], "webui")
+        self.assertEqual(job["defaults"]["run"]["working-directory"], "frontend")
+        setup = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/setup-node"))
+        self.assertEqual(setup["with"]["cache-dependency-path"], "frontend/package-lock.json")
 
     def test_actions_are_pinned_to_a_major_version(self):
         for name, job in self.jobs.items():
