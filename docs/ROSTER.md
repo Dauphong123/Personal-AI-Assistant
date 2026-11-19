@@ -16,6 +16,6 @@ Format: `- [status] task — role — depends on — files`. Status: todo, doing
 - (none yet)
 
 ## Rules
-- Domain-specific notes live in the nearest directory `CLAUDE.md` (`voice/`, `memories/`); this roster only points to them.
+- Domain-specific notes live in the nearest directory `CLAUDE.md` (`voice/`, `memories/`, `backend/`, `webui/`); this roster only points to them.
 - Cross-area change (e.g. `tools.py` + `chains/code_chain.py` + `tests/`): list every touched area in the task line first.
 - Unfamiliar area: read its `CLAUDE.md` and the code before editing.

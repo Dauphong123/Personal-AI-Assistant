@@ -17,7 +17,7 @@ CI: `.github/workflows/ci.yml` runs the unittest suite (Windows, `.venv` with `r
 
 Voice commands (`--voice`, `voice.enroll`, `voice.check`, voice engine tests): `voice/CLAUDE.md`.
 
-Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama with `qwen3:8b` (main) and `qwen3:4b` (summaries; `SUMMARY_MODEL`), and `rg` (ripgrep) for `search_code`. First run downloads the `Qwen/Qwen3-8B` tokenizer, `BAAI/bge-small-en-v1.5` (RAG) and `intfloat/multilingual-e5-small` (memory) embeddings.
+Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama with `qwen3:8b` (main; summaries use it too unless `SUMMARY_MODEL` names another model), and `rg` (ripgrep) for `search_code`. First run downloads the `Qwen/Qwen3-8B` tokenizer, `BAAI/bge-small-en-v1.5` (RAG) and `intfloat/multilingual-e5-small` (memory) embeddings.
 
 `.env` (gitignored; copy `.env.example`): `MODEL` must be a key in `TOKENIZER_MAP` (`llm_options.py`; `model_name()` fails at startup with a clear message otherwise). DB URL from `DATABASE_URL` or `DB_URL`; `postgresql://` is rewritten to `postgresql+psycopg://` (only psycopg 3 installed). `PROJECT_ROOT` changes the directory the coding tools may touch.
 
@@ -53,7 +53,7 @@ Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama wit
 
 **Naming quirk:** the summarization chain is `summerize` in file/symbol names (`summerize_chain`); graph nodes use `summarize`.
 
-**Known leftovers:** `transformers` only counts tokens for the summarize trigger.
+**Known leftovers:** `transformers` is used only to count tokens (`count_message_tokens`: the summarize trigger and `fit_to_context`).
 
 ## How to work here
 
