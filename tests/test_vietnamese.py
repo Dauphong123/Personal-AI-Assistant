@@ -187,9 +187,12 @@ class ConfigTests(unittest.TestCase):
 class FakeWhisper:
     """Stands in for faster-whisper's model: reports language odds, records what it was asked."""
 
-    def __init__(self, odds):
+    def __init__(self, odds, results=None):
         self.odds = odds
+        self.results = results or {}  # language -> (text, avg_logprob); default " xin chào " at 0.0
         self.asked_language = "unset"
+        self.asked: list[str | None] = []
+        self.options: dict = {}
         self.detections = 0
 
     def detect_language(self, samples):
@@ -198,18 +201,24 @@ class FakeWhisper:
 
     def transcribe(self, samples, language=None, **kwargs):
         self.asked_language = language
-        segment = SimpleNamespace(text=" xin chào ", no_speech_prob=0.0, avg_logprob=0.0)
-        return iter([segment]), None
+        self.asked.append(language)
+        self.options = kwargs
+        text, logprob = self.results.get(language, (" xin chào ", 0.0))
+
+        if not text:
+            return iter([]), None
+
+        return iter([SimpleNamespace(text=text, no_speech_prob=0.0, avg_logprob=logprob)]), None
 
 
 class LanguageChoiceTests(unittest.TestCase):
     AUDIO = np.zeros(16000, dtype=np.int16)
 
-    def transcriber(self, languages, odds=()):
+    def transcriber(self, languages, odds=(), results=None):
         stt: Any = FasterWhisperTranscriber.__new__(FasterWhisperTranscriber)  # skip loading the model; holds a fake model
         stt.candidates = languages
         stt.language = languages[0] if len(languages) == 1 else None
-        stt._model = FakeWhisper(list(odds))
+        stt._model = FakeWhisper(list(odds), results)
         return stt
 
     def test_one_language_is_forced_without_detecting(self):
@@ -230,9 +239,37 @@ class LanguageChoiceTests(unittest.TestCase):
         self.assertEqual(stt._model.asked_language, "en")
 
     def test_a_candidate_missing_from_the_odds_counts_as_impossible(self):
-        stt = self.transcriber(("vi", "en"), [("en", 0.01)])
+        stt = self.transcriber(("en", "vi"), [("th", 0.9)])
         stt.transcribe(self.AUDIO)
-        self.assertEqual(stt._model.asked_language, "en")
+        self.assertEqual(stt._model.asked, ["en"])
+
+    def test_the_main_language_is_kept_when_another_is_only_somewhat_likelier(self):
+        # Whisper's detector leans English on short Vietnamese ("Có" scored vi 0.03, en 0.35);
+        # transcribing it as English translates or mangles it ("So.").
+        stt = self.transcriber(("vi", "en"), [("en", 0.25), ("vi", 0.03)])
+        stt.transcribe(self.AUDIO)
+        self.assertEqual(stt._model.asked, ["vi"])
+
+    def test_when_unsure_both_are_transcribed_and_the_more_confident_one_wins(self):
+        odds = [("en", 0.6), ("vi", 0.02)]
+        results = {"vi": ("Ơm", -0.9), "en": ("Okay.", -0.5)}
+        stt = self.transcriber(("vi", "en"), odds, results)
+        self.assertEqual(stt.transcribe(self.AUDIO), "Okay.")
+        self.assertEqual(sorted(stt._model.asked), ["en", "vi"])
+
+        results = {"vi": ("Không.", -0.5), "en": ("Um.", -0.9)}
+        stt = self.transcriber(("vi", "en"), odds, results)
+        self.assertEqual(stt.transcribe(self.AUDIO), "Không.")
+
+    def test_when_unsure_an_empty_transcript_loses(self):
+        results = {"vi": ("", 0.0), "en": ("Okay.", -1.5)}
+        stt = self.transcriber(("vi", "en"), [("en", 0.6)], results)
+        self.assertEqual(stt.transcribe(self.AUDIO), "Okay.")
+
+    def test_decoding_uses_beam_search(self):
+        stt = self.transcriber(("vi",))
+        stt.transcribe(self.AUDIO)
+        self.assertEqual(stt._model.options["beam_size"], 5)
 
     def test_auto_lets_whisper_decide(self):
         stt = self.transcriber(())
