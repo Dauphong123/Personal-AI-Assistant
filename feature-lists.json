@@ -1583,6 +1583,34 @@
         {"n": 2, "title": "Docs", "status": "done", "tests": ["python -m unittest discover -s tests -t ."], "commit": null, "date": "2026-11-19"}
       ],
       "notes": "Review finding M2. Branched from F031 (F026-F031 not yet in main). docs/PROJECT.md entries added but left unstaged (it holds the user's uncommitted edits). Probe: a pooled connection killed by the server (pg_terminate_backend) made the next query fail with OperationalError AdminShutdown; with pool_pre_ping both queries succeed."
+    },
+    {
+      "id": "F033",
+      "name": "Total deadline for web page fetches",
+      "description": "web.py FETCH_TIMEOUT applies per socket read, so a slow-drip server can keep read_webpage busy far longer; add a total deadline for the whole fetch and a timeout on the DNS lookup.",
+      "status": "open",
+      "created": "2026-11-19",
+      "completed": null,
+      "branch": null,
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [],
+      "notes": "Review finding W1."
+    },
+    {
+      "id": "F034",
+      "name": "Separate frontend and backend parts linked by the agent API",
+      "description": "Split the project into two distinct parts: a backend (agent + HTTP API) and a frontend that talks to the agent only through that API.",
+      "status": "open",
+      "created": "2026-11-19",
+      "completed": null,
+      "branch": null,
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [],
+      "notes": "User request: \"separate frontend and backend in 2 different part of project. make it link by api from agents\"."
     }
   ]
 }
