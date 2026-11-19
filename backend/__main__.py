@@ -10,14 +10,18 @@ import signal
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from log_setup import configure_logging
 
 from .server import BUILD_HINT, LOOPBACK_HOSTS, STATIC_DIR, make_server, new_token, parse_origin
 from .sessions import SessionManager
 
-# Where `npm --prefix frontend start` serves the page (frontend/scripts/serve.mjs).
+# Where `npm --prefix frontend start` serves the page and which API it allows by default
+# (frontend/scripts/serve.ts DEFAULT_PORT, DEFAULT_API).
 DEFAULT_FRONTEND_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")
+FRONTEND_SERVER_PORT = 5173
+FRONTEND_SERVER_API = "http://127.0.0.1:8000"
 
 
 def _origin_arg(value: str) -> str:
@@ -80,6 +84,23 @@ def build_url(host: str, port: int, token: str) -> str:
 def frontend_url(origin: str, host: str, port: int, token: str) -> str:
     """The separate frontend's link: it names the API to call and carries the token."""
     return f"{origin}/?api=http://{_shown_host(host)}:{port}&token={token}"
+
+
+def frontend_command(origin: str, host: str, port: int) -> str:
+    """How to start frontend/scripts/serve.ts for this API: its page may connect only to its
+    --api (CSP), and it must listen on the port of the allowed origin."""
+    api = f"http://{_shown_host(host)}:{port}"
+    options = []
+
+    if api != FRONTEND_SERVER_API:
+        options += ["--api", api]
+
+    origin_port = urlsplit(origin).port
+
+    if origin_port is not None and origin_port != FRONTEND_SERVER_PORT:
+        options += ["--port", str(origin_port)]
+
+    return " ".join(["npm --prefix frontend start", *(["--", *options] if options else [])])
 
 
 def frontend_built(static_dir: Path = STATIC_DIR) -> bool:
@@ -190,7 +211,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Open {build_url(args.host, port, token)}")
         else:
             print(f"Agent API on http://{_shown_host(args.host)}:{port}")
-            print("Start the frontend (npm --prefix frontend start), then open:")
+            print(f"Start the frontend ({frontend_command(origins[0], args.host, port)}), then open:")
             print(f"  {frontend_url(origins[0], args.host, port, token)}")
         print("Press Ctrl+C to stop.", flush=True)
         install_stop_signals()

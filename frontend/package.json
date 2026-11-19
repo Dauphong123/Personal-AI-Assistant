@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/copy-public.mjs",
     "check": "tsc -p tsconfig.json",
+    "start": "node scripts/serve.ts",
     "test": "node --test \"test/*.test.ts\"",
     "watch": "tsc -p tsconfig.build.json --watch"
   },

@@ -14,7 +14,7 @@ export function tokenFrom(search: string, stored: string | null): { token: strin
 
 /** A plain http(s) origin ("http://127.0.0.1:8000"), or null for anything else (paths, users,
  * queries, other schemes): the page sends its token there, so nothing looser is accepted. */
-function apiOrigin(value: string | null): string | null {
+export function apiOrigin(value: string | null): string | null {
   if (!value) return null;
 
   let url: URL;

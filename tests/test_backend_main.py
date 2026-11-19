@@ -71,6 +71,26 @@ class UrlTests(unittest.TestCase):
             "http://127.0.0.1:5173/?api=http://127.0.0.1:8000&token=abc",
         )
 
+    def test_frontend_command_matches_the_api_and_the_frontend_port(self):
+        # frontend/scripts/serve.ts allows the page to connect only to its --api (CSP); defaults
+        # are port 5173 and http://127.0.0.1:8000.
+        self.assertEqual(entry.frontend_command("http://127.0.0.1:5173", "127.0.0.1", 8000), "npm --prefix frontend start")
+        self.assertEqual(
+            entry.frontend_command("http://127.0.0.1:5173", "127.0.0.1", 9000),
+            "npm --prefix frontend start -- --api http://127.0.0.1:9000",
+        )
+        self.assertEqual(
+            entry.frontend_command("http://localhost:3000", "localhost", 8000),
+            "npm --prefix frontend start -- --api http://localhost:8000 --port 3000",
+        )
+
+    def test_defaults_match_the_frontend_server(self):
+        serve = (Path(__file__).resolve().parent.parent / "frontend" / "scripts" / "serve.ts").read_text(encoding="utf-8")
+        self.assertIn(f"DEFAULT_PORT = {entry.FRONTEND_SERVER_PORT};", serve)
+        self.assertIn(f'DEFAULT_API = "{entry.FRONTEND_SERVER_API}";', serve)
+        self.assertEqual(entry.FRONTEND_SERVER_API, "http://127.0.0.1:8000")  # python -m backend's default
+        self.assertIn(f"http://127.0.0.1:{entry.FRONTEND_SERVER_PORT}", entry.DEFAULT_FRONTEND_ORIGINS)
+
     def test_frontend_link_shows_a_wildcard_api_host_as_localhost(self):
         self.assertEqual(
             entry.frontend_url("http://localhost:5173", "0.0.0.0", 8000, "abc"),
@@ -167,7 +187,7 @@ class MainTests(unittest.TestCase):
         result = self.run_main([], server=server)
         self.assertIsNone(result.error)
         self.assertRegex(result.out, r"http://127\.0\.0\.1:5173/\?api=http://127\.0\.0\.1:8123&token=[\w-]{20,}")
-        self.assertIn("npm --prefix frontend start", result.out)
+        self.assertIn("npm --prefix frontend start -- --api http://127.0.0.1:8123", result.out)
         self.assertTrue(server.closed)
         result.cleanup.assert_called_once()
 
