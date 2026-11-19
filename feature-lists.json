@@ -1562,21 +1562,27 @@
       "id": "F032",
       "name": "Survive a database restart (pool_pre_ping)",
       "description": "memories/database.py creates the engine without pool_pre_ping, so after a Postgres/Docker restart pooled connections are dead and recall fails silently; check connections before use.",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-19",
-      "completed": null,
+      "completed": "2026-11-19",
       "branch": "feature/F032-db-pre-ping",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "b6cca00",
+      "files": [
+        "memories/database.py",
+        "memories/CLAUDE.md",
+        "tests/test_memory.py"
+      ],
+      "tests": [
+        "tests/test_memory.py::DatabaseEngineTests"
+      ],
       "steps": [
         {"n": 1, "title": "get_engine passes pool_pre_ping=True", "status": "done", "tests": [
           "tests/test_memory.py::DatabaseEngineTests::test_engine_checks_pooled_connections_before_use",
           "tests/test_memory.py::DatabaseEngineTests::test_a_pooled_connection_killed_by_the_server_is_replaced"
-        ], "commit": null, "date": "2026-11-19"},
-        {"n": 2, "title": "Docs", "status": "todo", "tests": [], "commit": null}
+        ], "commit": "b6cca00", "date": "2026-11-19"},
+        {"n": 2, "title": "Docs", "status": "done", "tests": ["python -m unittest discover -s tests -t ."], "commit": null, "date": "2026-11-19"}
       ],
-      "notes": "Review finding M2. Branched from F031 (F026-F031 not yet in main). Probe: a pooled connection killed by the server (pg_terminate_backend) made the next query fail with OperationalError AdminShutdown; with pool_pre_ping both queries succeed."
+      "notes": "Review finding M2. Branched from F031 (F026-F031 not yet in main). docs/PROJECT.md entries added but left unstaged (it holds the user's uncommitted edits). Probe: a pooled connection killed by the server (pg_terminate_backend) made the next query fail with OperationalError AdminShutdown; with pool_pre_ping both queries succeed."
     }
   ]
 }
