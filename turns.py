@@ -4,7 +4,7 @@ import re
 import threading
 from collections.abc import Callable
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from langgraph.types import Command
 
 from language import detect_language, normalize, say
@@ -188,6 +188,48 @@ class SpeechStream:
         self._emit(sentence)
 
 
+class ToolActivity:
+    """Reports each tool call to `report` as it starts ("running") and when its result arrives
+    ("done" / "error", with the output), so a UI can show tool work apart from the answer.
+
+    The calls are read from the coding agent's streamed message; its chunks are added up so a
+    call split across chunks is reported once, with its whole arguments at the end. Kept for the
+    whole turn: after an approval pause the result streams in a later `stream_turn`."""
+
+    def __init__(self, report: Callable[[dict], None]):
+        self.report = report
+        self.messages: dict[str, AIMessageChunk] = {}
+        self.calls: dict[str, dict] = {}
+
+    def feed(self, node, piece) -> bool:
+        """Note one streamed chunk; True if it was tool output (not text for the answer)."""
+        if node == "tool_execute":
+            if isinstance(piece, ToolMessage):
+                self._finished(piece)
+            return True
+
+        if node == "code_tools" and isinstance(piece, AIMessageChunk):
+            key = piece.id or ""
+            total = self.messages[key] + piece if key in self.messages else piece
+            self.messages[key] = total
+
+            for call in total.tool_calls:
+                call_id = call.get("id")
+                if call_id and call.get("name"):
+                    known = call_id in self.calls
+                    self.calls[call_id] = {"name": call["name"], "args": call.get("args") or {}}
+                    if not known:
+                        self.report({"id": call_id, **self.calls[call_id], "status": "running"})
+
+        return False
+
+    def _finished(self, message: ToolMessage) -> None:
+        text = message.content if isinstance(message.content, str) else str(message.content)
+        call = self.calls.get(message.tool_call_id, {"name": message.name or "tool", "args": {}})
+        status = "error" if text.startswith("ERROR:") else "done"
+        self.report({"id": message.tool_call_id, **call, "status": status, "text": text})
+
+
 def stream_turn(
     app,
     graph_input,
@@ -195,6 +237,7 @@ def stream_turn(
     on_text: Callable[[str], None],
     cancel: threading.Event,
     speech: SpeechStream | None = None,
+    activity: ToolActivity | None = None,
 ) -> None:
     stream = app.stream(graph_input, config=config, stream_mode="messages")
     last_node = None
@@ -213,6 +256,9 @@ def stream_turn(
 
                 if node in SPOKEN_NODES:
                     speech.feed(chunk, hold=node == "code_tools")
+
+            if activity is not None and activity.feed(node, chunk):
+                continue
 
             if node in STREAMED_NODES and chunk.content:  # pyright: ignore
                 on_text(chunk.content)  # pyright: ignore
@@ -236,6 +282,7 @@ def run_turn(
     on_speech: Callable[[str], None] | None = None,
     speech_limit: int = 1200,
     notice: bool = False,
+    on_tool: Callable[[dict], None] | None = None,
 ) -> bool:
     """Run one user message to completion.
 
@@ -247,24 +294,28 @@ def run_turn(
 
     `notice` marks the message as a system notice (a finished background job), not something
     the user said; memory skips such turns.
+
+    `on_tool` receives each tool call as it starts and finishes (see `ToolActivity`); with it,
+    tool output no longer goes to `on_text`.
     """
     # A turn pauses background memory saves: they share the one Ollama model with it.
     MEMORY_SCHEDULER.turn_started()
     try:
-        return _run_turn(app, query, config, on_text, approve, cancel, on_speech, speech_limit, notice)
+        return _run_turn(app, query, config, on_text, approve, cancel, on_speech, speech_limit, notice, on_tool)
     finally:
         MEMORY_SCHEDULER.turn_finished()
 
 
-def _run_turn(app, query, config, on_text, approve, cancel, on_speech, speech_limit, notice) -> bool:
+def _run_turn(app, query, config, on_text, approve, cancel, on_speech, speech_limit, notice, on_tool=None) -> bool:
     cancel = cancel or threading.Event()
     speech = SpeechStream(on_speech, speech_limit) if on_speech else None
+    activity = ToolActivity(on_tool) if on_tool else None
     repair_dangling_tool_calls(app, config)
     message = HumanMessage(content=query, additional_kwargs={"notice": True} if notice else {})
     graph_input = {"messages": [message]}
 
     while True:
-        stream_turn(app, graph_input, config, on_text, cancel, speech)
+        stream_turn(app, graph_input, config, on_text, cancel, speech, activity)
 
         # A paused graph is waiting for the user to approve a tool call.
         pending = [i for task in app.get_state(config).tasks for i in task.interrupts]

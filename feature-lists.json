@@ -1617,6 +1617,27 @@
         {"n": 5, "title": "Docs for the two parts: README, CLAUDE.md, backend/ and frontend/ CLAUDE.md", "status": "done", "tests": ["tests/test_project_docs.py::WebChatDocsTests::test_commands_start_both_parts", "full suite 878 OK"], "commit": "e59ebf2", "date": "2026-11-19"}
       ],
       "notes": "User request: \"separate frontend and backend in 2 different part of project. make it link by api from agents\". User chose option A (agent stays at the repo root; backend/ = agent HTTP API, frontend/ = separate app). Option B (move all agent Python into backend/) rejected: touches nearly every import, test patch, CI, Pyright and relative data paths for no gain. Branched from main after fast-forwarding main to F032 + pending commits (4c21042, CI green). API protocol stays 2 (endpoints unchanged)."
+    },
+    {
+      "id": "F035",
+      "name": "More interactive web frontend",
+      "description": "Redesign the web chat frontend so the user can interact more with the agent and its answers.",
+      "status": "in_progress",
+      "created": "2026-11-19",
+      "completed": null,
+      "branch": "feature/F035-interactive-frontend",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {"n": 1, "title": "Backend sends tool activity as its own `tool` events (run_turn on_tool; protocol 2 -> 3)", "status": "done", "tests": ["tests/test_tool_activity.py (7)", "tests/test_backend_session.py::ToolEventTests (3)", "tests/test_backend_handshake.py::HandshakeTests::test_protocol_3_carries_tool_events", "npm test 137 pass, npm run check clean", "full suite 889 run, 31 skipped (Postgres down)"], "commit": null, "date": "2026-11-19"},
+        {"n": 2, "title": "Activity cards in the chat + live 'Working: ...' status", "status": "todo", "tests": [], "commit": null},
+        {"n": 3, "title": "Message actions: Edit, Retry, Try again", "status": "todo", "tests": [], "commit": null},
+        {"n": 4, "title": "Live progress: elapsed time while working, duration when done", "status": "todo", "tests": [], "commit": null},
+        {"n": 5, "title": "Command palette (Ctrl+K) and slash commands", "status": "todo", "tests": [], "commit": null},
+        {"n": 6, "title": "Docs and browser check", "status": "todo", "tests": [], "commit": null}
+      ],
+      "notes": "User request: \"Redesign the website for a more interactive website with user\". Plan approved 2026-11-19 (\"Okay\"): protocol bump 2 -> 3, branched from feature/F034-separate-frontend (F034 not yet in main), no new dependencies, look unchanged. Left out: 'always allow' approvals, model-suggested follow-ups, feedback buttons."
     }
   ]
 }

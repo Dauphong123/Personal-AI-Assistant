@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 BUILD_HINT = "The web frontend is not built. Run: npm --prefix frontend install && npm --prefix frontend run build"
 # Bump when the API changes incompatibly; frontend/src/types.ts PROTOCOL must match.
-PROTOCOL = 2  # 2: approve needs the approval event's request id
+PROTOCOL = 3  # 2: approve needs the approval event's request id; 3: `tool` events, tool output no longer in `token`
 SERVER_NAME = "coding-assistant"
 MAX_BODY = 64 * 1024
 MAX_AUDIO = 4 * 1024 * 1024  # one push-to-talk recording (compressed browser audio)

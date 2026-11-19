@@ -1,7 +1,7 @@
 // Shapes of what the backend (backend/server.py, backend/session.py) sends.
 
 /** API version this page speaks; must equal backend/server.py PROTOCOL (the handshake checks). */
-export const PROTOCOL = 2; // 2: approve needs the approval event's request id
+export const PROTOCOL = 3; // 2: approve needs the approval event's request id; 3: `tool` events
 
 /** The backend's answer to the handshake (POST /api/handshake). */
 export interface ServerInfo {
@@ -25,6 +25,8 @@ export interface SessionInfo {
   last_event: number;
 }
 
+export type ToolStatus = "running" | "done" | "error";
+
 export interface ToolCall {
   name: string;
   args: unknown;
@@ -38,6 +40,9 @@ export type ChatEvent =
   | { id: number; type: "notice"; text: string } // a finished background job starts a turn
   | { id: number; type: "waiting" }
   | { id: number; type: "token"; text: string }
+  // A tool call started (`running`, no text yet) or finished; `call` pairs the two. Output and
+  // long arguments are cut by the backend.
+  | { id: number; type: "tool"; call: string; name: string; args: Record<string, unknown>; status: ToolStatus; text?: string }
   | { id: number; type: "approval"; calls: ToolCall[]; request: string } // request: id an answer must name
   | { id: number; type: "done" }
   | { id: number; type: "cancelled" }

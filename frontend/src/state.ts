@@ -51,6 +51,8 @@ export function apply(conv: Conversation, event: ChatEvent): Conversation {
           : [...conv.items, { kind: "assistant" as const, text: event.text }];
       return { ...next, items, waiting: false };
     }
+    case "tool":
+      return { ...next, waiting: false }; // shown from step 2 of F035
     case "approval":
       return { ...next, approval: event.calls, approvalRequest: event.request, waiting: false };
     case "done":
