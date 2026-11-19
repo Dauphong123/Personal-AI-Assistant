@@ -28,7 +28,9 @@ def get_database_url() -> str:
 
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
-    return create_engine(get_database_url())
+    # pool_pre_ping: a Postgres/Docker restart leaves dead connections in the pool, and the
+    # first query on one fails (a recall or a memory save lost); the ping replaces it first.
+    return create_engine(get_database_url(), pool_pre_ping=True)
 
 
 @lru_cache(maxsize=1)

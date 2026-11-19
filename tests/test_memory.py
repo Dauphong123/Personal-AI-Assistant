@@ -617,6 +617,43 @@ def _database_available():
         return False
 
 
+class DatabaseEngineTests(unittest.TestCase):
+    # get_engine.__wrapped__ builds a fresh engine, so the cached one other tests use is untouched.
+
+    def test_engine_checks_pooled_connections_before_use(self):
+        from memories import database
+
+        with patch.object(database, "create_engine") as create, \
+                patch.dict(os.environ, {"DB_URL": "postgresql+psycopg://u@h/d"}, clear=True):
+            database.get_engine.__wrapped__()
+
+        self.assertIs(create.call_args.kwargs.get("pool_pre_ping"), True)
+
+    def test_a_pooled_connection_killed_by_the_server_is_replaced(self):
+        # What a Postgres/Docker restart does to the pool: the next checkout must not fail.
+        if not _database_available():
+            self.skipTest("Postgres not reachable")
+
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.pool import NullPool
+
+        from memories.database import get_database_url, get_engine
+
+        engine = get_engine.__wrapped__()
+        killer = create_engine(get_database_url(), poolclass=NullPool)
+        try:
+            with engine.connect() as conn:
+                pid = conn.execute(text("SELECT pg_backend_pid()")).scalar()
+            with killer.begin() as conn:
+                conn.execute(text("SELECT pg_terminate_backend(:pid)"), {"pid": pid})
+
+            with engine.connect() as conn:
+                self.assertEqual(conn.execute(text("SELECT 1")).scalar(), 1)
+        finally:
+            engine.dispose()
+            killer.dispose()
+
+
 class EmbeddingsTests(unittest.TestCase):
     def test_every_text_gets_the_e5_query_prefix(self):
         from memories.embeddings import PrefixedEmbeddings
