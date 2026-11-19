@@ -170,7 +170,7 @@ Top-level files (from `ls`):
 | `web.py` | `web_search` and `read_webpage` with safety checks. |
 | `memories/` | Long-term memory in Postgres (see Part 8). |
 | `voice/` | Optional voice mode. |
-| `backend/` and `webui/` | Browser version: Python API and TypeScript page. |
+| `backend/` and `frontend/` | Browser version: Python API and TypeScript page. |
 | `settings.py`, `llm_options.py`, `log_setup.py`, `language.py` | Config checks, model options, logging, Vietnamese/English helpers. |
 | `documents/` | The files the RAG tool searches. |
 | `tests/` | All automated tests. |
@@ -491,7 +491,7 @@ When you are comfortable with Parts 1–8, continue with:
 3. `jobs.py`.
 4. `rag/rag.py` and `retrieval.py`.
 5. `memories/manager.py`, then `store.py`.
-6. `backend/` and `webui/` (web version), `voice/` (speech).
+6. `backend/` and `frontend/` (web version), `voice/` (speech).
 Each folder has a `CLAUDE.md` with the design rules.
 
 ---
@@ -765,14 +765,14 @@ Optional: `python main.py --voice` or `VOICE_ENABLED=true`.
 
 `python -m backend`: a stdlib `ThreadingHTTPServer` over the same graph, plus the built frontend.
 
-- **Handshake** (`POST /api/handshake`): the first call. `PROTOCOL` must match `webui/src/types.ts` (currently 2); a mismatch returns 409 ("rebuild"). It reports features (sessions, notices, voice) and limits.
+- **Handshake** (`POST /api/handshake`): the first call. `PROTOCOL` must match `frontend/src/types.ts` (currently 2); a mismatch returns 409 ("rebuild"). It reports features (sessions, notices, voice) and limits.
 - **Sessions** (`session.py`, `sessions.py`): each `ChatSession` has its own LangGraph thread and an id-numbered **event log** (`user`, `token`, `approval`, `done`, `error`, …). Clients resume with `events_after(id)`. Max 50 sessions, in memory only. One shared semaphore limits concurrent turns (default 1).
 - **Approvals** carry a request id; `/approve` must name it, so a stale click or a second tab cannot approve a later tool call.
 - **Job notices** are routed to their owning session via the contextvar.
 - **Web voice**: `POST /api/voice/transcribe` (audio → PyAV → faster-whisper) and `/api/voice/speak` (text → Piper → WAV). On by default when voice packages are installed; `--no-voice` turns it off. No wake word on the web.
 - **Security**: loopback only unless `--allow-remote`; token compared with `hmac.compare_digest`; Host/Origin checks; JSON-only POST (64 KB); static files only from the build dir; CSP forbids inline script/style; no access log (URLs carry the token); `/api/health` needs no token.
 
-## 13. Web frontend (`webui/`)
+## 13. Web frontend (`frontend/`)
 
 TypeScript, no framework, no runtime dependencies; built with `tsc` only.
 
@@ -792,9 +792,9 @@ TypeScript, no framework, no runtime dependencies; built with `tsc` only.
 
 ## 15. Testing and CI
 
-- `python -m unittest discover -s tests -t .` (Postgres tests skip if the DB is unreachable); `npm --prefix webui test` for the frontend.
+- `python -m unittest discover -s tests -t .` (Postgres tests skip if the DB is unreachable); `npm --prefix frontend test` for the frontend.
 - Opt-in evals: `RUN_MEMORY_EVAL=1`, `RUN_MODEL_EVAL=1`, `RUN_VOICE_ENGINE_TESTS=1`.
-- CI (`.github/workflows/ci.yml`): a `python` job (Windows, locked by `constraints.txt`, Pyright, ripgrep, built `webui/`) and a `webui` job (check/test/build). `main` is protected: both must pass, linear history, no force push.
+- CI (`.github/workflows/ci.yml`): a `python` job (Windows, locked by `constraints.txt`, Pyright, ripgrep, built `frontend/`) and a `webui` job (check/test/build). `main` is protected: both must pass, linear history, no force push.
 
 ## 16. How we work on it
 

@@ -11,7 +11,9 @@ import {
   emptyConversation,
   formatCalls,
   isChatEvent,
+  elapsedLabel,
   isThinking,
+  retryPrompt,
   relativeTime,
   sortSessions,
   stateLabel,
@@ -19,10 +21,12 @@ import {
 } from "./state.ts";
 import type { Conversation, Item } from "./state.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
-import { sessionFromHash, tokenFrom } from "./url.ts";
+import { apiFrom, sessionFromHash, tokenFrom } from "./url.ts";
 import { parseMarkdown } from "./markdown.ts";
-import { copyButton, renderBlocks, renderCalls } from "./render.ts";
+import { actionButton, copyButton, ICONS, renderBlocks, renderCalls, renderTool } from "./render.ts";
 import { shortcut } from "./keys.ts";
+import { parseSlash, rank, slashSuggestions } from "./commands.ts";
+import type { PaletteItem, SlashCommand } from "./commands.ts";
 import { nextTheme, parseTheme, themeLabel } from "./theme.ts";
 import type { Theme } from "./theme.ts";
 import {
@@ -37,6 +41,7 @@ import {
 import { HandsFreeListener, MAX_RECORDING_MS, Player, Recorder, canListen, canRecord, replyToSpeak } from "./voice.ts";
 
 const TOKEN_KEY = "coding-assistant-token";
+const API_KEY = "coding-assistant-api";
 const SPEAK_KEY = "coding-assistant-speak";
 const THEME_KEY = "coding-assistant-theme";
 const POLL_MS = 2000;
@@ -62,6 +67,10 @@ const ui = {
   menuButton: byId<HTMLButtonElement>("session-menu"),
   menu: byId("session-menu-list"),
   confirm: byId<HTMLDialogElement>("confirm"),
+  palette: byId<HTMLDialogElement>("palette"),
+  paletteInput: byId<HTMLInputElement>("palette-input"),
+  paletteList: byId("palette-list"),
+  slash: byId("slash"),
   confirmTitle: byId("confirm-title"),
   confirmText: byId("confirm-text"),
   confirmOk: byId<HTMLButtonElement>("confirm-ok"),
@@ -78,6 +87,8 @@ const ui = {
   examples: byId("examples"),
   log: byId("log"),
   thinking: byId("thinking"),
+  thinkingTime: byId("thinking-time"),
+  elapsed: byId("elapsed"),
   alert: byId("alert"),
   approval: byId("approval"),
   approvalCalls: byId("approval-calls"),
@@ -99,32 +110,40 @@ const ui = {
 
 // --- token ---------------------------------------------------------------------
 
-function storedToken(): string | null {
+function stored(key: string): string | null {
   try {
-    return sessionStorage.getItem(TOKEN_KEY);
+    return sessionStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function storeToken(value: string): void {
+function store(key: string, value: string): void {
   try {
-    sessionStorage.setItem(TOKEN_KEY, value);
+    sessionStorage.setItem(key, value);
   } catch {
-    // Storage blocked: the token then lasts until the page is reloaded.
+    // Storage blocked: the value then lasts until the page is reloaded.
   }
 }
 
-const launch = tokenFrom(location.search, storedToken());
+const launch = tokenFrom(location.search, stored(TOKEN_KEY));
 
 if (launch.token) {
-  storeToken(launch.token);
+  store(TOKEN_KEY, launch.token);
 }
 
-// Keep the token out of the address bar and the history (the hash names the session).
+// The agent API this page talks to: `?api=` from the backend's launch link ("" = this origin).
+const target = apiFrom(launch.search, stored(API_KEY));
+launch.search = target.search;
+
+if (target.api) {
+  store(API_KEY, target.api);
+}
+
+// Keep the token and API address out of the address bar and the history (the hash names the session).
 history.replaceState(null, "", location.pathname + launch.search + location.hash);
 
-const api = new Api(launch.token);
+const api = new Api(launch.token, undefined, target.api);
 
 // --- state ---------------------------------------------------------------------
 
@@ -235,10 +254,30 @@ function renderHeader(): void {
     handsFree,
     transcribing: transcribing > 0,
     queued: handsFreeQueue.length,
+    now: Date.now(),
   });
   ui.status.textContent = status.text;
   ui.status.dataset["tone"] = status.tone;
+  // The running time ticks every second: kept out of the status region so it is not announced.
+  ui.elapsed.textContent = status.elapsed ?? "";
+  ui.elapsed.hidden = status.elapsed === undefined;
+  ui.thinkingTime.textContent = status.elapsed ?? "";
   renderMeter();
+  tickWhileBusy();
+}
+
+let ticker: number | undefined;
+
+/** Redraw the header every second while a timed turn runs (its running time). */
+function tickWhileBusy(): void {
+  const timed = conv.busy && conv.turnStartedAt !== null;
+
+  if (timed && ticker === undefined) {
+    ticker = window.setInterval(renderHeader, 1000);
+  } else if (!timed && ticker !== undefined) {
+    window.clearInterval(ticker);
+    ticker = undefined;
+  }
 }
 
 function setBars(level: number): void {
@@ -293,10 +332,16 @@ function renderMessage(item: Item): HTMLElement {
     return notice;
   }
 
+  if (item.kind === "tool") {
+    return renderTool(item);
+  }
+
   if (item.kind === "note") {
     const note = document.createElement("p");
     note.className = item.error ? "note error" : "note";
     note.textContent = item.text;
+    // Shown only while it is the last item and nothing runs (log class `can-retry`).
+    note.append(actionButton("retry", "Try again", ICONS.retry, "Send the same message again"));
     return note;
   }
 
@@ -310,7 +355,18 @@ function renderMessage(item: Item): HTMLElement {
 
     const actions = document.createElement("div");
     actions.className = "msg-actions";
-    actions.append(copyButton("copy-msg", "Copy answer"));
+    actions.append(
+      copyButton("copy-msg", "Copy answer"),
+      actionButton("retry", "Retry", ICONS.retry, "Ask the same question again"),
+    );
+
+    if (item.seconds !== undefined) {
+      const took = document.createElement("span");
+      took.className = "msg-time";
+      took.textContent = elapsedLabel(item.seconds);
+      took.title = "Time to answer";
+      actions.append(took);
+    }
     message.append(actions);
     messageText.set(message, item.text);
     return message;
@@ -329,6 +385,14 @@ function renderMessage(item: Item): HTMLElement {
       paragraph.textContent = block.text;
       message.append(paragraph);
     }
+  }
+
+  if (item.kind === "user") {
+    const actions = document.createElement("div");
+    actions.className = "msg-actions";
+    actions.append(actionButton("edit-msg", "Edit", ICONS.edit, "Put this message back in the message box"));
+    message.append(actions);
+    messageText.set(message, item.text);
   }
 
   return message;
@@ -369,6 +433,7 @@ function renderConversation(): void {
 
   ui.empty.hidden = conv.items.length > 0;
   ui.thinking.hidden = !isThinking(conv);
+  ui.log.classList.toggle("can-retry", retryPrompt(conv) !== null);
 
   const last = rendered.at(-1);
   const writing = conv.busy && last?.item.kind === "assistant" ? last.node : null;
@@ -600,21 +665,36 @@ async function sessionGone(): Promise<void> {
 
 // --- actions ---------------------------------------------------------------------
 
-async function send(): Promise<void> {
-  const text = ui.input.value.trim();
+/** Send the message box, or `text` (Retry: the box and its draft stay as they are). */
+async function send(text?: string): Promise<void> {
+  const fromBox = text === undefined;
+  const message = (text ?? ui.input.value).trim();
+  const command = fromBox ? parseSlash(message) : null;
 
-  if (!text || !activeId || conv.busy) return;
+  if (command) {
+    // A slash command runs here instead of being sent (also while a turn runs: /stop).
+    ui.input.value = "";
+    autosize();
+    showSlash();
+    runCommand(command.name, command.arg);
+    return;
+  }
+
+  if (!message || !activeId || conv.busy) return;
 
   const id = activeId;
-  const result = await api.send(id, text);
+  const result = await api.send(id, message);
 
   if (result.ok) {
-    if (activeId === id) {
-      ui.input.value = "";
-      autosize();
+    if (fromBox) {
+      if (activeId === id) {
+        ui.input.value = "";
+        autosize();
+      }
+
+      drafts.delete(id);
     }
 
-    drafts.delete(id);
     showAlert(null);
   } else {
     showAlert(result.error);
@@ -953,13 +1033,276 @@ ui.form.addEventListener("submit", (event) => {
 });
 
 ui.input.addEventListener("keydown", (event) => {
+  if (slashShown.length > 0 && !event.isComposing) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      slashAt = (slashAt + (event.key === "ArrowDown" ? 1 : -1) + slashShown.length) % slashShown.length;
+      showSlash();
+      return;
+    }
+
+    if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+      const chosen = slashShown[slashAt];
+
+      if (chosen) {
+        event.preventDefault();
+        pickSlash(chosen, event.key === "Enter");
+        return;
+      }
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation(); // closes the list, does not stop the answer
+      slashShown = [];
+      ui.slash.hidden = true;
+      return;
+    }
+  }
+
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     void send();
   }
 });
 
-ui.input.addEventListener("input", autosize);
+ui.input.addEventListener("input", () => {
+  autosize();
+  slashAt = 0;
+  showSlash();
+});
+
+// --- slash commands and the command palette -------------------------------------------------
+
+let slashShown: SlashCommand[] = [];
+let slashAt = 0;
+
+/** The suggestion list above the message box while "/word" is typed. */
+function showSlash(): void {
+  slashShown = slashSuggestions(ui.input.value);
+  slashAt = Math.min(slashAt, Math.max(0, slashShown.length - 1));
+  ui.slash.hidden = slashShown.length === 0;
+  ui.slash.replaceChildren(
+    ...slashShown.map((command, index) => {
+      const option = document.createElement("li");
+      option.id = `slash-${command.name}`;
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(index === slashAt));
+      option.dataset["name"] = command.name;
+      const usage = document.createElement("code");
+      usage.textContent = command.usage;
+      const help = document.createElement("span");
+      help.textContent = command.help;
+      option.append(usage, help);
+      return option;
+    }),
+  );
+
+  const chosen = slashShown[slashAt];
+  if (chosen) {
+    ui.input.setAttribute("aria-activedescendant", `slash-${chosen.name}`);
+  } else {
+    ui.input.removeAttribute("aria-activedescendant");
+  }
+}
+
+/** Complete the typed command; Enter on one that takes nothing runs it at once. */
+function pickSlash(command: SlashCommand, enter: boolean): void {
+  if (enter && !command.takesArg) {
+    ui.input.value = `/${command.name}`;
+    void send();
+    return;
+  }
+
+  ui.input.value = `/${command.name}${command.takesArg ? " " : ""}`;
+  autosize();
+  showSlash();
+  ui.input.focus();
+}
+
+ui.slash.addEventListener("mousedown", (event) => {
+  // mousedown, not click: the message box keeps its focus.
+  const option = event.target instanceof Element ? event.target.closest<HTMLElement>("li") : null;
+  const command = slashShown.find((c) => c.name === option?.dataset["name"]);
+
+  if (command) {
+    event.preventDefault();
+    pickSlash(command, true);
+  }
+});
+
+/** Run a palette entry or a slash command. Clear and Delete still ask first. */
+function runCommand(name: string, arg = ""): void {
+  if (name.startsWith("go:")) {
+    select(name.slice(3));
+    return;
+  }
+
+  if (name.startsWith("theme:")) {
+    setTheme(parseTheme(name.slice(6)));
+    return;
+  }
+
+  switch (name) {
+    case "new":
+      void createSession();
+      break;
+    case "rename":
+      if (arg && activeId) {
+        ui.title.textContent = arg;
+        void run((id) => api.rename(id, arg.slice(0, 60)));
+      } else {
+        startRename();
+      }
+      break;
+    case "clear":
+      if (!ui.clear.disabled) ui.clear.click();
+      break;
+    case "delete":
+      if (!ui.remove.disabled) ui.remove.click();
+      break;
+    case "stop":
+      if (conv.busy) void run((id) => api.stop(id));
+      break;
+    case "theme":
+      ui.theme.click();
+      break;
+    case "speak":
+      ui.speakAnswers.checked = !ui.speakAnswers.checked;
+      ui.speakAnswers.dispatchEvent(new Event("change"));
+      break;
+    case "focus":
+      ui.input.focus();
+      break;
+  }
+}
+
+/** What the palette offers now: actions that make sense, then the other sessions. */
+function paletteItems(): PaletteItem[] {
+  const items: PaletteItem[] = [{ id: "new", title: "New session", detail: "/new", keywords: "create start chat" }];
+  const session = active();
+
+  if (session) {
+    items.push({ id: "rename", title: "Rename session", detail: "/rename", keywords: "title name" });
+    if (conv.busy) items.push({ id: "stop", title: "Stop the answer", detail: "Esc", keywords: "cancel halt" });
+    if (!conv.busy) items.push({ id: "clear", title: "Clear conversation", detail: "/clear", keywords: "reset wipe empty" });
+    if (!conv.busy) items.push({ id: "delete", title: "Delete session", detail: "/delete", keywords: "remove" });
+  }
+
+  const themes: [Theme, string][] = [
+    ["dark", "Use the dark theme"],
+    ["light", "Use the light theme"],
+    ["system", "Follow the system theme"],
+  ];
+
+  for (const [choice, title] of themes) {
+    if (choice !== theme) items.push({ id: `theme:${choice}`, title, keywords: "theme colour appearance mode" });
+  }
+
+  if (!ui.speakLabel.hidden) {
+    items.push({ id: "speak", title: ui.speakAnswers.checked ? "Stop reading answers aloud" : "Read answers aloud", keywords: "voice speech tts" });
+  }
+
+  items.push({ id: "focus", title: "Write a message", detail: "/", keywords: "type input box" });
+
+  for (const other of sortSessions(sessions)) {
+    if (other.id !== activeId) {
+      items.push({ id: `go:${other.id}`, title: other.title, detail: relativeTime(other.last_event), keywords: "session go open switch" });
+    }
+  }
+
+  return items;
+}
+
+let paletteShown: PaletteItem[] = [];
+let paletteAt = 0;
+
+function openPalette(): void {
+  if (ui.palette.open || ui.confirm.open) return;
+
+  closeMenu();
+  ui.paletteInput.value = "";
+  paletteAt = 0;
+  renderPalette();
+  ui.palette.showModal();
+  ui.paletteInput.focus();
+}
+
+function renderPalette(): void {
+  paletteShown = rank(ui.paletteInput.value, paletteItems());
+  paletteAt = Math.min(paletteAt, Math.max(0, paletteShown.length - 1));
+
+  if (paletteShown.length === 0) {
+    const none = document.createElement("li");
+    none.className = "palette-none";
+    none.textContent = "Nothing matches";
+    ui.paletteList.replaceChildren(none);
+    ui.paletteInput.removeAttribute("aria-activedescendant");
+    return;
+  }
+
+  ui.paletteList.replaceChildren(
+    ...paletteShown.map((item, index) => {
+      const option = document.createElement("li");
+      option.id = `palette-${index}`;
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(index === paletteAt));
+      option.dataset["index"] = String(index);
+      const title = document.createElement("span");
+      title.className = "palette-title";
+      title.textContent = item.title;
+      option.append(title);
+
+      if (item.detail) {
+        const detail = document.createElement("span");
+        detail.className = "palette-detail";
+        detail.textContent = item.detail;
+        option.append(detail);
+      }
+
+      return option;
+    }),
+  );
+
+  ui.paletteInput.setAttribute("aria-activedescendant", `palette-${paletteAt}`);
+  ui.paletteList.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+}
+
+function runPalette(index: number): void {
+  const item = paletteShown[index];
+
+  if (!item) return;
+
+  ui.palette.close();
+  runCommand(item.id);
+}
+
+ui.paletteInput.addEventListener("input", () => {
+  paletteAt = 0;
+  renderPalette();
+});
+
+ui.paletteInput.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const count = paletteShown.length || 1;
+    paletteAt = (paletteAt + (event.key === "ArrowDown" ? 1 : -1) + count) % count;
+    renderPalette();
+  } else if (event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    runPalette(paletteAt);
+  }
+});
+
+ui.paletteList.addEventListener("click", (event) => {
+  const option = event.target instanceof Element ? event.target.closest<HTMLElement>("li[data-index]") : null;
+  if (option) runPalette(Number(option.dataset["index"]));
+});
+
+// A click on the backdrop (outside the box) closes the palette.
+ui.palette.addEventListener("click", (event) => {
+  if (event.target === ui.palette) ui.palette.close();
+});
 
 // Example prompts on an empty session: put the text in the box, ready to edit or send.
 ui.examples.addEventListener("click", (event) => {
@@ -1206,7 +1549,17 @@ ui.log.addEventListener("click", (event) => {
 
   if (!button) return;
 
-  if (button.classList.contains("copy-code")) {
+  if (button.classList.contains("retry")) {
+    const prompt = retryPrompt(conv);
+    if (prompt !== null) void send(prompt);
+  } else if (button.classList.contains("edit-msg")) {
+    const message = button.closest<HTMLElement>(".msg");
+    if (ui.input.disabled || !message) return;
+    ui.input.value = messageText.get(message) ?? "";
+    autosize();
+    ui.input.focus();
+    ui.input.setSelectionRange(ui.input.value.length, ui.input.value.length);
+  } else if (button.classList.contains("copy-code")) {
     const code = button.closest("figure")?.querySelector("code");
     void copyText(button, code?.textContent ?? "");
   } else {
@@ -1239,7 +1592,7 @@ document.addEventListener("keydown", (event) => {
     typing,
     menuOpen: !ui.menu.hidden,
     drawerOpen: ui.sidebar.classList.contains("open"),
-    dialogOpen: ui.confirm.open,
+    dialogOpen: ui.confirm.open || ui.palette.open,
     renaming,
     busy: activeId !== null && conv.busy,
   });
@@ -1256,6 +1609,9 @@ document.addEventListener("keydown", (event) => {
       break;
     case "focus-input":
       ui.input.focus();
+      break;
+    case "palette":
+      openPalette();
       break;
     case null:
       return;
@@ -1299,8 +1655,8 @@ function storedTheme(): Theme {
 let theme = storedTheme();
 applyTheme(theme);
 
-ui.theme.addEventListener("click", () => {
-  theme = nextTheme(theme);
+function setTheme(next: Theme): void {
+  theme = next;
   applyTheme(theme);
 
   try {
@@ -1308,7 +1664,9 @@ ui.theme.addEventListener("click", () => {
   } catch {
     // storage blocked: the choice lasts until reload
   }
-});
+}
+
+ui.theme.addEventListener("click", () => setTheme(nextTheme(theme)));
 
 // --- start ------------------------------------------------------------------------
 

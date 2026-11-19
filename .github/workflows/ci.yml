@@ -35,7 +35,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: webui/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install ripgrep (search_code tests)
         run: choco install ripgrep --no-progress -y
@@ -46,20 +46,20 @@ jobs:
           .venv\Scripts\python -m pip install --upgrade pip
           .venv\Scripts\python -m pip install -r requirements.txt -r requirements_voice.txt -c constraints.txt pyright==1.1.414
 
-      - name: Build the web frontend (tests check webui/dist)
+      - name: Build the web frontend (tests check frontend/dist)
         run: |
-          npm --prefix webui ci
-          npm --prefix webui run build
+          npm --prefix frontend ci
+          npm --prefix frontend run build
 
       - name: Unit tests
         run: .venv\Scripts\python -m unittest discover -s tests -t .
 
-  webui:
+  webui:  # job id kept: "webui" is a required status check on the protected main branch
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: webui
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v7
 
@@ -67,7 +67,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: webui/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
       - run: npm run check

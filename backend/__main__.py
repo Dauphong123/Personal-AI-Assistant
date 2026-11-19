@@ -1,6 +1,8 @@
-"""Start the web chat backend: python -m backend [--port N] [--max-turns N]
+"""Start the agent's web API: python -m backend [--port N] [--max-turns N] [--serve-frontend]
 
-Serves the API and the built TypeScript frontend (webui/dist) on one origin.
+By default this is the API only: the frontend (frontend/, `npm --prefix frontend start`) runs
+on its own origin and reaches the agent through the API. --serve-frontend also serves the built
+frontend (frontend/dist) on the API's origin.
 """
 
 import argparse
@@ -8,11 +10,25 @@ import signal
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from log_setup import configure_logging
 
-from .server import BUILD_HINT, LOOPBACK_HOSTS, STATIC_DIR, make_server, new_token
+from .server import BUILD_HINT, LOOPBACK_HOSTS, STATIC_DIR, make_server, new_token, parse_origin
 from .sessions import SessionManager
+
+# Where `npm --prefix frontend start` serves the page and which API it allows by default
+# (frontend/scripts/serve.ts DEFAULT_PORT, DEFAULT_API).
+DEFAULT_FRONTEND_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")
+FRONTEND_SERVER_PORT = 5173
+FRONTEND_SERVER_API = "http://127.0.0.1:8000"
+
+
+def _origin_arg(value: str) -> str:
+    try:
+        return parse_origin(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -37,12 +53,54 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=1,
         help="how many sessions may run a turn at the same time; others wait (default: 1)",
     )
+    parser.add_argument(
+        "--frontend-origin",
+        action="append",
+        type=_origin_arg,
+        metavar="ORIGIN",
+        help="origin of the frontend allowed to call the API, e.g. http://127.0.0.1:5173; repeat for "
+        f"several (default: {', '.join(DEFAULT_FRONTEND_ORIGINS)})",
+    )
+    parser.add_argument(
+        "--serve-frontend",
+        action="store_true",
+        help="also serve the built frontend (frontend/dist) on the API's own address",
+    )
     return parser.parse_args(argv)
 
 
+def frontend_origins(args: argparse.Namespace) -> tuple[str, ...]:
+    return tuple(args.frontend_origin or DEFAULT_FRONTEND_ORIGINS)
+
+
+def _shown_host(host: str) -> str:
+    return "localhost" if host in {"0.0.0.0", "::"} else host
+
+
 def build_url(host: str, port: int, token: str) -> str:
-    shown = "localhost" if host in {"0.0.0.0", "::"} else host
-    return f"http://{shown}:{port}/?token={token}"
+    return f"http://{_shown_host(host)}:{port}/?token={token}"
+
+
+def frontend_url(origin: str, host: str, port: int, token: str) -> str:
+    """The separate frontend's link: it names the API to call and carries the token."""
+    return f"{origin}/?api=http://{_shown_host(host)}:{port}&token={token}"
+
+
+def frontend_command(origin: str, host: str, port: int) -> str:
+    """How to start frontend/scripts/serve.ts for this API: its page may connect only to its
+    --api (CSP), and it must listen on the port of the allowed origin."""
+    api = f"http://{_shown_host(host)}:{port}"
+    options = []
+
+    if api != FRONTEND_SERVER_API:
+        options += ["--api", api]
+
+    origin_port = urlsplit(origin).port
+
+    if origin_port is not None and origin_port != FRONTEND_SERVER_PORT:
+        options += ["--port", str(origin_port)]
+
+    return " ".join(["npm --prefix frontend start", *(["--", *options] if options else [])])
 
 
 def frontend_built(static_dir: Path = STATIC_DIR) -> bool:
@@ -105,7 +163,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.max_turns < 1:
         sys.exit("--max-turns must be at least 1.")
 
-    if not frontend_built():
+    if args.serve_frontend and not frontend_built():
         sys.exit(BUILD_HINT)
 
     try:
@@ -128,6 +186,7 @@ def main(argv: list[str] | None = None) -> None:
             voice = None  # nothing installed: the page shows no voice controls
 
     token = new_token()
+    origins = frontend_origins(args)
     server = None
 
     try:
@@ -140,12 +199,20 @@ def main(argv: list[str] | None = None) -> None:
                 allow_remote=args.allow_remote,
                 notices=True,
                 voice=voice,
+                static_dir=STATIC_DIR if args.serve_frontend else None,
+                frontend_origins=origins,
             )
         except OSError as exc:
             sys.exit(f"Could not listen on {args.host}:{args.port} ({exc}). Try another --port.")
 
         host, port = server.server_address[:2]
-        print(f"Open {build_url(args.host, port, token)}")
+
+        if args.serve_frontend:
+            print(f"Open {build_url(args.host, port, token)}")
+        else:
+            print(f"Agent API on http://{_shown_host(args.host)}:{port}")
+            print(f"Start the frontend ({frontend_command(origins[0], args.host, port)}), then open:")
+            print(f"  {frontend_url(origins[0], args.host, port, token)}")
         print("Press Ctrl+C to stop.", flush=True)
         install_stop_signals()
 

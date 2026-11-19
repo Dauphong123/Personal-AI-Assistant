@@ -1,5 +1,5 @@
-"""The TypeScript frontend in webui/: its own tests and type-check run from the Python suite
-(skipped when Node or webui/node_modules is missing), plus static checks of the sources."""
+"""The TypeScript frontend in frontend/: its own tests and type-check run from the Python suite
+(skipped when Node or frontend/node_modules is missing), plus static checks of the sources."""
 
 import re
 import shutil
@@ -7,7 +7,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-WEBUI = Path(__file__).resolve().parent.parent / "webui"
+WEBUI = Path(__file__).resolve().parent.parent / "frontend"
 SRC = WEBUI / "src"
 NPM = shutil.which("npm")
 INSTALLED = (WEBUI / "node_modules" / "typescript").is_dir()
@@ -19,7 +19,7 @@ def npm(*args: str) -> subprocess.CompletedProcess:
     )
 
 
-@unittest.skipUnless(NPM and INSTALLED, "needs npm and `npm --prefix webui install`")
+@unittest.skipUnless(NPM and INSTALLED, "needs npm and `npm --prefix frontend install`")
 class NodeToolchainTests(unittest.TestCase):
     def test_frontend_unit_tests_pass(self):
         result = npm("test")
@@ -183,7 +183,7 @@ class StyleTests(unittest.TestCase):
         self.assertIn("[hidden]", CSS)
 
 
-@unittest.skipUnless(NPM and INSTALLED, "needs npm and `npm --prefix webui install`")
+@unittest.skipUnless(NPM and INSTALLED, "needs npm and `npm --prefix frontend install`")
 class BuildTests(unittest.TestCase):
     def test_build_makes_a_page_the_backend_serves(self):
         import http.client
@@ -207,7 +207,7 @@ class BuildTests(unittest.TestCase):
         self.assertIn('from "./state.js"', main_js)  # rewritten from .ts for the browser
         self.assertNotIn('.ts"', main_js)
 
-        server = make_server(SessionManager(app=None, run=lambda *a, **k: False), "t", port=0)
+        server = make_server(SessionManager(app=None, run=lambda *a, **k: False), "t", port=0, static_dir=STATIC_DIR)
         port = server.server_address[1]
         threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
         try:

@@ -41,6 +41,22 @@ class ParseArgsTests(unittest.TestCase):
         self.assertEqual(entry.parse_args([]).max_turns, 1)
         self.assertEqual(entry.parse_args(["--max-turns", "3"]).max_turns, 3)
 
+    def test_api_only_with_the_local_frontend_origins_by_default(self):
+        args = entry.parse_args([])
+        self.assertFalse(args.serve_frontend)
+        self.assertEqual(entry.frontend_origins(args), ("http://127.0.0.1:5173", "http://localhost:5173"))
+
+    def test_frontend_origins_can_be_named(self):
+        args = entry.parse_args(["--frontend-origin", "http://localhost:3000/", "--frontend-origin", "http://127.0.0.1:3000"])
+        self.assertEqual(entry.frontend_origins(args), ("http://localhost:3000", "http://127.0.0.1:3000"))
+
+    def test_a_bad_frontend_origin_is_refused(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            entry.parse_args(["--frontend-origin", "*"])
+
+    def test_serve_frontend_flag(self):
+        self.assertTrue(entry.parse_args(["--serve-frontend"]).serve_frontend)
+
 
 class UrlTests(unittest.TestCase):
     def test_url_carries_the_token(self):
@@ -48,6 +64,38 @@ class UrlTests(unittest.TestCase):
 
     def test_wildcard_host_is_shown_as_localhost(self):
         self.assertEqual(entry.build_url("0.0.0.0", 8000, "abc"), "http://localhost:8000/?token=abc")
+
+    def test_frontend_link_names_the_api_and_the_token(self):
+        self.assertEqual(
+            entry.frontend_url("http://127.0.0.1:5173", "127.0.0.1", 8000, "abc"),
+            "http://127.0.0.1:5173/?api=http://127.0.0.1:8000&token=abc",
+        )
+
+    def test_frontend_command_matches_the_api_and_the_frontend_port(self):
+        # frontend/scripts/serve.ts allows the page to connect only to its --api (CSP); defaults
+        # are port 5173 and http://127.0.0.1:8000.
+        self.assertEqual(entry.frontend_command("http://127.0.0.1:5173", "127.0.0.1", 8000), "npm --prefix frontend start")
+        self.assertEqual(
+            entry.frontend_command("http://127.0.0.1:5173", "127.0.0.1", 9000),
+            "npm --prefix frontend start -- --api http://127.0.0.1:9000",
+        )
+        self.assertEqual(
+            entry.frontend_command("http://localhost:3000", "localhost", 8000),
+            "npm --prefix frontend start -- --api http://localhost:8000 --port 3000",
+        )
+
+    def test_defaults_match_the_frontend_server(self):
+        serve = (Path(__file__).resolve().parent.parent / "frontend" / "scripts" / "serve.ts").read_text(encoding="utf-8")
+        self.assertIn(f"DEFAULT_PORT = {entry.FRONTEND_SERVER_PORT};", serve)
+        self.assertIn(f'DEFAULT_API = "{entry.FRONTEND_SERVER_API}";', serve)
+        self.assertEqual(entry.FRONTEND_SERVER_API, "http://127.0.0.1:8000")  # python -m backend's default
+        self.assertIn(f"http://127.0.0.1:{entry.FRONTEND_SERVER_PORT}", entry.DEFAULT_FRONTEND_ORIGINS)
+
+    def test_frontend_link_shows_a_wildcard_api_host_as_localhost(self):
+        self.assertEqual(
+            entry.frontend_url("http://localhost:5173", "0.0.0.0", 8000, "abc"),
+            "http://localhost:5173/?api=http://localhost:8000&token=abc",
+        )
 
 
 class StopSignalTests(unittest.TestCase):
@@ -134,13 +182,27 @@ class MainTests(unittest.TestCase):
         self.assertIsNone(result.error)
         self.assertEqual(result.make.call_args.kwargs["allow_remote"], True)
 
-    def test_prints_the_url_with_a_token_and_cleans_up_on_ctrl_c(self):
+    def test_prints_the_frontend_link_and_cleans_up_on_ctrl_c(self):
         server = FakeServer()
         result = self.run_main([], server=server)
         self.assertIsNone(result.error)
-        self.assertRegex(result.out, r"http://127\.0\.0\.1:8123/\?token=[\w-]{20,}")
+        self.assertRegex(result.out, r"http://127\.0\.0\.1:5173/\?api=http://127\.0\.0\.1:8123&token=[\w-]{20,}")
+        self.assertIn("npm --prefix frontend start -- --api http://127.0.0.1:8123", result.out)
         self.assertTrue(server.closed)
         result.cleanup.assert_called_once()
+
+    def test_api_only_needs_no_build_and_allows_the_frontend_origins(self):
+        result = self.run_main([], server=FakeServer(), built=False)
+        self.assertIsNone(result.error)
+        kwargs = result.make.call_args.kwargs
+        self.assertIsNone(kwargs["static_dir"])
+        self.assertEqual(kwargs["frontend_origins"], ("http://127.0.0.1:5173", "http://localhost:5173"))
+
+    def test_serve_frontend_serves_the_build_on_the_api_origin(self):
+        result = self.run_main(["--serve-frontend"], server=FakeServer())
+        self.assertIsNone(result.error)
+        self.assertEqual(result.make.call_args.kwargs["static_dir"], entry.STATIC_DIR)
+        self.assertRegex(result.out, r"http://127\.0\.0\.1:8123/\?token=[\w-]{20,}")
 
     def test_each_launch_uses_a_new_token(self):
         tokens = set()
@@ -156,7 +218,7 @@ class MainTests(unittest.TestCase):
         result.cleanup.assert_called_once()
 
     def test_unbuilt_frontend_is_refused_before_loading_anything(self):
-        result = self.run_main([], built=False)
+        result = self.run_main(["--serve-frontend"], built=False)
         self.assertIsNotNone(result.error)
         self.assertIn("npm", str(result.error))
         result.build_app.assert_not_called()

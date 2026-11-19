@@ -18,6 +18,11 @@ class HandshakeTests(ServerCase):
         self.assertIsInstance(PROTOCOL, int)
         self.assertGreaterEqual(PROTOCOL, 1)
 
+    def test_protocol_3_carries_tool_events(self):
+        # Tool output moved from `token` events to `tool` events; a protocol 2 page drops
+        # unknown events and would silently lose it, so it is told to rebuild instead.
+        self.assertEqual(PROTOCOL, 3)
+
     def test_matching_protocol_gets_server_description(self):
         status, data = self.hello()
         self.assertEqual(status, 200)
@@ -50,7 +55,7 @@ class HandshakeTests(ServerCase):
         import re
         from pathlib import Path
 
-        types = (Path(__file__).resolve().parent.parent / "webui" / "src" / "types.ts").read_text(encoding="utf-8")
+        types = (Path(__file__).resolve().parent.parent / "frontend" / "src" / "types.ts").read_text(encoding="utf-8")
         match = re.search(r"export const PROTOCOL = (\d+);", types)
         assert match is not None, "PROTOCOL not found in types.ts"
         self.assertEqual(int(match.group(1)), PROTOCOL)

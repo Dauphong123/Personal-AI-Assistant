@@ -37,6 +37,7 @@
       <h2 id="session-title" class="title" title="Double-click to rename"></h2>
       <input id="title-input" class="title-input" type="text" maxlength="60" aria-label="Session name" hidden>
       <span id="status" class="status" role="status"></span>
+      <span id="elapsed" class="elapsed" aria-hidden="true" hidden></span>
       <div class="menu-wrap">
         <button id="session-menu" type="button" class="icon-button" aria-haspopup="menu" aria-expanded="false" aria-controls="session-menu-list" aria-label="Session actions" title="Session actions">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle class="dot" cx="5" cy="12" r="1.7"/><circle class="dot" cx="12" cy="12" r="1.7"/><circle class="dot" cx="19" cy="12" r="1.7"/></svg>
@@ -70,7 +71,7 @@
       </section>
       <div id="log" class="log" role="log"></div>
       <div id="thinking" class="msg assistant thinking" hidden>
-        <p><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span> Thinking…</p>
+        <p><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span> Thinking… <span id="thinking-time" class="thinking-time" aria-hidden="true"></span></p>
       </div>
     </main>
 
@@ -96,8 +97,9 @@
         <span id="voice-state" class="voice-state"></span>
         <span id="voice-time" class="voice-time"></span>
       </div>
+      <ul id="slash" class="slash" role="listbox" aria-label="Commands" hidden></ul>
       <label class="sr" for="input">Message</label>
-      <textarea id="input" rows="1" placeholder="Message the assistant" enterkeyhint="send"></textarea>
+      <textarea id="input" rows="1" placeholder="Message the assistant  ·  / for commands" enterkeyhint="send" aria-controls="slash"></textarea>
       <div class="composer-tools">
         <div class="voice-tools">
           <button id="mic" type="button" class="tool mic" aria-pressed="false" title="Hold to talk (or hold Right Ctrl); the text goes into the message box. A short click records until the next click." hidden>
@@ -114,7 +116,7 @@
             <span class="label">Read aloud</span>
           </label>
         </div>
-        <span class="hint">Shift+Enter for a new line</span>
+        <span class="hint">Shift+Enter for a new line · Ctrl+K for commands</span>
         <button id="stop" type="button" class="tool stop" disabled>
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
           <span class="label">Stop</span>
@@ -134,6 +136,12 @@
     <button id="confirm-cancel" type="button">Cancel</button>
     <button id="confirm-ok" type="button" class="destructive">Confirm</button>
   </div>
+</dialog>
+
+<dialog id="palette" class="palette" aria-label="Command palette">
+  <input id="palette-input" class="palette-input" type="text" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list" placeholder="Type a command or a session name" autocomplete="off" spellcheck="false">
+  <ul id="palette-list" class="palette-list" role="listbox" aria-label="Commands and sessions"></ul>
+  <p class="palette-hint"><kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> run · <kbd>Esc</kbd> close</p>
 </dialog>
 
 <script type="module" src="/main.js"></script>

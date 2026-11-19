@@ -7,13 +7,14 @@ Local LLM agent: LangChain + LangGraph on Ollama (default `qwen3:8b`). Interacti
 ```powershell
 .\.venv\Scripts\Activate.ps1
 python main.py                              # interactive chat; "exit" or "quit" stops
-npm --prefix webui install; npm --prefix webui run build   # once: build the TypeScript web frontend
-python -m backend [--no-voice]              # browser chat on 127.0.0.1:8000, many sessions, job notices, voice if installed (link with token is printed)
+npm --prefix frontend install; npm --prefix frontend run build   # once: build the TypeScript web frontend
+python -m backend [--no-voice]              # agent web API on 127.0.0.1:8000: many sessions, job notices, voice if installed; prints the frontend link (api + token)
+npm --prefix frontend start                 # web frontend on 127.0.0.1:5173, calls the API (python -m backend --serve-frontend = both on :8000 instead)
 python -m unittest discover -s tests -t .   # tests (Postgres test skipped if DB unreachable)
 docker compose up -d                        # pgvector Postgres 17 (db agent_memory, user agent)
 ```
 
-CI: `.github/workflows/ci.yml` runs the unittest suite (Windows, `.venv` with `requirements.txt` + `requirements_voice.txt` locked by `constraints.txt` (`pip freeze`; regenerate after changing requirements), pyright, ripgrep, built `webui/`) and the `webui` check/test/build on every push and on PRs to `main`; no Ollama/Postgres/voice engines there. `main` is protected: `python` and `webui` must pass, linear history, no force push (fast-forward a green branch or merge the PR). Keep it in step with these commands (`tests/test_ci_workflow.py`).
+CI: `.github/workflows/ci.yml` runs the unittest suite (Windows, `.venv` with `requirements.txt` + `requirements_voice.txt` locked by `constraints.txt` (`pip freeze`; regenerate after changing requirements), pyright, ripgrep, built `frontend/`) and the `webui` job (check/test/build of `frontend/`; job id kept because it is a required check) on every push and on PRs to `main`; no Ollama/Postgres/voice engines there. `main` is protected: `python` and `webui` must pass, linear history, no force push (fast-forward a green branch or merge the PR). Keep it in step with these commands (`tests/test_ci_workflow.py`).
 
 Voice commands (`--voice`, `voice.enroll`, `voice.check`, voice engine tests): `voice/CLAUDE.md`.
 
@@ -35,7 +36,7 @@ Python 3.12, Windows, venv `.venv`, deps in `requirements.txt`. Needs Ollama wit
 - `code_tools ⇄ tool_execute` while the AI message has `tool_calls`; then `→ save_memory`. `direct → save_memory`. Each model call's messages go through `fit_to_context` (older tool results trimmed; budget = context − 1,400 − 1,500).
 - History over `MAX_HISTORY_TOKENS` (counts text and tool-call args): `summarize` condenses everything before the latest turn; the latest turn stays whole (tool calls never split from results).
 - `tool_execute` never raises: unknown tools/errors become `ERROR:` tool messages, output capped, max 30 tool calls per turn. Arguments go through `tool_args.prepare` first: a dict/list for a `str` parameter becomes JSON text again (langchain_ollama parses JSON-looking strings), a synonym (`file_path`, `dir`/`directory`/`repo_path`, `old_string`, ...) is renamed when exactly one parameter matches, unknown/invalid arguments are refused with the tool's signature, before the approval prompt. Tools in `NEEDS_APPROVAL` (`tools.py`: terminal, write/edit/delete/move) pause via `interrupt()`; `ChatLoop` asks y/N (voice asks aloud) and resumes with `Command(resume=bool)`.
-- `main.py` uses `InMemorySaver` (thread_id `"1"`); `turns.py` streams chunks from `direct`, `code_tools`, `tool_execute`.
+- `main.py` uses `InMemorySaver` (thread_id `"1"`); `turns.py` streams chunks from `direct`, `code_tools`, `tool_execute`. With `run_turn(on_tool=...)` (the web backend) tool calls are reported apart (`turns.ToolActivity`: start + result) and tool output leaves the answer text; the CLI passes none and still prints it.
 
 **Live input / jobs.** `main.py` only reads the keyboard; `chat_loop.py` (`ChatLoop`) runs turns one at a time on a worker thread. Mid-turn messages are queued; a short stop message (`is_stop_request` in `turns.py`: "stop", "cancel that", `/stop`, Vietnamese phrases) cancels the turn and drops the queue (job notices kept). Approval answers use the same input line. `/jobs`, `/cancel <id>` work any time. `turns.py` holds UI-independent `run_turn`; a cancelled turn's unanswered tool calls get `ERROR: cancelled` before the next turn. `terminal` runs via `jobs.py` (`JobManager`, global `tools.JOBS`): past `FOREGROUND_WAIT` (5 s) it goes to background, the tool returns a job id, completion queues a `[system notice]` turn (text from `jobs.finished_notice`; jobs carry `owner` = `jobs.JOB_OWNER`, which the web backend uses to route the notice to its session); `job_status` / `cancel_job` tools; jobs killed after 10 min.
 
@@ -87,7 +88,7 @@ Solo project: roles are skills (`architect`, `implement`, `test`, `debug`, `docs
 
 - Label claims verified (cite code/test/doc), assumed, or unknown. Investigate uncertainty; surface what stays unresolved to the user rather than guessing.
 - Verify important findings against source, tests, or authoritative docs.
-- Directory notes: `voice/CLAUDE.md`, `memories/CLAUDE.md`, `backend/CLAUDE.md` (web API, Python), `webui/CLAUDE.md` (web frontend, TypeScript).
+- Directory notes: `voice/CLAUDE.md`, `memories/CLAUDE.md`, `backend/CLAUDE.md` (web API, Python), `frontend/CLAUDE.md` (web frontend, TypeScript). The two web parts meet only at the HTTP API: the frontend's own server (`frontend/scripts/serve.ts`, :5173) serves the page; the page calls the backend (:8000) cross-origin (CORS for `--frontend-origin`, token in `X-Token`).
 
 @docs/ROSTER.md
 @docs/PROJECT.md

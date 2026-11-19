@@ -1,5 +1,6 @@
 // Keyboard shortcuts, decided without the DOM so they can be tested.
-// Escape closes the innermost open thing, else stops a running turn; "/" jumps to the box.
+// Escape closes the innermost open thing, else stops a running turn; "/" jumps to the box;
+// Ctrl+K / Cmd+K opens the command palette.
 
 export interface KeyContext {
   key: string;
@@ -14,7 +15,7 @@ export interface KeyContext {
   busy: boolean; // a turn is running
 }
 
-export type Shortcut = "close-menu" | "close-drawer" | "stop" | "focus-input";
+export type Shortcut = "close-menu" | "close-drawer" | "stop" | "focus-input" | "palette";
 
 export function shortcut(context: KeyContext): Shortcut | null {
   if (context.dialogOpen) return null;
@@ -30,6 +31,10 @@ export function shortcut(context: KeyContext): Shortcut | null {
   const modified = context.ctrl || context.alt || context.meta;
 
   if (context.key === "/" && !modified && !context.typing) return "focus-input";
+
+  // Ctrl+K / Cmd+K, also while typing (it inserts nothing in a text box). With Shift the key is
+  // "K": Ctrl+Shift+K is the browser's (Firefox web console), so it is left alone.
+  if (context.key === "k" && (context.ctrl || context.meta) && !context.alt) return "palette";
 
   return null;
 }

@@ -56,6 +56,17 @@ class SendTests(unittest.TestCase):
         ids = [e["id"] for e in events]
         self.assertEqual(ids, sorted(set(ids)))
 
+    def test_events_carry_their_time(self):
+        before = time.time()
+        session = ChatSession(app=None, run=scripted("a", "b"))
+        session.send("x")
+        events = wait_for(session, "done")
+        stamps = [e["at"] for e in events]
+        self.assertTrue(all(isinstance(at, float) for at in stamps))
+        self.assertEqual(stamps, sorted(stamps))
+        self.assertGreaterEqual(stamps[0], before - 1)
+        self.assertLessEqual(stamps[-1], time.time() + 1)
+
     def test_events_after_filters(self):
         session = ChatSession(app=None, run=scripted("a"))
         session.send("x")
@@ -404,6 +415,65 @@ class TurnSlotTests(unittest.TestCase):
         session.send("go")
         events = wait_for(session, "done")
         self.assertNotIn("waiting", [e["type"] for e in events])
+
+
+def with_tools(*activities, answer="Done."):
+    """A fake run that reports tool activity through on_tool, then answers."""
+
+    def run(app, text, config, on_text, approve, cancel=None, on_tool=None, **kwargs):
+        assert on_tool is not None, "the session must ask for tool activity"
+        for activity in activities:
+            on_tool(activity)
+        on_text(answer)
+        return False
+
+    return run
+
+
+class ToolEventTests(unittest.TestCase):
+    def test_tool_activity_becomes_tool_events_before_the_answer(self):
+        session = ChatSession(
+            app=None,
+            run=with_tools(
+                {"id": "c1", "name": "read_file", "args": {"path": "main.py"}, "status": "running"},
+                {"id": "c1", "name": "read_file", "args": {"path": "main.py"}, "status": "done", "text": "print()"},
+            ),
+        )
+        session.send("read main")
+        events = wait_for(session, "done")
+        self.assertEqual([e["type"] for e in events], ["user", "tool", "tool", "token", "done"])
+        tool = events[2]
+        self.assertEqual(
+            {k: tool[k] for k in ("call", "name", "args", "status", "text")},
+            {"call": "c1", "name": "read_file", "args": {"path": "main.py"}, "status": "done", "text": "print()"},
+        )
+        self.assertNotIn("text", events[1], "a running call has no output yet")
+
+    def test_long_output_and_arguments_are_cut(self):
+        from backend.session import TOOL_ARG_LIMIT, TOOL_TEXT_LIMIT
+
+        big = "x" * (TOOL_TEXT_LIMIT * 2)
+        session = ChatSession(
+            app=None,
+            run=with_tools(
+                {"id": "c1", "name": "write_file", "args": {"path": "a.txt", "content": big, "n": 3}, "status": "done", "text": big}
+            ),
+        )
+        session.send("write")
+        tool = [e for e in wait_for(session, "done") if e["type"] == "tool"][0]
+        self.assertLessEqual(len(tool["text"]), TOOL_TEXT_LIMIT + 40)
+        self.assertTrue(tool["text"].endswith("characters left out)"))
+        self.assertLessEqual(len(tool["args"]["content"]), TOOL_ARG_LIMIT + 40)
+        self.assertEqual(tool["args"]["path"], "a.txt")
+        self.assertEqual(tool["args"]["n"], 3)
+
+    def test_odd_arguments_are_kept_as_json(self):
+        session = ChatSession(
+            app=None, run=with_tools({"id": "c1", "name": "x", "args": "not a dict", "status": "running"})
+        )
+        session.send("go")
+        tool = [e for e in wait_for(session, "done") if e["type"] == "tool"][0]
+        self.assertEqual(tool["args"], {"value": "not a dict"})
 
 
 if __name__ == "__main__":

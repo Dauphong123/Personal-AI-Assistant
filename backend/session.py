@@ -1,8 +1,10 @@
 """One web conversation: runs turns on a worker thread and records what happens as events.
 
 Events are dicts with a growing `id` and a `type`: user, notice (a finished background job
-starts a turn), waiting, token, approval, done, cancelled, error, reset. A client reads them with `events_after(last_id)`, so a reconnect
-resumes.
+starts a turn), waiting, token, tool (a tool call started or finished: call, name, args, status
+running|done|error, text), approval, done, cancelled, error, reset. Each also has `at`, its
+time in seconds since the epoch. A client reads them with `events_after(last_id)`, so a
+reconnect resumes.
 """
 
 import logging
@@ -23,12 +25,35 @@ logger = logging.getLogger(__name__)
 DEFAULT_TITLE = "New chat"
 MAX_TITLE = 60
 POLL_SECONDS = 0.2
+# The event log is kept in memory and replayed to every reconnecting page: tool output there is
+# for a glance (the model still sees all of it), so it is cut.
+TOOL_TEXT_LIMIT = 4000
+TOOL_ARG_LIMIT = 1000
 
 
 def short_title(text: str) -> str:
     """One line of at most MAX_TITLE characters (an ellipsis marks a cut)."""
     text = re.sub(r"\s+", " ", text).strip()
     return text if len(text) <= MAX_TITLE else text[: MAX_TITLE - 1] + "…"
+
+
+def _cut(text: str, limit: int) -> str:
+    return text if len(text) <= limit else f"{text[:limit]}\n… ({len(text) - limit} characters left out)"
+
+
+def tool_event(activity: dict) -> dict:
+    """The `tool` event fields for one `turns.ToolActivity` report, long values cut."""
+    args = activity.get("args")
+    args = args if isinstance(args, dict) else {"value": args}
+    fields = {
+        "call": str(activity.get("id") or ""),
+        "name": str(activity.get("name") or "tool"),
+        "args": {k: _cut(v, TOOL_ARG_LIMIT) if isinstance(v, str) else v for k, v in args.items()},
+        "status": activity.get("status", "done"),
+    }
+    if "text" in activity:
+        fields["text"] = _cut(str(activity["text"]), TOOL_TEXT_LIMIT)
+    return fields
 
 
 class ChatSession:
@@ -93,7 +118,8 @@ class ChatSession:
 
     def _emit(self, type_: str, **fields) -> None:
         with self._cond:
-            self._events.append({"id": self._next_id, "type": type_, **fields})
+            # `at` (seconds since the epoch) lets a page that opens mid-turn show how long it has run.
+            self._events.append({"id": self._next_id, "type": type_, **fields, "at": round(time.time(), 3)})
             self._next_id += 1
             self._cond.notify_all()
 
@@ -253,6 +279,7 @@ class ChatSession:
                     lambda chunk: self._emit("token", text=chunk),
                     self._ask_approval,
                     self._cancel,
+                    on_tool=lambda activity: self._emit("tool", **tool_event(activity)),
                     **kwargs,
                 )
             return "done", {}

@@ -1,17 +1,30 @@
 // Pure view logic: the backend's event log folded into what the page shows. No DOM here, so
 // it runs under node --test.
 
-import type { ChatEvent, SessionInfo, SessionState, ToolCall } from "./types.ts";
+import type { ChatEvent, SessionInfo, SessionState, ToolCall, ToolStatus } from "./types.ts";
+
+/** One tool call the agent made: a card in the conversation. `stopped` = the turn ended
+ * (stop or error) before its result came. */
+export interface ToolItem {
+  kind: "tool";
+  call: string;
+  name: string;
+  args: Record<string, unknown>;
+  status: ToolStatus | "stopped";
+  text: string; // the tool's output ("" while running)
+}
 
 export type Item =
   | { kind: "user"; text: string }
   | { kind: "notice"; text: string } // what a finished background job reported
-  | { kind: "assistant"; text: string }
-  | { kind: "note"; text: string; error: boolean };
+  | { kind: "assistant"; text: string; seconds?: number } // seconds: the turn's time, on its final answer
+  | { kind: "note"; text: string; error: boolean }
+  | ToolItem;
 
 export interface Conversation {
   readonly items: readonly Item[];
   readonly busy: boolean; // a turn is running (or waiting for the model)
+  readonly turnStartedAt: number | null; // the running turn's start (event `at`), if known
   readonly waiting: boolean; // queued behind another session's turn
   readonly approval: readonly ToolCall[] | null; // tool calls waiting for allow/deny
   readonly approvalRequest: string | null; // id of that request; the answer names it
@@ -20,14 +33,25 @@ export interface Conversation {
 }
 
 export function emptyConversation(): Conversation {
-  return { items: [], busy: false, waiting: false, approval: null, approvalRequest: null, lastEventId: 0, gone: false };
+  return { items: [], busy: false, turnStartedAt: null, waiting: false, approval: null, approvalRequest: null, lastEventId: 0, gone: false };
+}
+
+/** The finished turn's final answer, stamped with how long the turn took (when both times
+ * are known). */
+function timeAnswer(conv: Conversation, endedAt: number | undefined): readonly Item[] {
+  const last = conv.items.at(-1);
+
+  if (last?.kind !== "assistant" || conv.turnStartedAt === null || endedAt === undefined) return conv.items;
+
+  const seconds = Math.max(0, Math.round((endedAt - conv.turnStartedAt) * 10) / 10);
+  return [...conv.items.slice(0, -1), { ...last, seconds }];
 }
 
 /** The conversation after one event. Events at or before lastEventId are ignored, so a
  * replay after a reconnect changes nothing. */
 export function apply(conv: Conversation, event: ChatEvent): Conversation {
   if (event.type === "gone") {
-    return { ...conv, gone: true, busy: false, waiting: false, approval: null, approvalRequest: null };
+    return { ...conv, gone: true, busy: false, turnStartedAt: null, waiting: false, approval: null, approvalRequest: null };
   }
 
   if (event.id <= conv.lastEventId) {
@@ -38,9 +62,9 @@ export function apply(conv: Conversation, event: ChatEvent): Conversation {
 
   switch (event.type) {
     case "user":
-      return { ...next, items: [...conv.items, { kind: "user", text: event.text }], busy: true, waiting: false };
+      return { ...next, items: [...conv.items, { kind: "user", text: event.text }], busy: true, turnStartedAt: event.at ?? null, waiting: false };
     case "notice":
-      return { ...next, items: [...conv.items, { kind: "notice", text: event.text }], busy: true, waiting: false };
+      return { ...next, items: [...conv.items, { kind: "notice", text: event.text }], busy: true, turnStartedAt: event.at ?? null, waiting: false };
     case "waiting":
       return { ...next, waiting: true };
     case "token": {
@@ -51,21 +75,53 @@ export function apply(conv: Conversation, event: ChatEvent): Conversation {
           : [...conv.items, { kind: "assistant" as const, text: event.text }];
       return { ...next, items, waiting: false };
     }
+    case "tool": {
+      const card: ToolItem = { kind: "tool", call: event.call, name: event.name, args: event.args, status: event.status, text: event.text ?? "" };
+      const at = toolIndex(conv.items, event.call);
+      const items = at === -1 ? [...conv.items, card] : conv.items.map((item, index) => (index === at ? card : item));
+      return { ...next, items, waiting: false };
+    }
     case "approval":
       return { ...next, approval: event.calls, approvalRequest: event.request, waiting: false };
     case "done":
-      return { ...next, busy: false, waiting: false };
+      return { ...next, items: timeAnswer(next, event.at), busy: false, turnStartedAt: null, waiting: false };
     case "cancelled":
       return { ...endTurn(next, "Stopped.", false) };
     case "error":
       return { ...endTurn(next, event.text, true) };
     case "reset":
-      return { ...next, items: [], busy: false, waiting: false };
+      return { ...next, items: [], busy: false, turnStartedAt: null, waiting: false };
   }
 }
 
+/** Where the current turn begins: just after its user message or job notice. */
+function turnStart(items: readonly Item[]): number {
+  for (let index = items.length - 1; index >= 0; index--) {
+    const kind = items[index]?.kind;
+    if (kind === "user" || kind === "notice") return index + 1;
+  }
+
+  return 0;
+}
+
+/** The card of this call in the current turn, or -1 (ids may repeat across turns). */
+function toolIndex(items: readonly Item[], call: string): number {
+  const start = turnStart(items);
+
+  for (let index = items.length - 1; index >= start; index--) {
+    const item = items[index];
+    if (item?.kind === "tool" && item.call === call) return index;
+  }
+
+  return -1;
+}
+
 function endTurn(conv: Conversation, text: string, error: boolean): Conversation {
-  return { ...conv, items: [...conv.items, { kind: "note", text, error }], busy: false, waiting: false };
+  const start = turnStart(conv.items);
+  const items = conv.items.map((item, index): Item =>
+    index >= start && item.kind === "tool" && item.status === "running" ? { ...item, status: "stopped" } : item,
+  );
+  return { ...conv, items: [...items, { kind: "note", text, error }], busy: false, turnStartedAt: null, waiting: false };
 }
 
 export function applyAll(conv: Conversation, events: readonly ChatEvent[]): Conversation {
@@ -119,6 +175,7 @@ export function isChatEvent(value: unknown): value is ChatEvent {
   if (!isRecord(value)) return false;
   if (value["type"] === "gone") return true;
   if (typeof value["id"] !== "number") return false;
+  if (value["at"] !== undefined && typeof value["at"] !== "number") return false;
 
   switch (value["type"]) {
     case "user":
@@ -128,6 +185,15 @@ export function isChatEvent(value: unknown): value is ChatEvent {
       return typeof value["text"] === "string";
     case "approval":
       return Array.isArray(value["calls"]) && typeof value["request"] === "string";
+    case "tool":
+      return (
+        typeof value["call"] === "string" &&
+        typeof value["name"] === "string" &&
+        isRecord(value["args"]) &&
+        !Array.isArray(value["args"]) &&
+        (value["status"] === "running" || value["status"] === "done" || value["status"] === "error") &&
+        (value["text"] === undefined || typeof value["text"] === "string")
+      );
     case "waiting":
     case "done":
     case "cancelled":
@@ -149,10 +215,22 @@ export interface StatusInput {
   handsFree: boolean;
   transcribing: boolean; // a hands-free recording is at the backend
   queued: number; // spoken prompts waiting to be sent
+  now?: number; // ms since the epoch: adds how long the running turn has taken
+}
+
+/** "9 s", "1 min 5 s", "12 min" (whole seconds; seconds dropped from 10 min on). */
+export function elapsedLabel(seconds: number): string {
+  const whole = Math.max(0, Math.floor(seconds));
+
+  if (whole < 60) return `${whole} s`;
+
+  const minutes = Math.floor(whole / 60);
+  const rest = whole % 60;
+  return minutes >= 10 || rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
 }
 
 /** The header's status text and how it should look. */
-export function statusOf(input: StatusInput): { text: string; tone: StatusTone } {
+export function statusOf(input: StatusInput): { text: string; tone: StatusTone; elapsed?: string } {
   const { conv, connection, voiceStatus, handsFree, transcribing, queued } = input;
 
   if (connection) return { text: connection, tone: "error" };
@@ -167,7 +245,13 @@ export function statusOf(input: StatusInput): { text: string; tone: StatusTone }
   } else if (conv.approval) {
     [text, tone] = [handsFree ? "Needs approval: say yes or no" : "Needs approval", "approval"];
   } else if (conv.busy) {
-    [text, tone] = ["Working…", "busy"];
+    const tool = activeTool(conv);
+    const view = tool && describeTool(tool.name, tool.args);
+    [text, tone] = [view ? `${view.doing}${view.target === null ? "" : ` ${view.target}`}…` : "Working…", "busy"];
+
+    if (input.now !== undefined && conv.turnStartedAt !== null && !handsFree && !queued) {
+      return { text, tone, elapsed: elapsedLabel(input.now / 1000 - conv.turnStartedAt) };
+    }
   }
 
   const suffix = queued ? ` · ${queued} queued` : "";
@@ -181,9 +265,99 @@ export function statusOf(input: StatusInput): { text: string; tone: StatusTone }
   return { text, tone };
 }
 
-/** A turn is running and no answer text has arrived yet (show the thinking placeholder). */
+/** A turn is running and nothing shows progress yet: no answer text, no running tool card
+ * (show the thinking placeholder). */
 export function isThinking(conv: Conversation): boolean {
-  return conv.busy && !conv.waiting && conv.approval === null && conv.items.at(-1)?.kind !== "assistant";
+  const last = conv.items.at(-1);
+  return conv.busy && !conv.waiting && conv.approval === null && last?.kind !== "assistant" && !(last?.kind === "tool" && last.status === "running");
+}
+
+/** The tool call running now in the current turn, if any (the newest one). */
+export function activeTool(conv: Conversation): ToolItem | null {
+  const start = turnStart(conv.items);
+
+  for (let index = conv.items.length - 1; index >= start; index--) {
+    const item = conv.items[index];
+    if (item?.kind === "tool" && item.status === "running") return item;
+  }
+
+  return null;
+}
+
+/** What Retry / Try again would send: the prompt of the turn that just ended with an answer or
+ * a stop/error note. Null while a turn is running or waiting, and for a background job's
+ * notice turn (not something the user asked). */
+export function retryPrompt(conv: Conversation): string | null {
+  const last = conv.items.at(-1);
+
+  if (conv.busy || conv.waiting || conv.gone || conv.approval !== null) return null;
+  if (last?.kind !== "assistant" && last?.kind !== "note") return null;
+
+  const opener = conv.items[turnStart(conv.items) - 1];
+  return opener?.kind === "user" && opener.text.trim() ? opener.text.trim() : null;
+}
+
+// --- tool cards -------------------------------------------------------------------------------
+
+export interface ToolView {
+  doing: string; // "Reading", while it runs
+  done: string; // "Read", once it finished
+  target: string | null; // what it works on, one short line
+}
+
+const TARGET_MAX = 80;
+
+function shortTarget(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+
+  const text = typeof value === "string" ? value : JSON.stringify(value) ?? String(value);
+  const line = text.split("\n", 1)[0] ?? "";
+
+  if (line === text && line.length <= TARGET_MAX) return line;
+
+  return `${line.slice(0, TARGET_MAX - 1).trimEnd()}…`;
+}
+
+// [doing, done, argument shown as the target]; tool names as in tools.py TOOLS (search_document
+// is the RAG tool).
+const TOOL_WORDS: Record<string, [string, string, string | null]> = {
+  read_file: ["Reading", "Read", "path"],
+  list_files: ["Listing files in", "Listed files in", "path"],
+  search_code: ["Searching the code for", "Searched the code for", "query"],
+  terminal: ["Running", "Ran", "command"],
+  job_status: ["Checking background jobs", "Checked background jobs", null],
+  cancel_job: ["Cancelling job", "Cancelled job", "job_id"],
+  write_file: ["Writing", "Wrote", "path"],
+  edit_file: ["Editing", "Edited", "path"],
+  delete_file: ["Deleting", "Deleted", "path"],
+  move_file: ["Moving", "Moved", null],
+  git_status: ["Checking git status", "Checked git status", null],
+  git_diff: ["Reading the git diff", "Read the git diff", null],
+  git_log: ["Reading the git history", "Read the git history", null],
+  git_show: ["Showing commit", "Showed commit", "commit"],
+  search_document: ["Searching the documents for", "Searched the documents for", "query"],
+  web_search: ["Searching the web for", "Searched the web for", "query"],
+  read_webpage: ["Reading", "Read", "url"],
+};
+
+/** A tool call in words: "Reading" / "Read" + "graph/node.py". */
+export function describeTool(name: string, args: Record<string, unknown>): ToolView {
+  const words = TOOL_WORDS[name];
+
+  if (!words) return { doing: `Using ${name}`, done: `Used ${name}`, target: null };
+
+  const [doing, done, key] = words;
+  let target: string | null;
+
+  if (name === "move_file") {
+    target = shortTarget(`${asText(args["source"] ?? "?")} → ${asText(args["destination"] ?? "?")}`);
+  } else if (name === "list_files") {
+    target = shortTarget(args["path"]) ?? ".";
+  } else {
+    target = key === null ? null : shortTarget(args[key]);
+  }
+
+  return { doing, done, target };
 }
 
 // --- relative times ---------------------------------------------------------------------------

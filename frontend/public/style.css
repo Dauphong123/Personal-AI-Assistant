@@ -302,6 +302,11 @@ button:disabled { opacity: 0.4; cursor: default; }
 .status[data-tone="approval"] { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
 .status[data-tone="error"] { background: var(--danger-soft); color: var(--danger); }
 
+/* How long the running turn has taken; beside the status, not inside its live region. */
+.elapsed, .thinking-time, .msg-time { color: var(--faint); font-size: 0.8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.elapsed { margin-left: -0.35rem; }
+.msg-time { align-self: center; margin-left: 0.35rem; }
+
 .title-input {
   flex: 1;
   min-width: 0;
@@ -464,6 +469,15 @@ button:disabled { opacity: 0.4; cursor: default; }
 .msg:hover .msg-actions, .msg-actions:focus-within, .msg:last-child .msg-actions { opacity: 1; }
 .msg.writing .msg-actions { display: none; }
 
+/* The user's bubble keeps its shape: Edit hangs just below it, on the right. */
+.msg.user { position: relative; }
+.msg.user .msg-actions { position: absolute; top: 100%; right: 0; margin: 0.1rem -0.3rem 0 0; }
+
+/* Retry / Try again: only on the newest item, once the turn is over (main.ts sets can-retry). */
+.retry { display: none; }
+.log.can-retry > :last-child .retry { display: inline-flex; }
+.note .retry { margin-left: 0.6rem; vertical-align: middle; color: inherit; }
+
 @media (hover: none) {
   .msg-actions { opacity: 1; }
 }
@@ -482,6 +496,67 @@ button:disabled { opacity: 0.4; cursor: default; }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* --- tool activity: one quiet card per tool call, output one click away ------------ */
+
+.activity {
+  margin: -1rem 0 1.75rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.86rem;
+}
+
+.activity + .activity { margin-top: -1.35rem; }
+.log > .activity:first-child, .msg.user + .activity, .job-notice + .activity { margin-top: 0; }
+
+.activity summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.1rem;
+  padding: 0 0.75rem;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.activity summary::-webkit-details-marker { display: none; }
+.activity summary:hover { color: var(--ink); }
+.activity.running summary { cursor: default; }
+.activity-mark { flex: none; width: 0.95rem; height: 0.95rem; color: var(--run); }
+.activity.error .activity-mark { color: var(--danger); }
+.activity.stopped .activity-mark { color: var(--faint); }
+.activity-title { flex: none; }
+.activity-target { min-width: 0; overflow: hidden; color: var(--ink); font: 0.82rem var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.activity-state { margin-left: auto; color: var(--faint); font-size: 0.78rem; white-space: nowrap; }
+.activity.error .activity-state { color: var(--danger); }
+.activity-chevron { flex: none; width: 0.9rem; height: 0.9rem; color: var(--faint); transition: transform 0.15s; }
+.activity[open] .activity-chevron { transform: rotate(90deg); }
+
+.activity-spinner {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+}
+
+.activity pre {
+  max-height: 18rem;
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font: 0.8rem/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.activity.error pre { color: var(--danger); }
 
 /* --- markdown in answers ------------------------------------------------------- */
 
@@ -632,6 +707,97 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 .composer:focus-within { border-color: var(--accent); }
 
+/* Slash command suggestions, at the top of the composer while "/word" is typed. */
+.slash {
+  margin: 0;
+  padding: 0.35rem;
+  border-bottom: 1px solid var(--line);
+  list-style: none;
+}
+
+.slash li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.5rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.slash li[aria-selected="true"], .slash li:hover { background: var(--accent-soft); color: var(--ink); }
+.slash code { min-width: 8.5rem; color: var(--accent); font: 0.84rem var(--mono); }
+
+/* --- command palette (Ctrl+K) ------------------------------------------------------ */
+
+.palette {
+  width: min(34rem, calc(100% - 2rem));
+  margin: 12vh auto auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.palette::backdrop { background: rgb(10 14 20 / 0.45); }
+
+.palette-input {
+  width: 100%;
+  padding: 0.95rem 1.1rem;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font: 1rem var(--sans);
+}
+
+.palette-input:focus-visible { outline: none; }
+
+.palette-list {
+  max-height: min(22rem, 55vh);
+  margin: 0;
+  padding: 0.4rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.palette-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.4rem;
+  padding: 0 0.75rem;
+  border-radius: 0.55rem;
+  cursor: pointer;
+}
+
+.palette-list li[aria-selected="true"] { background: var(--accent-soft); }
+.palette-list li:hover:not(.palette-none) { background: var(--side); }
+.palette-list li[aria-selected="true"]:hover { background: var(--accent-soft); }
+.palette-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-detail { margin-left: auto; color: var(--faint); font-size: 0.8rem; white-space: nowrap; }
+.palette-none { color: var(--muted); cursor: default; }
+
+.palette-hint {
+  margin: 0;
+  padding: 0.5rem 1.1rem;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+  font-size: 0.76rem;
+}
+
+.palette-hint kbd {
+  margin-right: 0.15rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.25rem;
+  font: 0.72rem var(--mono);
+}
+
 /* The microphone strip: live bars, what is happening, and the recording clock. */
 .voice-meter {
   display: flex;
@@ -772,6 +938,12 @@ button:disabled { opacity: 0.4; cursor: default; }
   .dots span:nth-child(3) { animation-delay: 0.3s; }
 
   #mic[aria-pressed="true"] { animation: listening 1.2s ease-in-out infinite; }
+
+  .activity-spinner { animation: spin 0.9s linear infinite; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 @keyframes spine {

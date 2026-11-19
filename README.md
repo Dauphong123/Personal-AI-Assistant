@@ -110,27 +110,30 @@ python -m backend           # chat in the browser (see Web chat below; build the
 
 ### Web chat
 
-The web chat has two parts: a **TypeScript frontend** in `webui/` and the Python app as its **backend** (`backend/`, an HTTP API that also serves the built frontend). Build the frontend once (needs Node.js; after that only when `webui/` changes):
+The web chat has two separate parts that talk only over HTTP: the **backend** (`backend/`, the agent's HTTP API: sessions, approvals, streamed answers, voice) and the **frontend** (`frontend/`, a TypeScript page with its own small web server). Build the frontend once (needs Node.js; after that only when `frontend/` changes), then start both, each in its own terminal:
 
 ```powershell
-npm --prefix webui install
-npm --prefix webui run build
-python -m backend
+npm --prefix frontend install
+npm --prefix frontend run build
+python -m backend               # terminal 1: the agent API on 127.0.0.1:8000
+npm --prefix frontend start     # terminal 2: the page on 127.0.0.1:5173
 ```
 
-`python -m backend` loads the models, then prints a link such as `http://127.0.0.1:8000/?token=...`. Open it in a browser. The sidebar holds **sessions**: each is a separate conversation with its own history, named after its first message (rename it from the **⋯** menu or by double-clicking the title). **New session** starts another; switching keeps each session's draft, and a session keeps running while you look at another one. Answers stream in as formatted text (headings, lists, tables, code blocks with a **Copy** button); a card asks **Allow** or **Deny** before the assistant runs a command or edits a file and shows the command or the change. **Stop** (or Esc) cancels the current turn; **Clear conversation** and **Delete session** in the **⋯** menu ask first. The sidebar marks sessions that are working, waiting or need approval; the button at its bottom switches between the system, light and dark themes. All sessions use the same graph, tools and long-term memory as the keyboard chat.
+`python -m backend` loads the models, then prints a link such as `http://127.0.0.1:5173/?api=http://127.0.0.1:8000&token=...`. Open it in a browser. The sidebar holds **sessions**: each is a separate conversation with its own history, named after its first message (rename it from the **⋯** menu or by double-clicking the title). **New session** starts another; switching keeps each session's draft, and a session keeps running while you look at another one. Answers stream in as formatted text (headings, lists, tables, code blocks with a **Copy** button); a card asks **Allow** or **Deny** before the assistant runs a command or edits a file and shows the command or the change. **Stop** (or Esc) cancels the current turn; **Clear conversation** and **Delete session** in the **⋯** menu ask first. The sidebar marks sessions that are working, waiting or need approval; the button at its bottom switches between the system, light and dark themes. All sessions use the same graph, tools and long-term memory as the keyboard chat.
 
 Only one turn runs on the model at a time; a session that sends while another is working shows "Waiting" and starts when the model is free (`--max-turns N` allows N at once, which mostly makes each slower on a small GPU). Sessions live in memory: restarting the backend forgets them. At most 50 sessions.
 
-Because the assistant can run commands and edit files, the server is locked down: it listens on loopback only, every request needs the random token printed at launch (a new one each time; the page keeps it for the tab, out of the address bar), requests with a foreign `Host` or `Origin` are refused, and the page runs under a CSP that forbids inline script. Model output is inserted as text, never as HTML. `--port N` changes the port; `--allow-remote` is required to listen on any other address (do that only on a network you trust). If the port is taken the launch fails instead of sharing it.
+**How the two parts are linked.** The link names the API address (`api=`) and carries the token; the page keeps both for the tab (out of the address bar) and sends every call there. The backend accepts browser calls only from the frontend's origins (`--frontend-origin`, default `http://127.0.0.1:5173` and `http://localhost:5173`; it answers their CORS preflights), and the frontend server's CSP lets the page connect only to itself and the API named by its `--api` (default `http://127.0.0.1:8000`). When you change a port, the backend prints the matching `npm --prefix frontend start -- --api ... --port ...` command. To serve everything from one address instead, run `python -m backend --serve-frontend` (needs the build) and open the link it prints.
+
+Because the assistant can run commands and edit files, both servers are locked down: they listen on loopback only, every API request needs the random token printed at launch (a new one each time), requests with a foreign `Host` are refused, so are API calls from any origin other than the frontend's, and the page runs under a CSP that forbids inline script. Model output is inserted as text, never as HTML. `--port N` changes the port; `--allow-remote` is required to listen on any other address (do that only on a network you trust). If the port is taken the launch fails instead of sharing it.
 
 When a command the assistant started moves to the background and later finishes, its session gets a **job notice** (shown in the conversation) and the assistant reports the outcome, as in the keyboard chat. The notice goes to the session that started the job; if that session is busy, it runs right after the current turn.
 
 **Voice** (on by default when `requirements_voice.txt` is installed; `python -m backend --no-voice` turns it off): **hold Talk** (or hold Right Ctrl) and speak; when you let go, the cleaned-up text (fillers and stutters removed, "no wait" corrections applied) is typed into the message box for you to check and send. A short click on Talk records until you click again (60 s max). **Hands-free** (the button, or double tap Right Ctrl) listens prompt after prompt: every pause sends one (queued while the assistant works), you can answer approvals with "yes"/"no", and it ends when you click it, say "stop listening", or stay quiet for two minutes. Turn on **Read aloud** to hear the answers between prompts (listening pauses while one plays). While the microphone is open, a strip above the message box shows the level and the recording time, or what hands-free is doing. **Read aloud** speaks each new answer with Piper (code is skipped; Vietnamese answers use the Vietnamese voice). The models load on the first use, so the first recording or answer takes longer. Settings are the same `.env` voice settings as the keyboard voice mode. There is no wake word or speaker verification in the browser. The browser only allows the microphone on `localhost`/`127.0.0.1` (or HTTPS), so with `--allow-remote` over plain HTTP the Talk button stays hidden.
 
-When the page opens, it first does a **handshake** with the backend: they agree on the protocol version and the backend says which features it offers (job notices, voice), so the page shows only what works. If the page was built for a different backend version, it says to rebuild the frontend (`npm --prefix webui run build`) and reload.
+When the page opens, it first does a **handshake** with the backend: they agree on the protocol version and the backend says which features it offers (job notices, voice), so the page shows only what works. If the page was built for a different backend version, it says to rebuild the frontend (`npm --prefix frontend run build`) and reload.
 
-Limits: raw tool output streams into the answer, as it does in the keyboard chat.
+**Seeing and steering the work.** Each tool the assistant uses shows as a small card between its narration and its answer ("Reading `main.py`" with a spinner, then "Read `main.py`"; failed calls in red, calls cut short by Stop marked Stopped); click a card to see the tool's output. The header says what is running now and for how long, and every answer shows how long it took. **Edit** on your message puts it back into the message box; **Retry** on the last answer (or **Try again** after a stop or an error) sends the same prompt again. **Ctrl+K** (Cmd+K) opens a command palette: new session, rename, clear, delete, stop, theme, read aloud, or jump to another session by name. In the message box, `/` suggests the commands `/new`, `/rename <name>`, `/clear`, `/delete`, `/stop` and `/theme`; any other text starting with `/` (a path such as `/voice`) is sent as a message. The keyboard chat still prints tool output in the answer.
 
 ---
 
@@ -176,8 +179,8 @@ A cancelled turn can leave a tool call without a result, which models reject. Th
 
 ```
 main.py              Entry point: reads the keyboard, optionally starts voice mode
-backend/             Web chat API: session.py (one conversation as events), sessions.py (many sessions, turn limit), server.py (HTTP + SSE, security checks), __main__.py
-webui/               Web chat frontend (TypeScript): src/ (api, state, markdown, render, keys, theme, voice, main), public/ (html, css), test/ (node --test); builds to dist/
+backend/             Agent web API: session.py (one conversation as events), sessions.py (many sessions, turn limit), server.py (HTTP + SSE, security checks, CORS for the frontend), __main__.py
+frontend/            Web chat frontend (TypeScript): src/ (api, state, markdown, render, keys, theme, voice, main), public/ (html, css), scripts/serve.ts (its own web server), test/ (node --test); builds to dist/
 chat_loop.py         ChatLoop: worker thread, input queue, stop handling, approvals, job notices
 turns.py             One conversation turn (UI-independent), cancellation, stop phrases, sentence streaming for speech
 jobs.py              Background shell jobs (JobManager)
@@ -631,6 +634,7 @@ The suite needs **no microphone, speaker, model download or network**. `tests/st
 | `test_tool_args.py`             | F027: argument repair (JSON text, synonyms, unknown/invalid arguments) and approval of repaired calls                                                                                                                                        |
 | `test_graph_speed.py`           | F025: timing log, context fitting, summary model, memory scheduling and cancellation, memory placement, parallel routing, router rules, graph cleanup                                                                                        |
 | `test_model_eval.py`            | Opt-in (`RUN_MODEL_EVAL=1`, `EVAL_MODEL`): routing, first-tool and tool-argument accuracy and speed of a real model                                                                                                                                       |
+| `test_tool_activity.py`         | F035: tool calls reported apart from the answer (`run_turn(on_tool=...)`): start and result, split chunks, results after an approval pause, errors                                                                                            |
 | `test_tools.py`                 | Path sandbox, file/git tools, terminal and background jobs                                                                                                                                                                                   |
 | `test_jobs.py`                  | JobManager: detach, notify, cancel, timeout, truncation                                                                                                                                                                                      |
 | `test_chat_loop.py`             | Stop phrases, queueing, stop and approval handling, real-graph turns, cancellation repair                                                                                                                                                    |
@@ -655,8 +659,8 @@ python -m unittest tests.test_voice_engines
 
 `.github/workflows/ci.yml` (GitHub Actions) runs on every push to any branch and on pull requests to `main`; a newer push to the same branch cancels the older run.
 
-- **python** (Windows, Python 3.12): creates `.venv`, installs `requirements.txt`, `requirements_voice.txt` (so Pyright resolves the voice imports) with `-c constraints.txt`, `pyright` and ripgrep, builds `webui/`, then runs the full unittest suite (including the Pyright check). Postgres, voice-engine and memory-eval tests are skipped there.
-- **webui** (Ubuntu, Node 24): `npm ci`, `npm run check`, `npm test`, `npm run build`.
+- **python** (Windows, Python 3.12): creates `.venv`, installs `requirements.txt`, `requirements_voice.txt` (so Pyright resolves the voice imports) with `-c constraints.txt`, `pyright` and ripgrep, builds `frontend/`, then runs the full unittest suite (including the Pyright check). Postgres, voice-engine and memory-eval tests are skipped there.
+- **webui** (Ubuntu, Node 24, in `frontend/`; the job keeps this id because it is a required check): `npm ci`, `npm run check`, `npm test`, `npm run build`.
 
 `tests/test_ci_workflow.py` keeps the workflow in step with these commands.
 
