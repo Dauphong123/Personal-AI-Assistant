@@ -10,10 +10,13 @@ export type Result<T> = { ok: true; data: T } | { ok: false; status: number; err
 export class Api {
   readonly #token: string;
   readonly #fetch: typeof fetch;
+  readonly #base: string;
 
-  constructor(token: string, fetchFn: typeof fetch = (input, init) => fetch(input, init)) {
+  /** `base` is the agent API's origin ("http://127.0.0.1:8000"); "" = the page's own origin. */
+  constructor(token: string, fetchFn: typeof fetch = (input, init) => fetch(input, init), base = "") {
     this.#token = token;
     this.#fetch = fetchFn;
+    this.#base = base;
   }
 
   /** First call of a page: agree on the protocol and learn what this backend offers. */
@@ -57,7 +60,7 @@ export class Api {
   /** EventSource cannot send headers, so the token goes in the query string. */
   eventsUrl(id: string, after: number): string {
     const query = new URLSearchParams({ token: this.#token, after: String(after) });
-    return `${sessionPath(id)}/events?${query.toString()}`;
+    return `${this.#base}${sessionPath(id)}/events?${query.toString()}`;
   }
 
   /** Speech to text: one push-to-talk recording (needs the handshake's voice.transcribe). */
@@ -144,7 +147,7 @@ export class Api {
     let response: Response;
 
     try {
-      response = await this.#fetch(path, init);
+      response = await this.#fetch(`${this.#base}${path}`, init);
     } catch {
       return { ok: false, status: 0, error: "Cannot reach the server." };
     }

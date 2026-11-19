@@ -19,7 +19,7 @@ import {
 } from "./state.ts";
 import type { Conversation, Item } from "./state.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
-import { sessionFromHash, tokenFrom } from "./url.ts";
+import { apiFrom, sessionFromHash, tokenFrom } from "./url.ts";
 import { parseMarkdown } from "./markdown.ts";
 import { copyButton, renderBlocks, renderCalls } from "./render.ts";
 import { shortcut } from "./keys.ts";
@@ -37,6 +37,7 @@ import {
 import { HandsFreeListener, MAX_RECORDING_MS, Player, Recorder, canListen, canRecord, replyToSpeak } from "./voice.ts";
 
 const TOKEN_KEY = "coding-assistant-token";
+const API_KEY = "coding-assistant-api";
 const SPEAK_KEY = "coding-assistant-speak";
 const THEME_KEY = "coding-assistant-theme";
 const POLL_MS = 2000;
@@ -99,32 +100,40 @@ const ui = {
 
 // --- token ---------------------------------------------------------------------
 
-function storedToken(): string | null {
+function stored(key: string): string | null {
   try {
-    return sessionStorage.getItem(TOKEN_KEY);
+    return sessionStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function storeToken(value: string): void {
+function store(key: string, value: string): void {
   try {
-    sessionStorage.setItem(TOKEN_KEY, value);
+    sessionStorage.setItem(key, value);
   } catch {
-    // Storage blocked: the token then lasts until the page is reloaded.
+    // Storage blocked: the value then lasts until the page is reloaded.
   }
 }
 
-const launch = tokenFrom(location.search, storedToken());
+const launch = tokenFrom(location.search, stored(TOKEN_KEY));
 
 if (launch.token) {
-  storeToken(launch.token);
+  store(TOKEN_KEY, launch.token);
 }
 
-// Keep the token out of the address bar and the history (the hash names the session).
+// The agent API this page talks to: `?api=` from the backend's launch link ("" = this origin).
+const target = apiFrom(launch.search, stored(API_KEY));
+launch.search = target.search;
+
+if (target.api) {
+  store(API_KEY, target.api);
+}
+
+// Keep the token and API address out of the address bar and the history (the hash names the session).
 history.replaceState(null, "", location.pathname + launch.search + location.hash);
 
-const api = new Api(launch.token);
+const api = new Api(launch.token, undefined, target.api);
 
 // --- state ---------------------------------------------------------------------
 

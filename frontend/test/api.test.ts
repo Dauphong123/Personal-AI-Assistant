@@ -30,6 +30,29 @@ test("listSessions sends the token and returns the sessions", async () => {
   assert.equal(new Headers(calls[0]?.init?.headers).get("X-Token"), "tok");
 });
 
+test("with an API address every call and the event stream go there", async () => {
+  const calls: Call[] = [];
+  const api = new Api("tok", fakeFetch(200, { sessions: [], session: info, text: "" }, calls), "http://127.0.0.1:8000");
+  await api.handshake();
+  await api.listSessions();
+  await api.send("abcdef012345", "hi");
+  await api.transcribe(new Blob([new Uint8Array([1])]));
+  assert.deepEqual(
+    calls.map((call) => call.url),
+    [
+      "http://127.0.0.1:8000/api/handshake",
+      "http://127.0.0.1:8000/api/sessions",
+      "http://127.0.0.1:8000/api/sessions/abcdef012345/send",
+      "http://127.0.0.1:8000/api/voice/transcribe",
+    ],
+  );
+  assert.equal(api.eventsUrl("abcdef012345", 3), "http://127.0.0.1:8000/api/sessions/abcdef012345/events?token=tok&after=3");
+});
+
+test("without an API address calls stay on the page's own origin", () => {
+  assert.equal(new Api("tok").eventsUrl("abcdef012345", 0), "/api/sessions/abcdef012345/events?token=tok&after=0");
+});
+
 test("createSession posts JSON and returns the new session", async () => {
   const calls: Call[] = [];
   const api = new Api("tok", fakeFetch(201, { session: info }, calls));

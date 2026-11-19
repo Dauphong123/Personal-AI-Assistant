@@ -1,7 +1,35 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { sessionFromHash, tokenFrom } from "../src/url.ts";
+import { apiFrom, sessionFromHash, tokenFrom } from "../src/url.ts";
+
+test("the API address comes from the query and is removed from it", () => {
+  assert.deepEqual(apiFrom("?api=http://127.0.0.1:8000&x=1", null), { api: "http://127.0.0.1:8000", search: "?x=1" });
+  assert.deepEqual(apiFrom("?api=http%3A%2F%2Flocalhost%3A8000%2F", null), { api: "http://localhost:8000", search: "" });
+});
+
+test("the query API wins over a stored one, which is used otherwise", () => {
+  assert.deepEqual(apiFrom("?api=http://127.0.0.1:9000", "http://127.0.0.1:8000"), { api: "http://127.0.0.1:9000", search: "" });
+  assert.deepEqual(apiFrom("", "http://127.0.0.1:8000"), { api: "http://127.0.0.1:8000", search: "" });
+});
+
+test("no API address means the page's own origin", () => {
+  assert.deepEqual(apiFrom("", null), { api: "", search: "" });
+});
+
+test("anything but a plain http(s) origin is ignored", () => {
+  for (const bad of ["javascript:alert(1)", "ftp://x", "http://x/app", "http://u:p@x", "http://x?a=1", "nope", "//x"]) {
+    assert.deepEqual(apiFrom(`?${new URLSearchParams({ api: bad }).toString()}`, null), { api: "", search: "" }, bad);
+    assert.deepEqual(apiFrom(`?${new URLSearchParams({ api: bad }).toString()}`, "http://127.0.0.1:8000").api, "http://127.0.0.1:8000", bad);
+  }
+  assert.equal(apiFrom("", "javascript:alert(1)").api, "");
+});
+
+test("token and API address are both taken out of the launch link", () => {
+  const launch = tokenFrom("?api=http://127.0.0.1:8000&token=abc", null);
+  assert.equal(launch.token, "abc");
+  assert.deepEqual(apiFrom(launch.search, null), { api: "http://127.0.0.1:8000", search: "" });
+});
 
 test("token comes from the query and is removed from it", () => {
   assert.deepEqual(tokenFrom("?token=abc&x=1", null), { token: "abc", search: "?x=1" });
