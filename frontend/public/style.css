@@ -483,6 +483,67 @@ button:disabled { opacity: 0.4; cursor: default; }
   overflow-wrap: anywhere;
 }
 
+/* --- tool activity: one quiet card per tool call, output one click away ------------ */
+
+.activity {
+  margin: -1rem 0 1.75rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.86rem;
+}
+
+.activity + .activity { margin-top: -1.35rem; }
+.log > .activity:first-child, .msg.user + .activity, .job-notice + .activity { margin-top: 0; }
+
+.activity summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.1rem;
+  padding: 0 0.75rem;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.activity summary::-webkit-details-marker { display: none; }
+.activity summary:hover { color: var(--ink); }
+.activity.running summary { cursor: default; }
+.activity-mark { flex: none; width: 0.95rem; height: 0.95rem; color: var(--run); }
+.activity.error .activity-mark { color: var(--danger); }
+.activity.stopped .activity-mark { color: var(--faint); }
+.activity-title { flex: none; }
+.activity-target { min-width: 0; overflow: hidden; color: var(--ink); font: 0.82rem var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.activity-state { margin-left: auto; color: var(--faint); font-size: 0.78rem; white-space: nowrap; }
+.activity.error .activity-state { color: var(--danger); }
+.activity-chevron { flex: none; width: 0.9rem; height: 0.9rem; color: var(--faint); transition: transform 0.15s; }
+.activity[open] .activity-chevron { transform: rotate(90deg); }
+
+.activity-spinner {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+}
+
+.activity pre {
+  max-height: 18rem;
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  background: var(--code-bg);
+  color: var(--code-ink);
+  font: 0.8rem/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.activity.error pre { color: var(--danger); }
+
 /* --- markdown in answers ------------------------------------------------------- */
 
 .md > :first-child { margin-top: 0; }
@@ -772,6 +833,12 @@ button:disabled { opacity: 0.4; cursor: default; }
   .dots span:nth-child(3) { animation-delay: 0.3s; }
 
   #mic[aria-pressed="true"] { animation: listening 1.2s ease-in-out infinite; }
+
+  .activity-spinner { animation: spin 0.9s linear infinite; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 @keyframes spine {

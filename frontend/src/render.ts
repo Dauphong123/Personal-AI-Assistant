@@ -2,7 +2,8 @@
 // nodes; link targets were checked by safeHref.
 
 import type { Inline, MdBlock } from "./markdown.ts";
-import type { CallView } from "./state.ts";
+import { describeTool } from "./state.ts";
+import type { CallView, ToolItem } from "./state.ts";
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -32,6 +33,66 @@ export function copyButton(className: string, label: string): HTMLButtonElement 
   text.textContent = "Copy";
   button.append(svg, text);
   return button;
+}
+
+function icon(className: string, d: string): SVGSVGElement {
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("class", `icon ${className}`);
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(SVG, "path");
+  path.setAttribute("d", d);
+  svg.append(path);
+  return svg;
+}
+
+const TOOL_MARKS: Record<Exclude<ToolItem["status"], "running">, [string, string]> = {
+  done: ["M5 12.5l4.5 4.5L19 7.5", "Done"],
+  error: ["M12 7v6M12 16.5v.5M4 12a8 8 0 1 0 16 0a8 8 0 1 0-16 0", "Failed"],
+  stopped: ["M7 12h10", "Stopped"],
+};
+
+/** One tool call as a card: what it does and to what; the output opens on a click. */
+export function renderTool(item: ToolItem): HTMLElement {
+  const view = describeTool(item.name, item.args);
+  const card = el("details", `activity ${item.status}`);
+  const summary = el("summary");
+  const title = el("span", "activity-title");
+  title.textContent = item.status === "running" ? view.doing : view.done;
+  const state = el("span", "activity-state");
+
+  if (item.status === "running") {
+    const spinner = el("span", "activity-spinner");
+    spinner.setAttribute("aria-hidden", "true");
+    summary.append(spinner, title);
+    state.textContent = "Working…";
+  } else {
+    const [d, label] = TOOL_MARKS[item.status];
+    summary.append(icon("activity-mark", d), title);
+    state.textContent = item.status === "done" ? "" : label;
+  }
+
+  if (view.target !== null) {
+    const target = el("code", "activity-target");
+    target.textContent = view.target;
+    target.title = view.target;
+    summary.append(target);
+  }
+
+  summary.append(state);
+
+  if (item.text) {
+    summary.append(icon("activity-chevron", "M9 6l6 6-6 6"));
+    const pre = el("pre");
+    pre.textContent = item.text;
+    card.append(summary, pre);
+  } else {
+    // Nothing to open yet: a click must not toggle an empty card.
+    summary.addEventListener("click", (event) => event.preventDefault());
+    card.append(summary);
+  }
+
+  return card;
 }
 
 export function renderInlines(inlines: readonly Inline[]): Node[] {

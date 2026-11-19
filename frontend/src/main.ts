@@ -21,7 +21,7 @@ import type { Conversation, Item } from "./state.ts";
 import type { ServerInfo, SessionInfo } from "./types.ts";
 import { apiFrom, sessionFromHash, tokenFrom } from "./url.ts";
 import { parseMarkdown } from "./markdown.ts";
-import { copyButton, renderBlocks, renderCalls } from "./render.ts";
+import { copyButton, renderBlocks, renderCalls, renderTool } from "./render.ts";
 import { shortcut } from "./keys.ts";
 import { nextTheme, parseTheme, themeLabel } from "./theme.ts";
 import type { Theme } from "./theme.ts";
@@ -300,6 +300,10 @@ function renderMessage(item: Item): HTMLElement {
     notice.className = "job-notice";
     notice.textContent = item.text;
     return notice;
+  }
+
+  if (item.kind === "tool") {
+    return renderTool(item);
   }
 
   if (item.kind === "note") {
