@@ -1523,13 +1523,23 @@
       "id": "F031",
       "name": "Atomic fact replacement in remember",
       "description": "MemoryManager.remember deletes superseded facts and inserts the new ones in separate transactions; compute embeddings first, then delete and insert in one transaction.",
-      "status": "in_progress",
+      "status": "done",
       "created": "2026-11-19",
-      "completed": null,
+      "completed": "2026-11-19",
       "branch": "feature/F031-atomic-remember",
-      "commit": null,
-      "files": [],
-      "tests": [],
+      "commit": "7fd1d61",
+      "files": [
+        "memories/store.py",
+        "memories/manager.py",
+        "memories/CLAUDE.md",
+        "tests/test_memory.py",
+        "tests/test_graph_speed.py"
+      ],
+      "tests": [
+        "tests/test_memory.py::StoreValidationTests",
+        "tests/test_memory.py::SaveTurnTests",
+        "tests/test_memory.py::ManagerTests::test_remember_writes_the_turn_with_one_save_turn_call"
+      ],
       "steps": [
         {"n": 1, "title": "MemoryStore.save_turn: embed first, write the turn in one transaction", "status": "done", "tests": [
           "tests/test_memory.py::StoreValidationTests::test_save_turn_embeds_everything_before_opening_a_session",
@@ -1543,10 +1553,10 @@
           "tests/test_memory.py::ManagerTests (existing, via FakeStore.save_turn)",
           "tests/test_memory.py::StoreIntegrationTests::test_manager_remembers_then_recalls_and_replaces_a_superseded_fact",
           "tests/test_graph_speed.py::CancellableExtractionTests::test_manager_hands_the_cancel_event_to_the_extractor"
-        ], "commit": null, "date": "2026-11-19"},
-        {"n": 3, "title": "Docs", "status": "todo", "tests": [], "commit": null}
+        ], "commit": "7fd1d61", "date": "2026-11-19"},
+        {"n": 3, "title": "Docs", "status": "done", "tests": ["python -m unittest discover -s tests -t ."], "commit": null, "date": "2026-11-19"}
       ],
-      "notes": "Branched from F030 (F026-F030 not yet in main). Review finding M1 (memories/manager.py remember, memories/store.py)."
+      "notes": "Branched from F030 (F026-F030 not yet in main). Review finding M1 (memories/manager.py remember, memories/store.py). docs/PROJECT.md entries added but left unstaged (it holds the user's uncommitted edits)."
     }
   ]
 }
