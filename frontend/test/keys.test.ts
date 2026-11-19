@@ -17,6 +17,15 @@ const base: KeyContext = {
   busy: false,
 };
 
+test("Ctrl+K (Cmd+K) opens the command palette, even from the message box", () => {
+  assert.equal(shortcut({ ...base, key: "k", ctrl: true }), "palette");
+  assert.equal(shortcut({ ...base, key: "k", meta: true, typing: true }), "palette");
+  assert.equal(shortcut({ ...base, key: "K", ctrl: true }), null, "Ctrl+Shift+K belongs to the browser");
+  assert.equal(shortcut({ ...base, key: "k", ctrl: true, alt: true }), null);
+  assert.equal(shortcut({ ...base, key: "k" }), null);
+  assert.equal(shortcut({ ...base, key: "k", ctrl: true, dialogOpen: true }), null);
+});
+
 test("Escape closes the innermost thing first", () => {
   assert.equal(shortcut({ ...base, menuOpen: true, drawerOpen: true, busy: true }), "close-menu");
   assert.equal(shortcut({ ...base, drawerOpen: true, busy: true }), "close-drawer");

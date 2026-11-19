@@ -97,8 +97,9 @@
         <span id="voice-state" class="voice-state"></span>
         <span id="voice-time" class="voice-time"></span>
       </div>
+      <ul id="slash" class="slash" role="listbox" aria-label="Commands" hidden></ul>
       <label class="sr" for="input">Message</label>
-      <textarea id="input" rows="1" placeholder="Message the assistant" enterkeyhint="send"></textarea>
+      <textarea id="input" rows="1" placeholder="Message the assistant  ·  / for commands  ·  Ctrl+K" enterkeyhint="send" aria-controls="slash"></textarea>
       <div class="composer-tools">
         <div class="voice-tools">
           <button id="mic" type="button" class="tool mic" aria-pressed="false" title="Hold to talk (or hold Right Ctrl); the text goes into the message box. A short click records until the next click." hidden>
@@ -135,6 +136,12 @@
     <button id="confirm-cancel" type="button">Cancel</button>
     <button id="confirm-ok" type="button" class="destructive">Confirm</button>
   </div>
+</dialog>
+
+<dialog id="palette" class="palette" aria-label="Command palette">
+  <input id="palette-input" class="palette-input" type="text" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list" placeholder="Type a command or a session name" autocomplete="off" spellcheck="false">
+  <ul id="palette-list" class="palette-list" role="listbox" aria-label="Commands and sessions"></ul>
+  <p class="palette-hint"><kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> run · <kbd>Esc</kbd> close</p>
 </dialog>
 
 <script type="module" src="/main.js"></script>
