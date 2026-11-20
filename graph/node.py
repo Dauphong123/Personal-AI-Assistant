@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from uuid import uuid4
 
@@ -24,10 +25,11 @@ from language import normalize
 from llm_options import _flag, ollama_options
 from memories.manager import memory_query
 from memories.scheduler import MEMORY_SCHEDULER
+from claude_bridge import ClaudeCodeChat, ClaudeCodeError, session_uuid
 from model_chains import chains_for
-from model_choice import ModelChoice
+from model_choice import DEFAULT_EFFORT, ModelChoice
 from settings import max_history_tokens
-from tools import NEEDS_APPROVAL, TOOL_BY_NAME
+from tools import NEEDS_APPROVAL, PROJECT_ROOT, TOOL_BY_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -439,8 +441,14 @@ def router(state: State):
     return "direct"
 
 
-def route(state: State):
-    """Runs beside recall_memory (the router does not need memory); `chosen_route` reads it."""
+def route(state: State, config: RunnableConfig):
+    """Runs beside recall_memory (the router does not need memory); `chosen_route` reads it.
+    Claude Code needs no router: like Claude Code itself, it decides whether to use tools."""
+    choice = turn_model(config)
+
+    if choice is not None and choice.is_claude:
+        return {"route": "claude_code"}
+
     return {"route": router(state)}
 
 
@@ -459,6 +467,77 @@ def direct(state: State, config: RunnableConfig):
     _log_reply("direct", response)
 
     return {"messages": [response]}
+
+
+RECAP_MESSAGES = 12
+RECAP_CHARS = 500
+
+
+def _is_claude_answer(message) -> bool:
+    return isinstance(message, AIMessage) and str(message.additional_kwargs.get("model", "")).startswith("claude-code:")
+
+
+def claude_prompt(messages: list, memory_context: str, resumed: bool) -> str:
+    """What Claude Code gets for this turn: long-term memory, a recap of the talk its own session has
+    not seen (turns answered by a local model), then the user's message."""
+    parts: list[str] = []
+
+    if memory_context.strip():
+        parts.append(f"Long-term memory (reference, not a request):\n{memory_context.strip()}")
+
+    *earlier, latest = messages
+    last_claude = next((i for i in range(len(earlier) - 1, -1, -1) if _is_claude_answer(earlier[i])), None)
+
+    if last_claude is not None:
+        unseen = earlier[last_claude + 1 :]
+    else:
+        unseen = [] if resumed else earlier
+
+    lines = []
+    for message in unseen:
+        if isinstance(message, HumanMessage) and not message.additional_kwargs.get("notice"):
+            role = "user"
+        elif isinstance(message, AIMessage) and isinstance(message.content, str) and message.content.strip():
+            role = "assistant"
+        else:
+            continue
+        lines.append(f"{role}: {str(message.content)[:RECAP_CHARS]}")
+
+    if lines:
+        parts.append("Earlier in this chat (you did not see it):\n" + "\n".join(lines[-RECAP_MESSAGES:]))
+
+    parts.append(str(latest.content))
+    return "\n\n".join(parts)
+
+
+@timed
+def claude_code(state: State, config: RunnableConfig):
+    """One turn on Claude Code (the user's own login), in PROJECT_ROOT, resuming this thread's session."""
+    choice = turn_model(config) or ModelChoice("claude-code:sonnet", DEFAULT_EFFORT)
+    configurable = (config or {}).get("configurable", {})
+    session = session_uuid(str(configurable.get("thread_id", "")))
+    resumed = state.get("claude_session") == session
+
+    chat = ClaudeCodeChat(
+        alias=choice.alias or "sonnet",
+        effort=choice.effort or DEFAULT_EFFORT,
+        cwd=str(PROJECT_ROOT),
+        session_id=session,
+        resume=resumed,
+        approve=configurable.get("approve") or (lambda request: False),
+        cancel=configurable.get("cancel") or threading.Event(),
+    )
+
+    try:
+        prompt = claude_prompt(state["messages"], state.get("memory_context", ""), resumed)
+        reply = chat.invoke([HumanMessage(content=prompt)])
+    except ClaudeCodeError as exc:
+        answer = AIMessage(content=f"Claude Code could not answer: {exc}", additional_kwargs={"model": choice.model})
+        return {"messages": [answer], "claude_session": state.get("claude_session")}
+
+    # Same id as the streamed chunks, so the answer is not streamed a second time.
+    answer = AIMessage(content=reply.content, id=reply.id, additional_kwargs={"model": choice.model})
+    return {"messages": [answer], "claude_session": session}
 
 
 def summarize_need(state: State):

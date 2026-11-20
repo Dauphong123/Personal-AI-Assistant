@@ -314,6 +314,7 @@ class ClaudeCodeChat(BaseChatModel):
     ) -> Iterator[ChatGenerationChunk]:
         command = claude_command(self.alias, self.effort, self.session_id, self.resume)
         tools: dict[str, dict] = {}
+        sent = False
 
         for event in self.runner(command, self._prompt(messages), self.cwd, self.approve, self.cancel):
             if isinstance(event, Text):
@@ -333,7 +334,12 @@ class ClaudeCodeChat(BaseChatModel):
             if run_manager is not None:
                 run_manager.on_llm_new_token(chunk.content if isinstance(chunk.content, str) else "", chunk=generation)
 
+            sent = True
             yield generation
+
+        if not sent:
+            # An answer with no text (only tool work, or nothing): LangChain needs one chunk.
+            yield ChatGenerationChunk(message=AIMessageChunk(content=""))
 
     def _generate(
         self,

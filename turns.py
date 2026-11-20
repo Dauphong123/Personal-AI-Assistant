@@ -10,9 +10,9 @@ from langgraph.types import Command
 from language import detect_language, normalize, say
 from memories.scheduler import MEMORY_SCHEDULER
 
-STREAMED_NODES = {"direct", "code_tools", "tool_execute"}
+STREAMED_NODES = {"direct", "code_tools", "tool_execute", "claude_code"}
 # Only these produce text meant for the user; tool_execute streams raw tool output.
-SPOKEN_NODES = {"direct", "code_tools"}
+SPOKEN_NODES = {"direct", "code_tools", "claude_code"}
 
 CANCELLED_TOOL_OUTPUT = "ERROR: cancelled by the user."
 
@@ -208,6 +208,14 @@ class ToolActivity:
                 self._finished(piece)
             return True
 
+        if node == "claude_code" and isinstance(piece, AIMessageChunk):
+            # Claude Code runs its own tools; the bridge reports them on empty chunks.
+            tool = piece.additional_kwargs.get("claude_tool")
+            if tool:
+                self.report(dict(tool))
+                return True
+            return False
+
         if node == "code_tools" and isinstance(piece, AIMessageChunk):
             key = piece.id or ""
             total = self.messages[key] + piece if key in self.messages else piece
@@ -255,7 +263,7 @@ def stream_turn(
                     last_node = node
 
                 if node in SPOKEN_NODES:
-                    speech.feed(chunk, hold=node == "code_tools")
+                    speech.feed(chunk, hold=node in ("code_tools", "claude_code"))
 
             if activity is not None and activity.feed(node, chunk):
                 continue

@@ -312,6 +312,16 @@ class ChatModelTests(unittest.TestCase):
         self.assertEqual(tools[-1]["status"], "error")
         self.assertEqual(tools[-1]["name"], "Write")
 
+    def test_empty_answer_still_returns_a_message(self):
+        def runner(command, prompt, cwd, approve, cancel):
+            yield Done("", False)
+
+        self.assertEqual(make_chat(runner).invoke("x").content, "")
+        # LangGraph streams the model; a stream with no chunk at all is an error in LangChain.
+        chunks = list(make_chat(runner).stream("x"))
+        self.assertTrue(chunks)
+        self.assertEqual("".join(str(c.content) for c in chunks), "")
+
     def test_invoke_joins_the_text(self):
         def runner(command, prompt, cwd, approve, cancel):
             yield Text("a")
