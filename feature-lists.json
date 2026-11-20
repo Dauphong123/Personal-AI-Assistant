@@ -1638,6 +1638,20 @@
         {"n": 6, "title": "Docs and browser check", "status": "done", "tests": ["tests/test_project_docs.py", "tests/test_webui_frontend.py", "full suite 890 OK (31 skipped, Postgres down)", "npm test 167 pass", "browser at 390 px: no sideways scroll, cards/status/composer fit; Ctrl+K hint moved from the placeholder to the composer hint"], "commit": "5dafe83", "date": "2026-11-19"}
       ],
       "notes": "User request: \"Redesign the website for a more interactive website with user\". Plan approved 2026-11-19 (\"Okay\"): protocol bump 2 -> 3, branched from feature/F034-separate-frontend (F034 not yet in main), no new dependencies, look unchanged. Left out: 'always allow' approvals, model-suggested follow-ups, feedback buttons."
+    },
+    {
+      "id": "F036",
+      "name": "Cloud model providers (Claude, Gemini) and model switching",
+      "description": "Run the agent on Anthropic Claude or Google Gemini besides local Ollama, and let the user change the model.",
+      "status": "open",
+      "created": "2026-11-20",
+      "completed": null,
+      "branch": null,
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [],
+      "notes": "User request: \"Use claud provider and gemini model and give the ability to change model\"."
     }
   ]
 }
