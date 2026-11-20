@@ -1643,7 +1643,7 @@
       "id": "F036",
       "name": "Claude Code bridge and model switching",
       "description": "Let the user pick the model per session: local Ollama models (live list) or Claude Code run headless with the user's own Claude plan login (claude -p stream-json), so cloud turns behave like Claude Code.",
-      "status": "planned",
+      "status": "in_progress",
       "created": "2026-11-20",
       "completed": null,
       "branch": "feature/F036-cloud-models",
@@ -1654,9 +1654,11 @@
         {
           "n": 1,
           "title": "Model choice: live Ollama list + Claude Code entries (opus/sonnet/haiku/fable, effort default medium); model_settings.json (gitignored) holds the pick; reshape tests/test_providers.py",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_model_choice.py"
+          ],
+          "commit": "6025f5d"
         },
         {
           "n": 2,
