@@ -1672,16 +1672,20 @@
         {
           "n": 3,
           "title": "claude_bridge.py: run claude -p in PROJECT_ROOT with project settings only, --resume per session, stream text and tool events, kill on stop, clear errors (CLI missing, plan limit)",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_claude_bridge.py"
+          ],
+          "commit": "3c215d3"
         },
         {
           "n": 4,
           "title": "Approval: Edit/Write/Bash from Claude Code go through our y/N approval (interrupt), read/search/web allowed",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/test_claude_bridge.py::RunTests"
+          ],
+          "commit": "3c215d3"
         },
         {
           "n": 5,
