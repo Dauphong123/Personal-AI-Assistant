@@ -17,6 +17,7 @@ import turns
 from chat_loop import ChatLoop
 from graph import ModelGraph, node
 from jobs import JobManager
+from model_choice import ModelChoice
 from turns import TurnCancelled, is_stop_request
 
 
@@ -57,14 +58,16 @@ class FakeTurns:
 
     def __init__(self):
         self.ran = []
+        self.models = []
         self.gate = threading.Event()
         self.started = threading.Event()
         self.hold_first = True
         self.approvals = []
         self.ask_approval = False
 
-    def __call__(self, app, text, config, on_text, approve, cancel, on_speech=None, speech_limit=1200, notice=False):
+    def __call__(self, app, text, config, on_text, approve, cancel, on_speech=None, speech_limit=1200, notice=False, model=None):
         self.ran.append(text)
+        self.models.append(model)
         self.started.set()
         on_text(f"reply:{text}")
 
@@ -78,6 +81,65 @@ class FakeTurns:
                     raise TurnCancelled
 
                 time.sleep(0.01)
+
+
+class ModelCommandTests(unittest.TestCase):
+    """F036: /model lists the models and switches the one the next turns use."""
+
+    def setUp(self):
+        self.fake = FakeTurns()
+        self.fake.hold_first = False
+        self.saved: list = []
+        patches = [
+            patch.object(chat_loop, "run_turn", self.fake),
+            patch.object(chat_loop, "available_models", lambda: ["qwen3:8b", "qwen3:4b", "claude-code:opus"]),
+            patch.object(chat_loop, "save_default", self.saved.append),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        self.out: list[str] = []
+        self.chat = ChatLoop(None, {}, JobManager(), write=self.out.append, choice=ModelChoice("qwen3:8b", None))
+        self.chat.start()
+        self.addCleanup(self.chat.close)
+
+    @property
+    def text(self):
+        return "".join(self.out)
+
+    def test_model_lists_choices_and_the_current_one(self):
+        self.chat.submit("/model")
+        self.assertIn("Model: qwen3:8b", self.text)
+        self.assertIn("1. qwen3:8b", self.text)
+        self.assertIn("3. claude-code:opus", self.text)
+        self.assertEqual(self.fake.ran, [], "a command is not sent to the model")
+
+    def test_model_switches_saves_and_warns_for_claude(self):
+        self.chat.submit("/model claude-code:opus high")
+        choice = ModelChoice("claude-code:opus", "high")
+
+        self.assertEqual(self.chat.choice, choice)
+        self.assertEqual(self.saved, [choice])
+        self.assertIn("Anthropic", self.text)
+
+        self.chat.submit("hello")
+        self.assertTrue(wait_for(lambda: not self.chat.busy))
+        self.assertEqual(self.fake.models, [choice])
+
+    def test_model_by_number(self):
+        self.chat.submit("/model 2")
+        self.assertEqual(self.chat.choice, ModelChoice("qwen3:4b", None))
+        self.assertNotIn("Anthropic", self.text)
+
+        self.chat.submit("/model 3 low")
+        self.assertEqual(self.chat.choice, ModelChoice("claude-code:opus", "low"))
+
+    def test_bad_model_keeps_the_choice(self):
+        self.chat.submit("/model claude-code:gpt")
+        self.chat.submit("/model 9")
+        self.assertIn("/model <name> [effort]", self.text)
+        self.assertEqual(self.chat.choice, ModelChoice("qwen3:8b", None))
+        self.assertEqual(self.saved, [])
 
 
 class ChatLoopTests(unittest.TestCase):

@@ -15,6 +15,7 @@ from langgraph.errors import GraphRecursionError
 
 from jobs import NOTICE_PREFIX, Job, JobManager, finished_notice
 from language import detect_language, normalize, say
+from model_choice import ModelChoice, available_models, parse_choice, privacy_notice, save_default
 from turns import TurnCancelled, final_reply, is_stop_request, run_turn
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,11 @@ class ChatLoop:
         jobs: JobManager,
         write: Callable[[str], None] | None = None,
         on_reply: Callable[[str], None] | None = None,
+        choice: ModelChoice | None = None,
     ):
         self.app = app
         self.config = config
+        self.choice = choice  # the model for the next turns; None means MODEL (F036)
         self.jobs = jobs
         self._write = write or (lambda text: print(text, end="", flush=True))
         # (text, is_notice). unfinished_tasks counts queued plus the running turn.
@@ -122,6 +125,8 @@ class ChatLoop:
             self.say(self._jobs_summary())
         elif line.startswith("/cancel"):
             self.say(self._cancel_job(line))
+        elif line == "/model" or line.startswith("/model "):
+            self.say(self._model_command(line[len("/model") :].strip()))
         elif is_stop_request(line):
             if self.busy:
                 self.stop()
@@ -177,6 +182,37 @@ class ChatLoop:
             return "[Usage: /cancel <job id>]"
 
         return f"[{self.jobs.cancel(int(parts[1]))}]"
+
+    def _model_command(self, arg: str) -> str:
+        """`/model` lists; `/model <name|number> [effort]` switches (from the next turn) and saves it."""
+        models = available_models()
+
+        if not arg:
+            current = self.choice.label() if self.choice else "MODEL from .env"
+            listed = "\n".join(f"  {i}. {name}" for i, name in enumerate(models, 1))
+            return f"[Model: {current}]\n{listed}\n[Switch with /model <name or number> [effort]]"
+
+        parts = arg.split()
+
+        try:
+            if parts[0].isdigit():
+                index = int(parts[0]) - 1
+                if not 0 <= index < len(models):
+                    raise ValueError(f"No model number {parts[0]}. Usage: /model <name> [effort]")
+                parts[0] = models[index]
+            choice = parse_choice(" ".join(parts))
+        except ValueError as exc:
+            return f"[{exc}]"
+
+        self.choice = choice
+
+        try:
+            save_default(choice)
+        except OSError:
+            logger.warning("Could not save the model choice", exc_info=True)
+
+        notice = privacy_notice(choice)
+        return f"[Model: {choice.label()}]" + (f"\n[{notice}]" if notice else "")
 
     # --- background job notifications (called from a watcher thread) -------------
 
@@ -244,6 +280,7 @@ class ChatLoop:
                 on_speech=self.on_speech,
                 speech_limit=self.speech_limit,
                 notice=notice,
+                model=self.choice,
             )
 
             if not streamed:  # otherwise the answer was already spoken as it arrived
