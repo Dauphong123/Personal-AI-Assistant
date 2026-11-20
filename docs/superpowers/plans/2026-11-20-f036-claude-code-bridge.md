@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - No new Python or npm dependency.
+- Create files only inside this repository; nothing outside it. Tests never start a real `claude` process (fake `popen`/runner only).
 - The app never writes `.env`; the model choice lives in `model_settings.json` (gitignored).
 - `MODEL` stays the local base model (router, summaries, memory extraction).
 - Claude Code runs with `--setting-sources project,local --strict-mcp-config` (no user hooks, plugins or MCP servers).
@@ -66,22 +67,24 @@
 - [ ] **Step 4:** Run `python -m unittest tests.test_model_choice -v` and `.venv\Scripts\pyright model_choice.py tests\test_model_choice.py`. Expected: PASS, 0 errors.
 - [ ] **Step 5:** Commit `feat(F036): model choice, live Ollama list, model_settings.json`, push, update `feature-lists.json` step 1.
 
-### Task 2: Probe the Claude Code permission channel (decision gate)
+### Task 2: Stream-json fixtures (written by hand, no real `claude` run)
+
+Revised 2026-11-20 at the user's request: create files only inside this repository, run nothing outside it, so no live probe. The shapes below follow the Claude Agent SDK stream-json protocol and are **[assumed]** until the user's real run in Task 9.
 
 **Files:**
-- Create (scratchpad, not committed): `probe_claude.py`
-- Create: `tests/fixtures/claude_stream/text.jsonl`, `tool_read.jsonl`, `permission.jsonl`, `error.jsonl` (recorded stdout lines, trimmed to the fields Task 3 reads; no personal paths or account data)
-- Modify: `docs/PROJECT.md` (Verified findings: the exact control-message shapes)
+- Create: `tests/fixtures/claude_stream/text.jsonl`, `tool_read.jsonl`, `permission.jsonl`, `error.jsonl`
 
 **Interfaces:**
-- Produces: the recorded fixtures and the verified shapes of (a) partial text deltas, (b) assistant `tool_use` and user `tool_result` messages, (c) the permission request on stdout and the answer it accepts on stdin, (d) the final `result` message (`is_error`, `result`, `session_id`).
+- Produces fixtures with these [assumed] line shapes, which Task 3 parses:
+  - text delta: `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"..."}}}`
+  - tool call: `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{...}}]}}`
+  - tool result: `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"...","is_error":false}]}}`
+  - permission request: `{"type":"control_request","request_id":"req_1","request":{"subtype":"can_use_tool","tool_name":"Write","input":{...}}}`; answer on stdin: `{"type":"control_response","response":{"subtype":"success","request_id":"req_1","response":{"behavior":"allow","updatedInput":{...}}}}` or `{"behavior":"deny","message":"..."}`
+  - end: `{"type":"result","subtype":"success"|"error_during_execution","is_error":bool,"result":"...","session_id":"..."}`
+  - user input line written by us: `{"type":"user","message":{"role":"user","content":"..."}}`
 
-- [ ] **Step 1:** In the scratchpad, run `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages --model haiku --effort low --setting-sources project,local --strict-mcp-config --permission-prompts host --session-id <new uuid>` with `cwd` = a scratch folder holding one text file, writing one user message line to stdin (shape [assumed]: `{"type":"user","message":{"role":"user","content":"..."}}`). Ask it to read the file, then to create a second file. Record every stdout line.
-- [ ] **Step 2:** Answer the permission request for the write once with allow and once (new run) with deny, using the [assumed] Agent SDK shape: request `{"type":"control_request","request_id":...,"request":{"subtype":"can_use_tool","tool_name":...,"input":{...}}}`, answer `{"type":"control_response","response":{"subtype":"success","request_id":...,"response":{"behavior":"allow","updatedInput":{...}}}}` or `{"behavior":"deny","message":"..."}`. Check the file was created only on allow.
-- [ ] **Step 3:** Run once with `--resume <same uuid>` and ask "what file did you read?" — expect it to remember. Run once with `--model nosuchmodel` and once with a missing executable name to record error output.
-- [ ] **Step 4:** Check that no user hook ran (the user's "Fact-Forcing Gate" PreToolUse hook would print its message on a Read/Write).
-- [ ] **Step 5: Decision gate.** If allow/deny works as recorded: write the fixtures and the PROJECT.md finding, continue with Task 3 as written. If it does not: stop and tell the user; the agreed fallback is `--permission-prompts none` with a read-only permission mode and a per-session "allow edits" toggle (`acceptEdits` plus `Bash` allowed), which changes Task 3's `approve` handling and the Task 6/7/8 UI.
-- [ ] **Step 6:** Commit fixtures + PROJECT.md `test(F036): record Claude Code stream-json shapes`, push, update step 2.
+- [ ] **Step 1:** Write the four fixtures (Vietnamese text in `text.jsonl`: "Đã sửa").
+- [ ] **Step 2:** Commit `test(F036): stream-json fixtures (assumed shapes)`, push, update step 2 with a note that the shapes are [assumed]. If Task 9's real run shows other shapes, fix the parser and fixtures together then; the fallback agreed in the spec (read-only plus an allow-edits toggle) still applies if host permission prompts do not work.
 
 ### Task 3: `claude_bridge.py`
 
@@ -219,7 +222,7 @@
 **Files:**
 - Modify: `CLAUDE.md` (Architecture: model choice, `claude_code` node, bridge; Commands: `/model`), `backend/CLAUDE.md`, `frontend/CLAUDE.md`, `README.md`, `.env.example` (comment: Claude runs through Claude Code, no key), `docs/PROJECT.md` (Current state; Decisions entry for F036 with the rejected API-key path), `feature-lists.json` (F036 done)
 
-- [ ] **Step 1:** Real run: `python main.py`, `/model claude-code:haiku low`, ask it to read `README.md` and summarize (no approval asked), then to create `scratch.txt` (approval asked; answer n; file not created), then Stop mid-answer, then one more question (resumes). Record the result in PROJECT.md as [verified], or the failure found.
+- [ ] **Step 1:** Real run, done by the user (the agent runs nothing outside the repository and never starts `claude` itself): `python main.py`, `/model claude-code:haiku low`, ask it to read `README.md` and summarize (no approval asked), then to create `scratch.txt` (approval asked; answer n; file not created), then Stop mid-answer, then one more question (resumes). Record the result in PROJECT.md as [verified], or the failure found.
 - [ ] **Step 2:** Same in the web chat (`python -m backend`, frontend): approval card shown for the write, tool cards for the read.
 - [ ] **Step 3:** Update the docs listed above; run the full Python suite, Pyright and frontend checks.
 - [ ] **Step 4:** Commit `docs(F036): Claude Code bridge`, push, mark F036 done; open the PR to `main` when the user asks.

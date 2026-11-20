@@ -1,0 +1,8 @@
+{"type":"system","subtype":"init","session_id":"11111111-1111-5111-8111-111111111111"}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me read it."}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\""}}}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"text","text":"Let me read it."},{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"notes.txt"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"The secret word is pelican.","is_error":false}]}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"The word is pelican."}}}
+{"type":"assistant","message":{"id":"msg_2","content":[{"type":"text","text":"The word is pelican."}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"The word is pelican.","session_id":"11111111-1111-5111-8111-111111111111"}

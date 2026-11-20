@@ -45,8 +45,9 @@ apps, so the app does not call Claude directly: it runs the user's installed Cla
   `--session-id <uuid>`, `--resume <id>`, `--setting-sources`, `--strict-mcp-config`,
   `--permission-prompts host`, `--append-system-prompt`, `--verbose`.
 - The control-message shape for host permission prompts is [assumed] from the Agent SDK protocol and
-  must be verified by a probe before the bridge is built; if it does not work, fall back to "read-only
-  plus a per-session allow-edits toggle" and tell the user.
+  is verified by the user's real run at the end (the user asked that nothing run or be created outside
+  the repository, so there is no live probe before building); if it does not work, fall back to
+  "read-only plus a per-session allow-edits toggle" and tell the user.
 - `MODEL` stays the local base model: router, summaries and memory extraction keep using it.
 
 ## Approaches considered
