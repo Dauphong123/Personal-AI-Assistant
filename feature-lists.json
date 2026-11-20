@@ -1596,9 +1596,9 @@
       "files": [],
       "tests": [],
       "steps": [
-        {"n": 1, "title": "DNS lookup timeout (DNS_TIMEOUT)", "status": "done", "tests": ["tests/test_web.py::DnsTimeoutTests", "full suite 893 OK (31 skipped, Postgres down)"], "commit": null, "date": "2026-11-20"},
-        {"n": 2, "title": "One deadline per fetch: request timeouts and body reads (read1) stop at FETCH_DEADLINE", "status": "in_progress", "tests": [], "commit": null},
-        {"n": 3, "title": "Hard wall-clock limit: fetch runs on a worker thread, caller waits at most FETCH_DEADLINE", "status": "todo", "tests": [], "commit": null}
+        {"n": 1, "title": "DNS lookup timeout (DNS_TIMEOUT)", "status": "done", "tests": ["tests/test_web.py::DnsTimeoutTests", "full suite 893 OK (31 skipped, Postgres down)"], "commit": "5ddf9b1", "date": "2026-11-20"},
+        {"n": 2, "title": "One deadline per fetch: request timeouts and body reads (read1) stop at FETCH_DEADLINE", "status": "done", "tests": ["tests/test_web.py::FetchDeadlineTests", "full suite 896 OK (31 skipped, Postgres down)", "real local server probe: gzip and chunked bodies intact, 1-byte-per-0.5 s drip stopped at the 3 s probe deadline"], "commit": null, "date": "2026-11-20"},
+        {"n": 3, "title": "Hard wall-clock limit: fetch runs on a worker thread, caller waits at most FETCH_DEADLINE", "status": "in_progress", "tests": [], "commit": null}
       ],
       "notes": "Review finding W1. Plan approved 2026-11-20 (\"yes\"). Known limit: a server stalling during the headers can keep one worker thread and socket alive until it gives up; the tool still answers on time."
     },

@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 
 SEARCH_TIMEOUT = 10  # seconds
 FETCH_TIMEOUT = 10  # per connect / socket read
+FETCH_DEADLINE = 20  # whole page fetch: every redirect hop and the body
 DNS_TIMEOUT = 5
+READ_CHUNK = 65536
 MAX_PAGE_BYTES = 2_000_000
 MAX_REDIRECTS = 5
 MAX_SEARCH_RESULTS = 10
@@ -219,26 +221,45 @@ def _pinned(host: str, addresses: list[str]):
         _pins.map = previous
 
 
-def http_get(url: str) -> requests.Response:
+def http_get(url: str, timeout: float = FETCH_TIMEOUT) -> requests.Response:
     return requests.get(
         url,
         headers={"User-Agent": USER_AGENT, "Accept": "text/html,text/plain;q=0.9,*/*;q=0.5"},
-        timeout=FETCH_TIMEOUT,
+        timeout=timeout,
         stream=True,
         allow_redirects=False,  # redirects are followed by hand so every hop is checked
     )
 
 
+_clock = time.monotonic
+
+
+def _time_left(deadline: float) -> float:
+    """Seconds until `deadline`; WebError once it has passed."""
+    left = deadline - _clock()
+
+    if left <= 0:
+        raise WebError(f"the page took longer than {FETCH_DEADLINE} s to load")
+
+    return left
+
+
 def fetch(url: str) -> tuple[str, str, bytes]:
-    """(final url, content type, body) of a public web page."""
+    """(final url, content type, body) of a public web page, within FETCH_DEADLINE.
+
+    The requests timeout counts each socket read, so a server sending a byte every few
+    seconds would never trip it; the body is read one network read at a time (`read1`)
+    and the deadline is checked between reads."""
+    deadline = _clock() + FETCH_DEADLINE
     response = None
 
     for _ in range(MAX_REDIRECTS + 1):
+        left = _time_left(deadline)
         host, addresses = public_addresses(url)  # raises WebError for anything not public
 
         try:
             with _pinned(host, addresses):
-                response = http_get(url)
+                response = http_get(url, min(FETCH_TIMEOUT, left))
         except requests.RequestException as e:
             raise WebError(f"could not load the page ({type(e).__name__})") from None
 
@@ -264,11 +285,14 @@ def fetch(url: str) -> tuple[str, str, bytes]:
 
         body = bytearray()
 
-        for part in response.iter_content(65536):
-            body += part
+        while len(body) <= MAX_PAGE_BYTES:
+            _time_left(deadline)
+            part = response.raw.read1(READ_CHUNK, decode_content=True)
 
-            if len(body) > MAX_PAGE_BYTES:
+            if not part:
                 break
+
+            body += part
 
         return url, content_type, bytes(body[:MAX_PAGE_BYTES])
     finally:
