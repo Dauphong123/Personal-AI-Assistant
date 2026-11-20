@@ -145,6 +145,12 @@ User: what is a docker volume?                <- direct answer (or uses the know
 User: run the tests                           <- asks approval, then runs a shell command
 ```
 
+### Switching models
+
+`/model` lists the models: installed Ollama models and Claude Code (`claude-code:opus`, `sonnet`, `haiku`, `fable`). `/model claude-code:sonnet high` (or `/model 3`) switches from the next message and remembers it in `model_settings.json`. The web chat has a model picker per session.
+
+Claude models run through your installed Claude Code (`claude` on PATH, logged in with your Claude plan): no API key. That turn behaves like Claude Code (its own context, thinking and tools) in the project folder; file edits and shell commands still ask you first. Your messages, long-term memory and the files it reads go to Anthropic.
+
 ### Approvals
 
 Before `terminal`, `write_file`, `edit_file`, `delete_file` or `move_file` run, the assistant prints what it wants to do and asks:
