@@ -16,14 +16,16 @@ import os
 import socket
 import threading
 import time
-from typing import Any
+from typing import Any, Callable, TypeVar
 from urllib.parse import urljoin, urlparse
 
 import requests
+import urllib3.exceptions
 
 from retrieval import best_passages
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 SEARCH_TIMEOUT = 10  # seconds
 FETCH_TIMEOUT = 10  # per connect / socket read
@@ -109,28 +111,38 @@ def _lookup(host: str, port: int) -> list[str]:
     return [str(info[4][0]) for info in socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)]
 
 
-def _resolve(host: str, port: int) -> list[str]:
-    """Addresses of `host`. getaddrinfo has no timeout, so it runs on a daemon thread and
-    TimeoutError is raised after DNS_TIMEOUT (the thread is left to finish on its own)."""
+class _Overdue(Exception):
+    """A call on a worker thread did not finish in time."""
+
+
+def _in_thread(name: str, timeout: float, fn: Callable[..., T], *args) -> T:
+    """fn(*args) on a daemon thread: its result or its exception, or _Overdue after
+    `timeout` seconds. Python cannot stop a thread, so an overdue one is left to finish
+    on its own (and its result dropped); a daemon thread never delays exit."""
     outcome: dict[str, Any] = {}
 
-    def lookup():
+    def run():
         try:
-            outcome["addresses"] = _lookup(host, port)
-        except Exception as e:
+            outcome["value"] = fn(*args)
+        except BaseException as e:
             outcome["error"] = e
 
-    worker = threading.Thread(target=lookup, name="dns-lookup", daemon=True)
+    worker = threading.Thread(target=run, name=name, daemon=True)
     worker.start()
-    worker.join(DNS_TIMEOUT)
+    worker.join(timeout)
 
     if worker.is_alive():
-        raise TimeoutError(f"looking up {host} took too long")
+        raise _Overdue(name)
 
     if "error" in outcome:
         raise outcome["error"]
 
-    return outcome["addresses"]
+    return outcome["value"]
+
+
+def _resolve(host: str, port: int) -> list[str]:
+    """Addresses of `host`; getaddrinfo has no timeout of its own, so DNS_TIMEOUT is kept here."""
+    return _in_thread("dns-lookup", DNS_TIMEOUT, _lookup, host, port)
 
 
 def public_addresses(url: str) -> tuple[str, list[str]]:
@@ -149,7 +161,7 @@ def public_addresses(url: str) -> tuple[str, list[str]]:
     try:
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         addresses = _resolve(parsed.hostname, port)
-    except TimeoutError:
+    except _Overdue:
         raise WebError(f"could not find {parsed.hostname} (the name lookup took too long)") from None
     except (OSError, ValueError):
         raise WebError(f"could not find {parsed.hostname}") from None
@@ -248,8 +260,17 @@ def fetch(url: str) -> tuple[str, str, bytes]:
     """(final url, content type, body) of a public web page, within FETCH_DEADLINE.
 
     The requests timeout counts each socket read, so a server sending a byte every few
-    seconds would never trip it; the body is read one network read at a time (`read1`)
-    and the deadline is checked between reads."""
+    seconds would never trip it. `_fetch` checks the deadline between reads; the fetch
+    also runs on a worker thread so the caller gets an answer on time even when one read
+    never returns (headers trickling in). The address pins are per thread, so they are set
+    inside the worker."""
+    try:
+        return _in_thread("web-fetch", FETCH_DEADLINE, _fetch, url)
+    except _Overdue:
+        raise WebError(f"the page took longer than {FETCH_DEADLINE} s to load") from None
+
+
+def _fetch(url: str) -> tuple[str, str, bytes]:
     deadline = _clock() + FETCH_DEADLINE
     response = None
 
@@ -287,7 +308,11 @@ def fetch(url: str) -> tuple[str, str, bytes]:
 
         while len(body) <= MAX_PAGE_BYTES:
             _time_left(deadline)
-            part = response.raw.read1(READ_CHUNK, decode_content=True)
+
+            try:
+                part = response.raw.read1(READ_CHUNK, decode_content=True)
+            except (urllib3.exceptions.HTTPError, OSError) as e:  # read timeout, reset, bad gzip
+                raise WebError(f"could not load the page ({type(e).__name__})") from None
 
             if not part:
                 break
