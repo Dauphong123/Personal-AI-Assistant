@@ -9,3 +9,5 @@ frontend/dist/
 # LOG_FILE output
 logs/
 *.log
+model_settings.json
+model_settings.json.tmp
