@@ -11,6 +11,7 @@ export interface ServerInfo {
     sessions: boolean;
     notices: boolean; // background-job completion notices arrive as `notice` turns
     voice: { transcribe: boolean; speak: boolean };
+    models?: boolean; // F036: per-session model choice (GET /api/models, POST .../model)
   };
   limits: { max_sessions: number; max_turns: number; max_body: number; max_audio: number };
 }
@@ -23,6 +24,15 @@ export interface SessionInfo {
   state: SessionState;
   created: number; // seconds since the epoch
   last_event: number;
+  model?: string; // F036
+  effort?: string | null;
+}
+
+/** GET /api/models (F036). */
+export interface ModelList {
+  models: string[];
+  efforts: string[];
+  default: { model: string; effort: string | null };
 }
 
 export type ToolStatus = "running" | "done" | "error";
@@ -49,5 +59,6 @@ export type ChatEvent = { at?: number } & (
   | { id: number; type: "cancelled" }
   | { id: number; type: "error"; text: string }
   | { id: number; type: "reset" }
+  | { id: number; type: "model"; model: string; effort: string | null; text: string } // F036: model switched; text: privacy line or ""
   | { type: "gone" }
 );

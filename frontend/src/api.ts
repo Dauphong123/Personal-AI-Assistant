@@ -3,7 +3,7 @@
 
 import type { Dictation } from "./handsfree.ts";
 import { PROTOCOL } from "./types.ts";
-import type { ServerInfo, SessionInfo } from "./types.ts";
+import type { ModelList, ServerInfo, SessionInfo } from "./types.ts";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
 
@@ -51,6 +51,16 @@ export class Api {
 
   rename(id: string, title: string): Promise<Result<SessionInfo>> {
     return this.#action(id, "rename", { title });
+  }
+
+  /** F036: the models a session can switch to. */
+  listModels(): Promise<Result<ModelList>> {
+    return this.#call("GET", "/api/models", undefined, (body) => body as unknown as ModelList);
+  }
+
+  /** F036: switch this session's model from its next turn (409 while a turn runs). */
+  setModel(id: string, model: string, effort: string | null): Promise<Result<SessionInfo>> {
+    return this.#action(id, "model", { model, effort });
   }
 
   remove(id: string): Promise<Result<null>> {

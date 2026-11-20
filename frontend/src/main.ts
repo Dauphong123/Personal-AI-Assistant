@@ -20,7 +20,7 @@ import {
   statusOf,
 } from "./state.ts";
 import type { Conversation, Item } from "./state.ts";
-import type { ServerInfo, SessionInfo } from "./types.ts";
+import type { ModelList, ServerInfo, SessionInfo } from "./types.ts";
 import { apiFrom, sessionFromHash, tokenFrom } from "./url.ts";
 import { parseMarkdown } from "./markdown.ts";
 import { actionButton, copyButton, ICONS, renderBlocks, renderCalls, renderTool } from "./render.ts";
@@ -78,6 +78,8 @@ const ui = {
   jump: byId<HTMLButtonElement>("jump"),
   theme: byId<HTMLButtonElement>("theme"),
   status: byId("status"),
+  model: byId<HTMLSelectElement>("model"),
+  effort: byId<HTMLSelectElement>("effort"),
   rename: byId<HTMLButtonElement>("rename"),
   clear: byId<HTMLButtonElement>("clear-chat"),
   remove: byId<HTMLButtonElement>("delete-session"),
@@ -148,6 +150,7 @@ const api = new Api(launch.token, undefined, target.api);
 // --- state ---------------------------------------------------------------------
 
 let server: ServerInfo | null = null; // from the handshake
+let models: ModelList | null = null; // F036: what the model picker offers
 let sessions: SessionInfo[] = [];
 let activeId: string | null = null;
 let conv: Conversation = emptyConversation();
@@ -256,6 +259,7 @@ function renderHeader(): void {
     queued: handsFreeQueue.length,
     now: Date.now(),
   });
+  renderModelPicker(session);
   ui.status.textContent = status.text;
   ui.status.dataset["tone"] = status.tone;
   // The running time ticks every second: kept out of the status region so it is not announced.
@@ -325,6 +329,13 @@ function setLabel(button: HTMLElement, text: string): void {
 }
 
 function renderMessage(item: Item): HTMLElement {
+  if (item.kind === "model") {
+    const line = document.createElement("p");
+    line.className = "note model-note";
+    line.textContent = item.text;
+    return line;
+  }
+
   if (item.kind === "notice") {
     const notice = document.createElement("p");
     notice.className = "job-notice";
@@ -714,6 +725,46 @@ async function run(action: (id: string) => Promise<{ ok: boolean; error?: string
   showAlert(result.ok ? null : (result.error ?? "Request failed."));
   await refreshSessions();
 }
+
+// --- model (F036) -------------------------------------------------------------------
+
+async function loadModels(): Promise<void> {
+  if (!server?.features.models) return;
+
+  const result = await api.listModels();
+  if (!result.ok) return;
+
+  models = result.data;
+  ui.effort.replaceChildren(...models.efforts.map((effort) => new Option(effort, effort)));
+  renderHeader();
+}
+
+const isClaude = (model: string): boolean => model.startsWith("claude-code:");
+
+function renderModelPicker(session: SessionInfo | undefined): void {
+  const model = session?.model;
+  ui.model.hidden = !models || !model;
+  ui.effort.hidden = ui.model.hidden || !isClaude(model ?? "");
+  if (!models || !model) return;
+
+  const names = models.models.includes(model) ? models.models : [model, ...models.models];
+  if ([...ui.model.options].map((o) => o.value).join("\n") !== names.join("\n")) {
+    ui.model.replaceChildren(...names.map((name) => new Option(name, name)));
+  }
+
+  if (document.activeElement !== ui.model) ui.model.value = model;
+  if (document.activeElement !== ui.effort) ui.effort.value = session?.effort ?? "medium";
+  ui.model.disabled = conv.busy;
+  ui.effort.disabled = conv.busy;
+}
+
+function chooseModel(model: string, effort: string | null): void {
+  const level = isClaude(model) ? (effort ?? (ui.effort.value || "medium")) : null;
+  void run((id) => api.setModel(id, model, level));
+}
+
+ui.model.addEventListener("change", () => chooseModel(ui.model.value, null));
+ui.effort.addEventListener("change", () => chooseModel(ui.model.value, ui.effort.value));
 
 // --- voice ------------------------------------------------------------------------
 
@@ -1138,6 +1189,11 @@ function runCommand(name: string, arg = ""): void {
     return;
   }
 
+  if (name.startsWith("model:")) {
+    chooseModel(name.slice(6), null);
+    return;
+  }
+
   if (name.startsWith("theme:")) {
     setTheme(parseTheme(name.slice(6)));
     return;
@@ -1167,6 +1223,12 @@ function runCommand(name: string, arg = ""): void {
     case "theme":
       ui.theme.click();
       break;
+    case "model": {
+      const [model, effort] = arg.split(/\s+/).filter(Boolean);
+      if (model) chooseModel(model, effort ?? null);
+      else if (!ui.model.hidden) ui.model.focus();
+      break;
+    }
     case "speak":
       ui.speakAnswers.checked = !ui.speakAnswers.checked;
       ui.speakAnswers.dispatchEvent(new Event("change"));
@@ -1201,6 +1263,12 @@ function paletteItems(): PaletteItem[] {
 
   if (!ui.speakLabel.hidden) {
     items.push({ id: "speak", title: ui.speakAnswers.checked ? "Stop reading answers aloud" : "Read answers aloud", keywords: "voice speech tts" });
+  }
+
+  if (session && models && !conv.busy) {
+    for (const model of models.models) {
+      if (model !== session.model) items.push({ id: `model:${model}`, title: `Model: ${model}`, detail: "/model", keywords: "model switch llm claude ollama" });
+    }
   }
 
   items.push({ id: "focus", title: "Write a message", detail: "/", keywords: "type input box" });
@@ -1693,6 +1761,7 @@ async function start(): Promise<void> {
 
   server = hello.data;
   setUpVoice(server);
+  void loadModels();
 
   if (await refreshSessions()) {
     await openDefault();
