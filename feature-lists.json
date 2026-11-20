@@ -1663,9 +1663,11 @@
         {
           "n": 2,
           "title": "Verify the claude -p stream-json host permission channel (scratchpad probe); fall back to read-only + per-session toggle if it does not work",
-          "status": "todo",
-          "tests": [],
-          "commit": null
+          "status": "done",
+          "tests": [
+            "tests/fixtures/claude_stream/*.jsonl (shapes assumed; real check in step 9)"
+          ],
+          "commit": "16bb289"
         },
         {
           "n": 3,
