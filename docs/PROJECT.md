@@ -5,9 +5,7 @@ Shared memory across sessions. Read at session start (imported by root `CLAUDE.m
 Tags: **[verified]** checked in code/tests/docs (cite where) · **[assumed]** believed, not checked · **[unknown]** open.
 
 ## Current state
-- 2026-11-19: F035 (more interactive web chat: tool cards, Edit/Retry, live timing, Ctrl+K palette, slash commands) on `feature/F035-interactive-frontend`, branched from `feature/F034-separate-frontend` (F034 is done but not yet in `main`; merge F034 first). Suite 890 OK, 31 skipped (Postgres down); frontend tests 167. [verified: unittest discover, npm test]
-- 2026-11-19: F034 (frontend and backend as two parts linked by the agent API) done on `feature/F034-separate-frontend`, not merged. [verified: git log main..]
-- 2026-11-19: `main` fast-forwarded to `4c21042` (F028-F032 plus the Vietnamese STT fix and docs), CI green; F019-F032 are all in `main`, no merge commits. [verified: git log, gh run view 44566976752]
+- 2026-11-20: F034 (separate frontend and backend) and F035 (interactive web chat) are in `main` as one squash commit `7310c2b` (PR #11; tree identical to the F035 tip); PR #10 (F034 alone) closed as superseded. F019-F035 all in `main`; every feature branch deleted locally and on GitHub, only `main` remains. F036 (cloud providers, model switching) is open, not started. Last suite: 890 OK, 31 skipped (Postgres down); frontend tests 167. [verified: git rev-parse trees, git branch -a, gh pr view 10]
 - Other test status: model eval qwen3:8b arguments 6/6, tool choice 8/8 (2026-11-18); memory eval (`RUN_MEMORY_EVAL=1`) 40/40 (2026-11-17). [verified: RUN_MODEL_EVAL=1, test_memory_eval]
 - GitHub says the repo moved to `Dauphong123/Personal-AI-Assistant`; `origin` still points at `Dauphong123/RAG.git` (pushes are redirected). [verified: git push output]
 
