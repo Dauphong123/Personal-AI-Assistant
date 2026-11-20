@@ -97,7 +97,7 @@ class ModelRouteTests(ServerCase):
 
     def test_bad_model_is_a_400(self):
         sid = self.new_session()
-        for body in [{"model": "claude-code:gpt"}, {"model": 5}, {"model": "qwen3:4b", "effort": "high"}, {}]:
+        for body in [{"model": "claude-code:gpt"}, {"model": 5}, {"model": "qwen3:4b", "effort": "high"}, {}, {"model": "qwen3:8bb"}]:
             with self.subTest(body=body):
                 status, data = self.api("POST", f"/api/sessions/{sid}/model", body)
                 self.assertEqual(status, 400)

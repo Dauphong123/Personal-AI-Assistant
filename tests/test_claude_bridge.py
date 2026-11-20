@@ -21,7 +21,6 @@ from claude_bridge import (
     claude_command,
     parse_line,
     run_claude,
-    session_uuid,
 )
 from turns import TurnCancelled
 
@@ -142,11 +141,6 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(resumed[resumed.index("--resume") + 1], "U")
         self.assertNotIn("--session-id", resumed)
 
-    def test_session_uuid_is_stable_per_thread(self):
-        self.assertEqual(session_uuid("web-1"), session_uuid("web-1"))
-        self.assertNotEqual(session_uuid("web-1"), session_uuid("web-2"))
-        self.assertEqual(len(session_uuid("1")), 36)
-
     def test_approval_tools(self):
         self.assertEqual(APPROVAL_TOOLS, frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}))
 
@@ -251,6 +245,31 @@ class RunTests(unittest.TestCase):
 
         self.assertTrue(process.killed)
 
+    def test_stop_raised_by_the_approval_kills_claude(self):
+        # The real approve callbacks (ChatLoop, ChatSession) raise TurnCancelled on Stop.
+        process = FakeProcess()
+        process.out.put(fixture("permission.jsonl")[5])
+
+        def approve(request: dict) -> bool:
+            raise TurnCancelled
+
+        with self.assertRaises(TurnCancelled):
+            run(process, approve=approve)
+
+        self.assertTrue(process.killed)
+
+    def test_any_failure_mid_turn_kills_claude(self):
+        process = FakeProcess()
+        process.out.put(fixture("permission.jsonl")[5])
+
+        def approve(request: dict) -> bool:
+            raise RuntimeError("approval box broke")
+
+        with self.assertRaises(RuntimeError):
+            run(process, approve=approve)
+
+        self.assertTrue(process.killed)
+
     def test_missing_claude_is_a_clear_error(self):
         def popen(args, **kwargs):
             raise FileNotFoundError("claude")
@@ -262,10 +281,24 @@ class RunTests(unittest.TestCase):
         with self.assertRaisesRegex(ClaudeCodeError, "usage limit reached"):
             run(FakeProcess(fixture("error.jsonl")))
 
-    def test_exit_without_result_uses_stderr(self):
-        process = FakeProcess([], returncode=1, stderr="Invalid API key · Please run /login\n")
-        with self.assertRaisesRegex(ClaudeCodeError, "run /login"):
+    def test_exit_without_result_is_one_sentence_and_logs_stderr(self):
+        stderr = "Error: unknown option '--effort'\n    at Command.parse (cli.js:1:2)\n    at main (cli.js:3:4)\n"
+        process = FakeProcess([], returncode=1, stderr=stderr)
+
+        with self.assertLogs("claude_bridge", "WARNING") as logs, self.assertRaises(ClaudeCodeError) as caught:
             run(process)
+
+        message = str(caught.exception)
+        self.assertNotIn("\n", message)
+        self.assertNotIn("cli.js", message)
+        self.assertIn("exit code 1", message)
+        self.assertIn("unknown option", "\n".join(logs.output))
+
+    def test_error_result_shows_only_its_first_line(self):
+        line = json.dumps({"type": "result", "is_error": True, "result": "Not logged in.\nRun claude and /login.\nDetails: x"})
+        with self.assertRaises(ClaudeCodeError) as caught:
+            run(FakeProcess([line + "\n"]))
+        self.assertEqual(str(caught.exception), "Not logged in.")
 
     def test_vietnamese_round_trip(self):
         process = FakeProcess(fixture("text.jsonl"))
@@ -293,7 +326,7 @@ class ChatModelTests(unittest.TestCase):
         chunks = [c for c in chat.stream("What is in a.py?") if c.content or c.additional_kwargs]
 
         self.assertEqual([c.content for c in chunks], ["Hi", "", "", " there"])
-        tools = [c.additional_kwargs["claude_tool"] for c in chunks if "claude_tool" in c.additional_kwargs]
+        tools = [c.additional_kwargs["claude_tools"][0] for c in chunks if "claude_tools" in c.additional_kwargs]
         self.assertEqual([t["status"] for t in tools], ["running", "done"])
         self.assertEqual(tools[0]["name"], "Read")
         self.assertEqual(tools[1]["text"], "print(1)")
@@ -302,13 +335,30 @@ class ChatModelTests(unittest.TestCase):
         self.assertEqual(seen["command"][seen["command"].index("--resume") + 1], "S")
         self.assertEqual(seen["command"][seen["command"].index("--effort") + 1], "high")
 
+    def test_tool_chunks_add_up_without_merging(self):
+        # LangChain adds chunks together; two calls with the same argument of different values
+        # must not clash (merge_dicts raises on differing booleans).
+        def runner(command, prompt, cwd, approve, cancel):
+            yield ToolStart("t1", "Edit", {"file_path": "a.py", "replace_all": False})
+            yield ToolStart("t2", "Edit", {"file_path": "b.py", "replace_all": True})
+            yield ToolResult("t1", "ok", False)
+            yield Done("", False)
+
+        chunks = list(make_chat(runner).stream("x"))
+        total = chunks[0]
+        for chunk in chunks[1:]:
+            total = total + chunk
+        tools = total.additional_kwargs["claude_tools"]
+        self.assertEqual([t["id"] for t in tools], ["t1", "t2", "t1"])
+        self.assertEqual(tools[1]["args"]["replace_all"], True)
+
     def test_failed_tool_is_reported_as_error(self):
         def runner(command, prompt, cwd, approve, cancel):
             yield ToolStart("t1", "Write", {})
             yield ToolResult("t1", "The user declined this action.", True)
             yield Done("", False)
 
-        tools = [c.additional_kwargs["claude_tool"] for c in make_chat(runner).stream("x") if c.additional_kwargs]
+        tools = [c.additional_kwargs["claude_tools"][0] for c in make_chat(runner).stream("x") if c.additional_kwargs]
         self.assertEqual(tools[-1]["status"], "error")
         self.assertEqual(tools[-1]["name"], "Write")
 

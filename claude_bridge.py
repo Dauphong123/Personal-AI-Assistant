@@ -12,7 +12,6 @@ import queue
 import shutil
 import subprocess
 import threading
-import uuid
 from collections import deque
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -72,11 +71,6 @@ class Done:
 
 Event = Text | ToolStart | ToolResult | Permission | Done
 Approve = Callable[[dict], bool]
-
-
-def session_uuid(thread_id: str) -> str:
-    """One Claude Code session per chat thread, so the next turn can --resume it."""
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, "langchain-agent/" + thread_id))
 
 
 def claude_command(alias: str, effort: str, session_id: str, resume: bool, exe: str = "claude") -> list[str]:
@@ -228,8 +222,7 @@ def run_claude(
     finished = False
 
     def stop() -> None:
-        kill(process)
-        raise TurnCancelled
+        raise TurnCancelled  # the handler below stops Claude Code
 
     try:
         while True:
@@ -261,14 +254,18 @@ def run_claude(
                     except OSError:
                         pass
                     if event.is_error:
-                        raise ClaudeCodeError(event.text or "Claude Code stopped with an error.")
+                        first = (event.text.strip().splitlines() or [""])[0].strip()
+                        raise ClaudeCodeError(first or "Claude Code stopped with an error.")
 
                 yield event
 
             if finished:
                 break
-    except GeneratorExit:
-        kill(process)
+    except BaseException:
+        # Stop (TurnCancelled, also raised by an approval box), an error, or the reader went away:
+        # never leave Claude Code (and a command it started) running behind us.
+        if not finished:
+            kill(process)
         raise
 
     if finished:
@@ -276,13 +273,16 @@ def run_claude(
 
     code = process.wait()
     detail = "\n".join(line for line in errors if line).strip()
-    raise ClaudeCodeError(detail or f"Claude Code stopped without an answer (exit code {code}).")
+    if detail:
+        logger.warning("Claude Code stopped without an answer (exit code %s):\n%s", code, detail)
+    raise ClaudeCodeError(f"Claude Code stopped without an answer (exit code {code}); the details are in the log.")
 
 
 class ClaudeCodeChat(BaseChatModel):
     """One Claude Code turn as a LangChain chat model, so LangGraph streams its text like any model's.
 
-    Tool activity arrives as empty chunks with additional_kwargs["claude_tool"]."""
+    Tool activity arrives as empty chunks with additional_kwargs["claude_tools"] = [one report]: a
+    list, because LangChain adds chunks up and appends lists, where it would merge (or clash on) dicts."""
 
     alias: str
     effort: str
@@ -321,11 +321,11 @@ class ClaudeCodeChat(BaseChatModel):
                 chunk = AIMessageChunk(content=event.text)
             elif isinstance(event, ToolStart):
                 tools[event.id] = {"id": event.id, "name": event.name, "args": event.args}
-                chunk = AIMessageChunk(content="", additional_kwargs={"claude_tool": {**tools[event.id], "status": "running"}})
+                chunk = AIMessageChunk(content="", additional_kwargs={"claude_tools": [{**tools[event.id], "status": "running"}]})
             elif isinstance(event, ToolResult):
                 call = tools.get(event.id, {"id": event.id, "name": "tool", "args": {}})
                 status = "error" if event.is_error else "done"
-                chunk = AIMessageChunk(content="", additional_kwargs={"claude_tool": {**call, "status": status, "text": event.text}})
+                chunk = AIMessageChunk(content="", additional_kwargs={"claude_tools": [{**call, "status": status, "text": event.text}]})
             else:
                 continue
 

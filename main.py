@@ -10,7 +10,7 @@ from chat_loop import ChatLoop
 from graph import ModelGraph
 from graph.node import wait_for_memory
 from log_setup import configure_logging
-from model_choice import default_choice, privacy_notice
+from model_choice import privacy_notice, startup_choice
 from tools import JOBS
 
 
@@ -65,7 +65,7 @@ def main() -> None:
     app = ModelGraph.compile(checkpointer=InMemorySaver())
     config: RunnableConfig = {"configurable": {"thread_id": "1"}, "recursion_limit": 100}
 
-    choice = default_choice()
+    choice = startup_choice()
     chat = ChatLoop(app, config, JOBS, choice=choice)
 
     if (notice := privacy_notice(choice)) is not None:

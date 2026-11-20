@@ -8,6 +8,8 @@ from pathlib import Path
 from model_choice import (
     ModelChoice,
     available_models,
+    check_available,
+    startup_choice,
     default_choice,
     load_settings,
     ollama_models,
@@ -112,6 +114,25 @@ class DefaultChoiceTests(unittest.TestCase):
                 self.path.write_text(text, encoding="utf-8")
                 with self.assertLogs("model_choice", "WARNING"):
                     self.assertEqual(default_choice(ENV, self.path), ModelChoice("qwen3:8b", None))
+
+    def test_a_saved_ollama_model_that_is_gone_falls_back_to_model(self):
+        save_default(ModelChoice("qwen3:4b", None), self.path)
+        with self.assertLogs("model_choice", "WARNING"):
+            self.assertEqual(default_choice(ENV, self.path, installed=["qwen3:8b"]), ModelChoice("qwen3:8b", None))
+        self.assertEqual(default_choice(ENV, self.path, installed=["qwen3:4b"]), ModelChoice("qwen3:4b", None))
+        self.assertEqual(default_choice(ENV, self.path), ModelChoice("qwen3:4b", None), "no list: not checked")
+
+    def test_startup_choice_checks_the_live_list_when_ollama_answers(self):
+        save_default(ModelChoice("qwen3:4b", None), self.path)
+        with self.assertLogs("model_choice", "WARNING"):
+            self.assertEqual(startup_choice(ENV, self.path, tags(("qwen3:8b", "2026-11-03T00:00:00Z"))), ModelChoice("qwen3:8b", None))
+        self.assertEqual(startup_choice(ENV, self.path, down), ModelChoice("qwen3:4b", None))
+
+    def test_check_available(self):
+        check_available(ModelChoice("qwen3:4b", None), ["qwen3:4b"])
+        check_available(ModelChoice("claude-code:opus", "low"), ["qwen3:4b"])
+        with self.assertRaisesRegex(ValueError, "not installed"):
+            check_available(ModelChoice("qwen3:8bb", None), ["qwen3:8b"])
 
     def test_saved_choice_is_used(self):
         save_default(ModelChoice("claude-code:opus", "high"), self.path)

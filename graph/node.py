@@ -25,7 +25,7 @@ from language import normalize
 from llm_options import _flag, ollama_options
 from memories.manager import memory_query
 from memories.scheduler import MEMORY_SCHEDULER
-from claude_bridge import ClaudeCodeChat, ClaudeCodeError, session_uuid
+from claude_bridge import ClaudeCodeChat, ClaudeCodeError
 from model_chains import chains_for
 from model_choice import DEFAULT_EFFORT, ModelChoice
 from settings import max_history_tokens
@@ -515,8 +515,11 @@ def claude_code(state: State, config: RunnableConfig):
     """One turn on Claude Code (the user's own login), in PROJECT_ROOT, resuming this thread's session."""
     choice = turn_model(config) or ModelChoice("claude-code:sonnet", DEFAULT_EFFORT)
     configurable = (config or {}).get("configurable", {})
-    session = session_uuid(str(configurable.get("thread_id", "")))
-    resumed = state.get("claude_session") == session
+    # A fresh random id until a turn succeeds: a reused id (after a restart, or after a turn that
+    # failed once Claude Code had created the session) would clash with the existing session.
+    known = state.get("claude_session")
+    session = known or str(uuid4())
+    resumed = known is not None
 
     chat = ClaudeCodeChat(
         alias=choice.alias or "sonnet",

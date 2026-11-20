@@ -107,6 +107,38 @@ class ClaudeNodeTests(unittest.TestCase):
         # the failed turn started no session, so the next one starts it
         self.assertIsNotNone(self.fake.flag(1, "--session-id"))
 
+    def test_a_failed_first_turn_never_reuses_its_session_id(self):
+        # Claude Code may have created that session before failing; the same id again would clash.
+        self.fake.scripts += [ClaudeCodeError("stopped"), [Done("", False)]]
+        self.turn("hello there friend")
+        self.turn("again please now")
+        self.assertIsNotNone(self.fake.flag(1, "--session-id"))
+        self.assertNotEqual(self.fake.flag(1, "--session-id"), self.fake.flag(0, "--session-id"))
+
+    def test_a_restart_with_the_same_thread_id_starts_a_new_claude_session(self):
+        # The CLI always uses thread "1"; after a restart the old Claude session id exists already.
+        self.fake.scripts += [[Done("", False)], [Done("", False)]]
+        self.turn("first run question")
+        self.app = ModelGraph.compile(checkpointer=InMemorySaver())  # a new program run
+        self.turn("second run question")
+        self.assertIsNone(self.fake.flag(1, "--resume"))
+        self.assertNotEqual(self.fake.flag(1, "--session-id"), self.fake.flag(0, "--session-id"))
+
+    def test_two_tool_calls_with_clashing_arguments_do_not_break_the_turn(self):
+        self.fake.scripts.append(
+            [
+                ToolStart("t1", "Edit", {"file_path": "a.py", "replace_all": False}),
+                ToolResult("t1", "ok", False),
+                ToolStart("t2", "Edit", {"file_path": "b.py", "replace_all": True}),
+                ToolResult("t2", "ok", False),
+                Text("Edited both."),
+                Done("Edited both.", False),
+            ]
+        )
+        reports: list[dict] = []
+        self.assertEqual(self.turn("edit both files", on_tool=reports.append), "Edited both.")
+        self.assertEqual([(r["id"], r["status"]) for r in reports], [("t1", "running"), ("t1", "done"), ("t2", "running"), ("t2", "done")])
+
     def test_cancel_propagates_and_the_next_turn_works(self):
         self.fake.scripts += [TurnCancelled(), [Text("ok"), Done("ok", False)]]
 

@@ -151,8 +151,24 @@ def available_models(env=None, fetch: Fetch | None = None, path: Path = SETTINGS
     return local + claude_models()
 
 
-def default_choice(env=None, path: Path = SETTINGS_FILE) -> ModelChoice:
-    """The saved pick, or MODEL when there is none or it no longer makes sense."""
+def check_available(choice: ModelChoice, models: list[str]) -> None:
+    """ValueError for an Ollama model that is not in `models` (Claude Code is always offered)."""
+    if not choice.is_claude and choice.model not in models:
+        raise _usage(f"Model {choice.model!r} is not installed in Ollama (see /model)")
+
+
+def startup_choice(env=None, path: Path = SETTINGS_FILE, fetch: Fetch | None = None) -> ModelChoice:
+    """default_choice, checked against the live Ollama list when Ollama answers."""
+    try:
+        installed: list[str] | None = ollama_models(env, fetch)
+    except OSError:
+        installed = None
+    return default_choice(env, path, installed)
+
+
+def default_choice(env=None, path: Path = SETTINGS_FILE, installed: list[str] | None = None) -> ModelChoice:
+    """The saved pick, or MODEL when there is none or it no longer makes sense (with `installed`,
+    an Ollama model that is no longer installed)."""
     env = os.environ if env is None else env
     fallback = ModelChoice(_base_model(env), None)
     settings = load_settings(path)
@@ -166,7 +182,10 @@ def default_choice(env=None, path: Path = SETTINGS_FILE) -> ModelChoice:
     try:
         if not isinstance(name, str) or not (effort is None or isinstance(effort, str)):
             raise ValueError("chat_model and effort must be text")
-        return parse_choice(f"{name} {effort}" if effort else name)
+        choice = parse_choice(f"{name} {effort}" if effort else name)
+        if installed is not None:
+            check_available(choice, installed)
+        return choice
     except ValueError as exc:
         logger.warning("Ignoring the saved model in %s (%s); using MODEL=%s", path, exc, fallback.model)
         return fallback

@@ -134,6 +134,12 @@ class ModelCommandTests(unittest.TestCase):
         self.chat.submit("/model 3 low")
         self.assertEqual(self.chat.choice, ModelChoice("claude-code:opus", "low"))
 
+    def test_an_ollama_model_that_is_not_installed_is_refused(self):
+        self.chat.submit("/model qwen3:8bb")
+        self.assertIn("not installed", self.text)
+        self.assertEqual(self.chat.choice, ModelChoice("qwen3:8b", None))
+        self.assertEqual(self.saved, [])
+
     def test_bad_model_keeps_the_choice(self):
         self.chat.submit("/model claude-code:gpt")
         self.chat.submit("/model 9")

@@ -15,7 +15,7 @@ from langgraph.errors import GraphRecursionError
 
 from jobs import NOTICE_PREFIX, Job, JobManager, finished_notice
 from language import detect_language, normalize, say
-from model_choice import ModelChoice, available_models, parse_choice, privacy_notice, save_default
+from model_choice import ModelChoice, available_models, check_available, parse_choice, privacy_notice, save_default
 from turns import TurnCancelled, final_reply, is_stop_request, run_turn
 
 logger = logging.getLogger(__name__)
@@ -201,6 +201,7 @@ class ChatLoop:
                     raise ValueError(f"No model number {parts[0]}. Usage: /model <name> [effort]")
                 parts[0] = models[index]
             choice = parse_choice(" ".join(parts))
+            check_available(choice, models)
         except ValueError as exc:
             return f"[{exc}]"
 

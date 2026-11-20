@@ -171,9 +171,10 @@ def main(argv: list[str] | None = None) -> None:
     except ValueError as exc:
         sys.exit(str(exc))
     print("Loading models...", flush=True)
-    from model_choice import default_choice
+    from model_choice import startup_choice
 
-    manager = SessionManager(build_app(), max_turns=args.max_turns, default_choice=default_choice)
+    start_choice = startup_choice()  # checked once against the live Ollama list
+    manager = SessionManager(build_app(), max_turns=args.max_turns, default_choice=lambda: start_choice)
     connect_jobs(manager)
     voice = build_voice() if args.voice else None
 

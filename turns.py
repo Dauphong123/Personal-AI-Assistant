@@ -210,9 +210,10 @@ class ToolActivity:
 
         if node == "claude_code" and isinstance(piece, AIMessageChunk):
             # Claude Code runs its own tools; the bridge reports them on empty chunks.
-            tool = piece.additional_kwargs.get("claude_tool")
-            if tool:
-                self.report(dict(tool))
+            tools = piece.additional_kwargs.get("claude_tools")
+            if isinstance(tools, list) and tools:
+                for tool in tools:
+                    self.report(dict(tool))
                 return True
             return False
 

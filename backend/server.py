@@ -45,7 +45,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from model_choice import EFFORTS, available_models, parse_choice
+from model_choice import EFFORTS, available_models, check_available, parse_choice
 
 from .session import ChatSession
 from .sessions import SessionManager
@@ -730,6 +730,7 @@ class Handler(BaseHTTPRequestHandler):
 
             try:
                 choice = parse_choice(f"{model} {effort}" if effort else model)
+                check_available(choice, available_models())
             except ValueError as exc:
                 return self._fail(400, str(exc))
 
