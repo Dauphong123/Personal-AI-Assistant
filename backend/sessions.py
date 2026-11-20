@@ -21,12 +21,21 @@ DEFAULT_MAX_SESSIONS = 50
 
 
 class SessionManager:
-    def __init__(self, app, run=run_turn, max_turns: int = 1, max_sessions: int = DEFAULT_MAX_SESSIONS):
+    def __init__(
+        self,
+        app,
+        run=run_turn,
+        max_turns: int = 1,
+        max_sessions: int = DEFAULT_MAX_SESSIONS,
+        default_choice=lambda: None,
+    ):
         if max_turns < 1:
             raise ValueError("max_turns must be at least 1")
 
         self.app = app
         self._run = run
+        # () -> ModelChoice | None: the model a new session starts on (F036; None means MODEL).
+        self.default_choice = default_choice
         self._slot = threading.Semaphore(max_turns)
         self.max_turns = max_turns
         self._max_sessions = max_sessions
@@ -43,7 +52,9 @@ class SessionManager:
             if len(self._sessions) >= self._max_sessions:
                 return None
 
-            session = ChatSession(self.app, run=self._run, turn_slot=self._slot, title=title)
+            session = ChatSession(
+                self.app, run=self._run, turn_slot=self._slot, title=title, choice=self.default_choice()
+            )
             self._sessions[session.id] = session
             return session
 

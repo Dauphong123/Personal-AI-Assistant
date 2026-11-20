@@ -171,7 +171,9 @@ def main(argv: list[str] | None = None) -> None:
     except ValueError as exc:
         sys.exit(str(exc))
     print("Loading models...", flush=True)
-    manager = SessionManager(build_app(), max_turns=args.max_turns)
+    from model_choice import default_choice
+
+    manager = SessionManager(build_app(), max_turns=args.max_turns, default_choice=default_choice)
     connect_jobs(manager)
     voice = build_voice() if args.voice else None
 

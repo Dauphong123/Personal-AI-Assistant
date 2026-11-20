@@ -22,6 +22,8 @@ API (JSON bodies, token in X-Token or Authorization: Bearer):
     POST /api/sessions/<id>/reset
     POST /api/sessions/<id>/rename  {title}
     POST /api/sessions/<id>/delete
+    POST /api/sessions/<id>/model   {model, effort?}  switch this session's model (409 while busy)
+    GET  /api/models                        {models: [...], efforts: [...], default: {model, effort}}
     POST /api/voice/transcribe  audio/*     {"text"}; 503 unless started with --voice;
                                             ?dictate=1 adds {"prompt", "hands_free", "answer"} (backend.voice.dictation)
     POST /api/voice/speak       {text}      audio/wav (204: nothing speakable)
@@ -34,6 +36,7 @@ A handler that raises answers 500 {"error": "Internal server error"} and is logg
 import hmac
 import json
 import logging
+import os
 import re
 import secrets
 import time
@@ -41,6 +44,8 @@ from collections.abc import Iterable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
+
+from model_choice import EFFORTS, available_models, parse_choice
 
 from .session import ChatSession
 from .sessions import SessionManager
@@ -98,7 +103,8 @@ HANDSHAKE_PATH = "/api/handshake"
 HEALTH_PATH = "/api/health"  # no token: says only that the server answers
 VOICE_PATHS = {"/api/voice/transcribe", "/api/voice/speak"}
 API_ROUTE = re.compile(r"^/api/sessions(?:/(?P<id>[0-9a-f]{12})(?:/(?P<action>[a-z]+))?)?$")
-POST_ACTIONS = {"send", "approve", "stop", "reset", "rename", "delete"}
+POST_ACTIONS = {"send", "approve", "stop", "reset", "rename", "delete", "model"}
+MODELS_PATH = "/api/models"
 
 
 def new_token() -> str:
@@ -169,6 +175,7 @@ class WebServer(ThreadingHTTPServer):
                 "sessions": True,
                 "notices": self.notices,
                 "voice": {"transcribe": transcribe, "speak": speak},
+                "models": True,
             },
             "limits": {
                 "max_sessions": self.manager.max_sessions,
@@ -442,6 +449,22 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == HANDSHAKE_PATH or url.path in VOICE_PATHS:
             return self._fail(405, "Use POST")
 
+        if url.path == MODELS_PATH:
+            if not self._authorized(query, allow_query_token=False):
+                return
+            default = self.server.manager.default_choice()
+            return self._json(
+                200,
+                {
+                    "models": available_models(),
+                    "efforts": list(EFFORTS),
+                    "default": {
+                        "model": default.model if default else os.environ.get("MODEL", "").strip(),
+                        "effort": default.effort if default else None,
+                    },
+                },
+            )
+
         route = API_ROUTE.match(url.path)
 
         if route is None:
@@ -699,6 +722,19 @@ class Handler(BaseHTTPRequestHandler):
 
             if not session.approve(allow, request):
                 return self._fail(409, "That request is no longer waiting for approval")
+        elif action == "model":
+            model, effort = data.get("model"), data.get("effort")
+
+            if not isinstance(model, str) or not (effort is None or isinstance(effort, str)):
+                return self._fail(400, "model must be a model name and effort text or null")
+
+            try:
+                choice = parse_choice(f"{model} {effort}" if effort else model)
+            except ValueError as exc:
+                return self._fail(400, str(exc))
+
+            if not session.set_model(choice):
+                return self._fail(409, "Stop the running turn first")
         elif action == "stop":
             session.stop()
         elif action == "reset":
