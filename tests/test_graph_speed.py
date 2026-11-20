@@ -529,7 +529,8 @@ class CleanupTests(unittest.TestCase):
     def test_state_has_no_unused_fields(self):
         from data.state import State
 
-        self.assertEqual(set(State.__annotations__), {"messages", "memory_context", "route"})
+        # claude_session: the Claude Code session a thread resumes (F036, graph.node.claude_code).
+        self.assertEqual(set(State.__annotations__), {"messages", "memory_context", "route", "claude_session"})
 
     def test_a_long_history_is_still_summarized_after_the_answer(self):
         from langgraph.checkpoint.memory import InMemorySaver

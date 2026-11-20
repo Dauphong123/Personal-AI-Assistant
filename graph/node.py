@@ -262,13 +262,13 @@ def wait_for_memory(timeout: float = 60) -> bool:
     return MEMORY_SCHEDULER.wait(timeout)
 
 
-def turn_model(config: RunnableConfig) -> ModelChoice | None:
+def turn_model(config: RunnableConfig | None) -> ModelChoice | None:
     """The model picked for this turn (run_turn puts it in the config); None means MODEL."""
     choice = (config or {}).get("configurable", {}).get("model")
     return choice if isinstance(choice, ModelChoice) else None
 
 
-def _chains(config: RunnableConfig) -> tuple:
+def _chains(config: RunnableConfig | None) -> tuple:
     """(direct_chain, code_chain) for the turn's Ollama model."""
     choice = turn_model(config)
 
@@ -279,7 +279,7 @@ def _chains(config: RunnableConfig) -> tuple:
 
 
 @timed
-def code_tools(state: State, config: RunnableConfig):
+def code_tools(state: State, config: RunnableConfig | None = None):
     response = _chains(config)[1].invoke({"messages": _model_messages(state)})
     _log_reply("code_tools", response)
 
@@ -462,7 +462,7 @@ def routed(state: State):
 
 
 @timed
-def direct(state: State, config: RunnableConfig):
+def direct(state: State, config: RunnableConfig | None = None):
     response = _chains(config)[0].invoke({"messages": _model_messages(state)})
     _log_reply("direct", response)
 

@@ -1723,10 +1723,10 @@
           "commit": null
         }
       ],
-      "notes": "User request: \"Use claud provider and gemini model and give the ability to change model\". Re-planned 2026-11-20 in a grilling session: user wants the agent to behave like Claude Code on any connected model and to use their existing Claude/Google plans, so the API-key path (langchain-anthropic/genai, token budgets, options page) was dropped for a Claude Code bridge. Decisions: picker = live Ollama list + Claude Code; pick saved in model_settings.json, app never writes .env; CLI /model picks only; web pick per session; Claude Code keeps its own history (--resume), our memory recall is added and memory still learns; recap handed over on switch from Ollama; project settings only (user's global hooks/plugins skipped); read free, edits/shell need our approval; privacy line on switch; errors shown, no fallback; local keeps the router. Antigravity bridge is F038 (no Antigravity CLI installed). F037 reserved for review fix V1."
+      "notes": "User request: \"Use claud provider and gemini model and give the ability to change model\". Re-planned 2026-11-20 in a grilling session: user wants the agent to behave like Claude Code on any connected model and to use their existing Claude/Google plans, so the API-key path (langchain-anthropic/genai, token budgets, options page) was dropped for a Claude Code bridge. Decisions: picker = live Ollama list + Claude Code; pick saved in model_settings.json, app never writes .env; CLI /model picks only; web pick per session; Claude Code keeps its own history (--resume), our memory recall is added and memory still learns; recap handed over on switch from Ollama; project settings only (user's global hooks/plugins skipped); read free, edits/shell need our approval; privacy line on switch; errors shown, no fallback; local keeps the router. Antigravity bridge is F037 (no Antigravity CLI installed). Review fix V1 moves to F038."
     },
     {
-      "id": "F038",
+      "id": "F037",
       "name": "Antigravity bridge",
       "description": "Same as the F036 Claude Code bridge, for Google Antigravity's CLI with the user's Google plan.",
       "status": "open",

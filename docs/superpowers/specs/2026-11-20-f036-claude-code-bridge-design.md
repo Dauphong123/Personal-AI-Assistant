@@ -27,7 +27,7 @@ apps, so the app does not call Claude directly: it runs the user's installed Cla
 ## Non-goals
 
 - API keys, `langchain-anthropic`, `langchain-google-genai`, token budgets, per-model options page.
-- Antigravity (F038, once its CLI is installed; only the desktop app is on this machine).
+- Antigravity (F037, once its CLI is installed; only the desktop app is on this machine).
 - Changing the local path: Ollama turns keep the router, tools, approvals and limits.
 
 ## Anti-goals
