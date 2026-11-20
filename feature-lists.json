@@ -1638,6 +1638,98 @@
         {"n": 6, "title": "Docs and browser check", "status": "done", "tests": ["tests/test_project_docs.py", "tests/test_webui_frontend.py", "full suite 890 OK (31 skipped, Postgres down)", "npm test 167 pass", "browser at 390 px: no sideways scroll, cards/status/composer fit; Ctrl+K hint moved from the placeholder to the composer hint"], "commit": "5dafe83", "date": "2026-11-19"}
       ],
       "notes": "User request: \"Redesign the website for a more interactive website with user\". Plan approved 2026-11-19 (\"Okay\"): protocol bump 2 -> 3, branched from feature/F034-separate-frontend (F034 not yet in main), no new dependencies, look unchanged. Left out: 'always allow' approvals, model-suggested follow-ups, feedback buttons."
+    },
+    {
+      "id": "F036",
+      "name": "Claude Code bridge and model switching",
+      "description": "Let the user pick the model per session: local Ollama models (live list) or Claude Code run headless with the user's own Claude plan login (claude -p stream-json), so cloud turns behave like Claude Code.",
+      "status": "planned",
+      "created": "2026-11-20",
+      "completed": null,
+      "branch": "feature/F036-cloud-models",
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [
+        {
+          "n": 1,
+          "title": "Model choice: live Ollama list + Claude Code entries (opus/sonnet/haiku/fable, effort default medium); model_settings.json (gitignored) holds the pick; reshape tests/test_providers.py",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 2,
+          "title": "Verify the claude -p stream-json host permission channel (scratchpad probe); fall back to read-only + per-session toggle if it does not work",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "claude_bridge.py: run claude -p in PROJECT_ROOT with project settings only, --resume per session, stream text and tool events, kill on stop, clear errors (CLI missing, plan limit)",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 4,
+          "title": "Approval: Edit/Write/Bash from Claude Code go through our y/N approval (interrupt), read/search/web allowed",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 5,
+          "title": "Graph: Claude Code node (recall_memory -> claude_code -> save_memory), memory recall before the message, recap on switch from Ollama",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 6,
+          "title": "CLI /model command and privacy line on switch",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 7,
+          "title": "Backend: per-session model, POST /api/sessions/<id>/model, handshake features.models; Claude tool events as tool cards",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 8,
+          "title": "Frontend: model picker, /model slash command, palette entries",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        },
+        {
+          "n": 9,
+          "title": "Docs: CLAUDE.md, README, .env.example note, PROJECT.md decisions",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        }
+      ],
+      "notes": "User request: \"Use claud provider and gemini model and give the ability to change model\". Re-planned 2026-11-20 in a grilling session: user wants the agent to behave like Claude Code on any connected model and to use their existing Claude/Google plans, so the API-key path (langchain-anthropic/genai, token budgets, options page) was dropped for a Claude Code bridge. Decisions: picker = live Ollama list + Claude Code; pick saved in model_settings.json, app never writes .env; CLI /model picks only; web pick per session; Claude Code keeps its own history (--resume), our memory recall is added and memory still learns; recap handed over on switch from Ollama; project settings only (user's global hooks/plugins skipped); read free, edits/shell need our approval; privacy line on switch; errors shown, no fallback; local keeps the router. Antigravity bridge is F038 (no Antigravity CLI installed). F037 reserved for review fix V1."
+    },
+    {
+      "id": "F038",
+      "name": "Antigravity bridge",
+      "description": "Same as the F036 Claude Code bridge, for Google Antigravity's CLI with the user's Google plan.",
+      "status": "open",
+      "created": "2026-11-20",
+      "completed": null,
+      "branch": null,
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [],
+      "notes": "Blocked until the user installs the Antigravity CLI (only the desktop app is on this machine, 2026-11-20). Docs: thinking levels low/medium/high/xhigh, default model Gemini 4 Neon."
     }
   ]
 }
