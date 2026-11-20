@@ -45,11 +45,14 @@ class FakeResponse:
             self.headers["Location"] = location
 
         self._body = body
+        self._at = 0
+        self.raw = self  # web.fetch reads response.raw.read1
         self.closed = False
 
-    def iter_content(self, size):
-        for start in range(0, len(self._body), size):
-            yield self._body[start : start + size]
+    def read1(self, amt, decode_content=None):
+        part = self._body[self._at : self._at + amt]
+        self._at += len(part)
+        return part
 
     def close(self):
         self.closed = True
@@ -71,7 +74,7 @@ class WebTestCase(unittest.TestCase):
     def serve(self, routes):
         """Answer http_get from {url: FakeResponse}; unknown URLs are a test failure."""
 
-        def fake_get(url):
+        def fake_get(url, timeout=None):
             self.requested.append(url)
             return routes[url]
 
@@ -137,6 +140,45 @@ class CheckUrlTests(WebTestCase):
             self.assertIn("blocked", web.check_url("http://mixed.example") or "")
 
 
+class DnsTimeoutTests(unittest.TestCase):
+    """The name lookup has its own time limit (getaddrinfo has none)."""
+
+    def test_a_slow_dns_lookup_is_reported(self):
+        import threading
+        import time
+
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def stuck(host, port):
+            release.wait(5)
+            return ["93.184.216.34"]
+
+        with patch.object(web, "_lookup", stuck), patch.object(web, "DNS_TIMEOUT", 0.2):
+            started = time.monotonic()
+            reason = web.check_url("http://slow.example/") or ""
+
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertIn("could not find slow.example", reason)
+        self.assertIn("took too long", reason)
+
+    def test_lookup_errors_still_name_the_host(self):
+        import socket
+
+        def missing(host, port):
+            raise socket.gaierror("no such name")
+
+        with patch.object(web, "_lookup", missing):
+            reason = web.check_url("http://nope.example/") or ""
+
+        self.assertIn("could not find nope.example", reason)
+        self.assertNotIn("too long", reason)
+
+    def test_a_fast_lookup_returns_its_addresses(self):
+        with patch.object(web, "_lookup", lambda host, port: ["93.184.216.34"]):
+            self.assertEqual(web._resolve("fast.example", 80), ["93.184.216.34"])
+
+
 class DnsRebindingTests(WebTestCase):
     """The connection must use the addresses that were checked, not a second DNS answer."""
 
@@ -164,7 +206,7 @@ class DnsRebindingTests(WebTestCase):
         def resolve(host, port):
             return next(answers)
 
-        def http_get(url):
+        def http_get(url, timeout=None):
             connected_to.append(socket.getaddrinfo("rebind.example", 80)[0][4][0])
             return page("<p>hello</p>")
 
@@ -188,7 +230,7 @@ class DnsRebindingTests(WebTestCase):
             resolved.append(host)
             return table[host]
 
-        def http_get(url):
+        def http_get(url, timeout=None):
             host = url.split("/")[2]
             connected.append((host, socket.getaddrinfo(host, 80)[0][4][0]))
             return routes[url]
@@ -202,7 +244,7 @@ class DnsRebindingTests(WebTestCase):
     def test_pins_are_released_even_when_the_request_fails(self):
         import requests
 
-        def boom(url):
+        def boom(url, timeout=None):
             raise requests.ConnectionError("down")
 
         with patch.object(web, "http_get", boom), self.assertRaises(web.WebError):
@@ -289,7 +331,7 @@ class FetchTests(WebTestCase):
     def test_network_errors_become_messages(self):
         import requests
 
-        def boom(url):
+        def boom(url, timeout=None):
             raise requests.ConnectionError("down")
 
         with patch.object(web, "http_get", boom), self.assertRaises(web.WebError) as caught:
@@ -302,6 +344,128 @@ class FetchTests(WebTestCase):
         self.serve({"http://example.com/": response})
         web.fetch("http://example.com/")
         self.assertTrue(response.closed)
+
+
+class FetchDeadlineTests(WebTestCase):
+    """One time limit (FETCH_DEADLINE) for the whole fetch: every hop and the body."""
+
+    def setUp(self):
+        super().setUp()
+        self.now = 0.0
+        patcher = patch.object(web, "_clock", lambda: self.now)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_slow_drip_body_stops_at_the_deadline(self):
+        test = self
+
+        class Drip(FakeResponse):
+            reads = 0
+
+            def read1(self, amt, decode_content=None):
+                Drip.reads += 1
+                test.now += 5  # one byte every 5 s, never ending
+                return b"x"
+
+        response = Drip(content_type="text/plain")
+        self.serve({"http://example.com/": response})
+
+        with self.assertRaises(web.WebError) as caught:
+            web.fetch("http://example.com/")
+
+        self.assertIn(f"longer than {web.FETCH_DEADLINE} s", str(caught.exception))
+        self.assertLessEqual(Drip.reads, web.FETCH_DEADLINE // 5 + 1)
+        self.assertTrue(response.closed)
+
+    def test_redirects_share_one_deadline(self):
+        timeouts = []
+
+        def hop(url, timeout=None):
+            timeouts.append(timeout)
+            self.now += 8  # each hop takes 8 s
+            return page("", status=302, location="http://example.com/")
+
+        with patch.object(web, "http_get", hop), self.assertRaises(web.WebError) as caught:
+            web.fetch("http://example.com/")
+
+        self.assertIn("longer than", str(caught.exception))
+        self.assertEqual(timeouts, [web.FETCH_TIMEOUT, web.FETCH_TIMEOUT, web.FETCH_DEADLINE - 16])
+
+    def test_errors_while_reading_the_body_become_messages(self):
+        from urllib3.exceptions import DecodeError, ProtocolError
+
+        for error in [DecodeError("bad gzip"), ProtocolError("reset"), ConnectionResetError(), TimeoutError()]:
+            class Broken(FakeResponse):
+                def read1(self, amt, decode_content=None, error=error):
+                    raise error
+
+            response = Broken()
+            self.serve({"http://example.com/": response})
+
+            with self.assertRaises(web.WebError) as caught:
+                web.fetch("http://example.com/")
+
+            self.assertIn(f"could not load the page ({type(error).__name__})", str(caught.exception))
+            self.assertTrue(response.closed)
+
+    def test_a_page_in_time_is_read_whole(self):
+        self.serve({"http://example.com/": page("<p>" + "word " * 50_000 + "</p>")})
+        _, _, body = web.fetch("http://example.com/")
+        self.assertEqual(len(body), len("<p></p>") + 5 * 50_000)
+
+
+class FetchWallClockTests(WebTestCase):
+    """fetch answers within FETCH_DEADLINE even when the request itself never returns
+    (a server dribbling out headers, which no socket timeout catches)."""
+
+    def test_a_stalled_fetch_returns_on_time(self):
+        import threading
+        import time
+
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def stalled(url, timeout=None):
+            release.wait(5)
+            return page("<p>too late</p>")
+
+        with patch.object(web, "http_get", stalled), patch.object(web, "FETCH_DEADLINE", 0.3):
+            started = time.monotonic()
+
+            with self.assertRaises(web.WebError) as caught:
+                web.fetch("http://example.com/")
+
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertIn("took longer than 0.3 s", str(caught.exception))
+
+    def test_rebinding_protection_still_holds_in_the_worker_thread(self):
+        import socket
+        import threading
+
+        seen = []
+
+        def http_get(url, timeout=None):
+            seen.append((threading.current_thread() is threading.main_thread(), socket.getaddrinfo("example.com", 80)[0][4][0]))
+            return page("<p>ok</p>")
+
+        evil = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 80))]
+
+        with patch.object(web, "http_get", http_get), patch.object(web, "_real_getaddrinfo", return_value=evil):
+            web.fetch("http://example.com/")
+
+        self.assertEqual(seen, [(False, "93.184.216.34")], "worker thread, checked address")
+
+    def test_results_and_errors_come_back_from_the_worker(self):
+        self.serve({
+            "http://example.com/ok": page("<p>fine</p>"),
+            "http://example.com/gone": page("", status=410),
+        })  # fmt: skip
+        self.assertIn(b"fine", web.fetch("http://example.com/ok")[2])
+
+        with self.assertRaises(web.WebError) as caught:
+            web.fetch("http://example.com/gone")
+
+        self.assertIn("410", str(caught.exception))
 
 
 ARTICLE = """<html><head><title> My  Guide </title><script>var secret = 1;</script></head>

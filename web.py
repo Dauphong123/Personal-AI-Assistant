@@ -16,16 +16,22 @@ import os
 import socket
 import threading
 import time
+from typing import Any, Callable, TypeVar
 from urllib.parse import urljoin, urlparse
 
 import requests
+import urllib3.exceptions
 
 from retrieval import best_passages
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 SEARCH_TIMEOUT = 10  # seconds
-FETCH_TIMEOUT = 10
+FETCH_TIMEOUT = 10  # per connect / socket read
+FETCH_DEADLINE = 20  # whole page fetch: every redirect hop and the body
+DNS_TIMEOUT = 5
+READ_CHUNK = 65536
 MAX_PAGE_BYTES = 2_000_000
 MAX_REDIRECTS = 5
 MAX_SEARCH_RESULTS = 10
@@ -101,8 +107,42 @@ _pages = TTLCache()
 # --- fetching -----------------------------------------------------------------------
 
 
-def _resolve(host: str, port: int) -> list[str]:
+def _lookup(host: str, port: int) -> list[str]:
     return [str(info[4][0]) for info in socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)]
+
+
+class _Overdue(Exception):
+    """A call on a worker thread did not finish in time."""
+
+
+def _in_thread(name: str, timeout: float, fn: Callable[..., T], *args) -> T:
+    """fn(*args) on a daemon thread: its result or its exception, or _Overdue after
+    `timeout` seconds. Python cannot stop a thread, so an overdue one is left to finish
+    on its own (and its result dropped); a daemon thread never delays exit."""
+    outcome: dict[str, Any] = {}
+
+    def run():
+        try:
+            outcome["value"] = fn(*args)
+        except BaseException as e:
+            outcome["error"] = e
+
+    worker = threading.Thread(target=run, name=name, daemon=True)
+    worker.start()
+    worker.join(timeout)
+
+    if worker.is_alive():
+        raise _Overdue(name)
+
+    if "error" in outcome:
+        raise outcome["error"]
+
+    return outcome["value"]
+
+
+def _resolve(host: str, port: int) -> list[str]:
+    """Addresses of `host`; getaddrinfo has no timeout of its own, so DNS_TIMEOUT is kept here."""
+    return _in_thread("dns-lookup", DNS_TIMEOUT, _lookup, host, port)
 
 
 def public_addresses(url: str) -> tuple[str, list[str]]:
@@ -121,6 +161,8 @@ def public_addresses(url: str) -> tuple[str, list[str]]:
     try:
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         addresses = _resolve(parsed.hostname, port)
+    except _Overdue:
+        raise WebError(f"could not find {parsed.hostname} (the name lookup took too long)") from None
     except (OSError, ValueError):
         raise WebError(f"could not find {parsed.hostname}") from None
 
@@ -191,26 +233,54 @@ def _pinned(host: str, addresses: list[str]):
         _pins.map = previous
 
 
-def http_get(url: str) -> requests.Response:
+def http_get(url: str, timeout: float = FETCH_TIMEOUT) -> requests.Response:
     return requests.get(
         url,
         headers={"User-Agent": USER_AGENT, "Accept": "text/html,text/plain;q=0.9,*/*;q=0.5"},
-        timeout=FETCH_TIMEOUT,
+        timeout=timeout,
         stream=True,
         allow_redirects=False,  # redirects are followed by hand so every hop is checked
     )
 
 
+_clock = time.monotonic
+
+
+def _time_left(deadline: float) -> float:
+    """Seconds until `deadline`; WebError once it has passed."""
+    left = deadline - _clock()
+
+    if left <= 0:
+        raise WebError(f"the page took longer than {FETCH_DEADLINE} s to load")
+
+    return left
+
+
 def fetch(url: str) -> tuple[str, str, bytes]:
-    """(final url, content type, body) of a public web page."""
+    """(final url, content type, body) of a public web page, within FETCH_DEADLINE.
+
+    The requests timeout counts each socket read, so a server sending a byte every few
+    seconds would never trip it. `_fetch` checks the deadline between reads; the fetch
+    also runs on a worker thread so the caller gets an answer on time even when one read
+    never returns (headers trickling in). The address pins are per thread, so they are set
+    inside the worker."""
+    try:
+        return _in_thread("web-fetch", FETCH_DEADLINE, _fetch, url)
+    except _Overdue:
+        raise WebError(f"the page took longer than {FETCH_DEADLINE} s to load") from None
+
+
+def _fetch(url: str) -> tuple[str, str, bytes]:
+    deadline = _clock() + FETCH_DEADLINE
     response = None
 
     for _ in range(MAX_REDIRECTS + 1):
+        left = _time_left(deadline)
         host, addresses = public_addresses(url)  # raises WebError for anything not public
 
         try:
             with _pinned(host, addresses):
-                response = http_get(url)
+                response = http_get(url, min(FETCH_TIMEOUT, left))
         except requests.RequestException as e:
             raise WebError(f"could not load the page ({type(e).__name__})") from None
 
@@ -236,11 +306,18 @@ def fetch(url: str) -> tuple[str, str, bytes]:
 
         body = bytearray()
 
-        for part in response.iter_content(65536):
-            body += part
+        while len(body) <= MAX_PAGE_BYTES:
+            _time_left(deadline)
 
-            if len(body) > MAX_PAGE_BYTES:
+            try:
+                part = response.raw.read1(READ_CHUNK, decode_content=True)
+            except (urllib3.exceptions.HTTPError, OSError) as e:  # read timeout, reset, bad gzip
+                raise WebError(f"could not load the page ({type(e).__name__})") from None
+
+            if not part:
                 break
+
+            body += part
 
         return url, content_type, bytes(body[:MAX_PAGE_BYTES])
     finally:

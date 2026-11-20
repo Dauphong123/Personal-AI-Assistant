@@ -335,7 +335,7 @@ The agent has two web tools (`web_search`, `read_webpage`) for anything the repo
 
 - Everything from the web is labelled _untrusted data_: the model is told never to follow instructions found in a page (prompt injection is the main risk of letting a model read the web; this reduces it but cannot eliminate it).
 - **Only the public internet can be opened.** Private, loopback, link-local and other non-public addresses are refused (your own machine, your router, `169.254.169.254` cloud-metadata addresses, IPv4-mapped IPv6 forms), as are non-http(s) links (`file://`, `ftp://`) and links containing a user name or password. Redirects are followed by hand and every hop is checked again, so a page cannot send the agent to an internal address. One residual risk remains: a host whose DNS answer changes between the check and the connection (DNS rebinding).
-- Pages are limited to 2 MB and 10 seconds; only text, HTML, XML, JSON and Markdown are read (PDFs and images are refused). Failures come back to the model as `ERROR: ...` text, never as a crash.
+- Pages are limited to 2 MB and 20 seconds in total, redirects included (a server that sends data very slowly is cut off; the name lookup has its own 5 s limit); only text, HTML, XML, JSON and Markdown are read (PDFs and images are refused). Failures come back to the model as `ERROR: ...` text, never as a crash.
 - **Privacy:** a web search sends the query text to DuckDuckGo, and opening a page contacts that site. The web tools do not ask for approval (they cannot change your files), so a model that follows a malicious page could put information into a query or link. Set `WEB_SEARCH_ENABLED=false` to switch both tools off; they then answer "turned off".
 
 ---

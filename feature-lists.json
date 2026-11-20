@@ -1588,15 +1588,19 @@
       "id": "F033",
       "name": "Total deadline for web page fetches",
       "description": "web.py FETCH_TIMEOUT applies per socket read, so a slow-drip server can keep read_webpage busy far longer; add a total deadline for the whole fetch and a timeout on the DNS lookup.",
-      "status": "open",
+      "status": "done",
       "created": "2026-11-19",
-      "completed": null,
-      "branch": null,
-      "commit": null,
-      "files": [],
-      "tests": [],
-      "steps": [],
-      "notes": "Review finding W1."
+      "completed": "2026-11-20",
+      "branch": "feature/F033-web-fetch-deadline",
+      "commit": "8339f77",
+      "files": ["web.py", "tests/test_web.py", "CLAUDE.md", "README.md", "docs/PROJECT.md"],
+      "tests": ["tests/test_web.py::DnsTimeoutTests", "tests/test_web.py::FetchDeadlineTests", "tests/test_web.py::FetchWallClockTests"],
+      "steps": [
+        {"n": 1, "title": "DNS lookup timeout (DNS_TIMEOUT)", "status": "done", "tests": ["tests/test_web.py::DnsTimeoutTests", "full suite 893 OK (31 skipped, Postgres down)"], "commit": "5ddf9b1", "date": "2026-11-20"},
+        {"n": 2, "title": "One deadline per fetch: request timeouts and body reads (read1) stop at FETCH_DEADLINE", "status": "done", "tests": ["tests/test_web.py::FetchDeadlineTests", "full suite 896 OK (31 skipped, Postgres down)", "real local server probe: gzip and chunked bodies intact, 1-byte-per-0.5 s drip stopped at the 3 s probe deadline"], "commit": "361b2bd", "date": "2026-11-20"},
+        {"n": 3, "title": "Hard wall-clock limit: fetch runs on a worker thread, caller waits at most FETCH_DEADLINE", "status": "done", "tests": ["tests/test_web.py::FetchWallClockTests", "tests/test_web.py::FetchDeadlineTests::test_errors_while_reading_the_body_become_messages", "full suite 900 OK (31 skipped, Postgres down)", "real local server probe: headers sent one line per 0.5 s stopped at the 3 s probe deadline"], "commit": "8339f77", "date": "2026-11-20"}
+      ],
+      "notes": "Review finding W1. Plan approved 2026-11-20 (\"yes\"). Known limit: a server stalling during the headers can keep one worker thread and socket alive until it gives up; the tool still answers on time."
     },
     {
       "id": "F034",
@@ -1638,6 +1642,20 @@
         {"n": 6, "title": "Docs and browser check", "status": "done", "tests": ["tests/test_project_docs.py", "tests/test_webui_frontend.py", "full suite 890 OK (31 skipped, Postgres down)", "npm test 167 pass", "browser at 390 px: no sideways scroll, cards/status/composer fit; Ctrl+K hint moved from the placeholder to the composer hint"], "commit": "5dafe83", "date": "2026-11-19"}
       ],
       "notes": "User request: \"Redesign the website for a more interactive website with user\". Plan approved 2026-11-19 (\"Okay\"): protocol bump 2 -> 3, branched from feature/F034-separate-frontend (F034 not yet in main), no new dependencies, look unchanged. Left out: 'always allow' approvals, model-suggested follow-ups, feedback buttons."
+    },
+    {
+      "id": "F036",
+      "name": "Cloud model providers (Claude, Gemini) and model switching",
+      "description": "Run the agent on Anthropic Claude or Google Gemini besides local Ollama, and let the user change the model.",
+      "status": "open",
+      "created": "2026-11-20",
+      "completed": null,
+      "branch": null,
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [],
+      "notes": "User request: \"Use claud provider and gemini model and give the ability to change model\"."
     }
   ]
 }
