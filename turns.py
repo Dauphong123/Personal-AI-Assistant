@@ -283,8 +283,12 @@ def run_turn(
     speech_limit: int = 1200,
     notice: bool = False,
     on_tool: Callable[[dict], None] | None = None,
+    model=None,
 ) -> bool:
     """Run one user message to completion.
+
+    `model` (a model_choice.ModelChoice) picks the model for this turn; None means MODEL. It goes
+    into the run config with `approve` and `cancel`, which a Claude Code turn uses mid-node.
 
     `approve` is asked about tool calls that need approval. Raises TurnCancelled
     if `cancel` is set; the state stays consistent for the next turn.
@@ -301,6 +305,9 @@ def run_turn(
     # A turn pauses background memory saves: they share the one Ollama model with it.
     MEMORY_SCHEDULER.turn_started()
     try:
+        cancel = cancel or threading.Event()
+        configurable = {**config.get("configurable", {}), "model": model, "approve": approve, "cancel": cancel}
+        config = {**config, "configurable": configurable}
         return _run_turn(app, query, config, on_text, approve, cancel, on_speech, speech_limit, notice, on_tool)
     finally:
         MEMORY_SCHEDULER.turn_finished()

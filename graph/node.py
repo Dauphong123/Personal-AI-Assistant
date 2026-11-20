@@ -24,6 +24,8 @@ from language import normalize
 from llm_options import _flag, ollama_options
 from memories.manager import memory_query
 from memories.scheduler import MEMORY_SCHEDULER
+from model_chains import chains_for
+from model_choice import ModelChoice
 from settings import max_history_tokens
 from tools import NEEDS_APPROVAL, TOOL_BY_NAME
 
@@ -258,9 +260,25 @@ def wait_for_memory(timeout: float = 60) -> bool:
     return MEMORY_SCHEDULER.wait(timeout)
 
 
+def turn_model(config: RunnableConfig) -> ModelChoice | None:
+    """The model picked for this turn (run_turn puts it in the config); None means MODEL."""
+    choice = (config or {}).get("configurable", {}).get("model")
+    return choice if isinstance(choice, ModelChoice) else None
+
+
+def _chains(config: RunnableConfig) -> tuple:
+    """(direct_chain, code_chain) for the turn's Ollama model."""
+    choice = turn_model(config)
+
+    if choice is None or choice.is_claude or choice.model == os.environ.get("MODEL", "").strip():
+        return direct_chain, code_chain
+
+    return chains_for(choice.model)
+
+
 @timed
-def code_tools(state: State):
-    response = code_chain.invoke({"messages": _model_messages(state)})
+def code_tools(state: State, config: RunnableConfig):
+    response = _chains(config)[1].invoke({"messages": _model_messages(state)})
     _log_reply("code_tools", response)
 
     return {"messages": [response]}
@@ -436,8 +454,8 @@ def routed(state: State):
 
 
 @timed
-def direct(state: State):
-    response = direct_chain.invoke({"messages": _model_messages(state)})
+def direct(state: State, config: RunnableConfig):
+    response = _chains(config)[0].invoke({"messages": _model_messages(state)})
     _log_reply("direct", response)
 
     return {"messages": [response]}
