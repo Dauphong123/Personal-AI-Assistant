@@ -137,6 +137,45 @@ class CheckUrlTests(WebTestCase):
             self.assertIn("blocked", web.check_url("http://mixed.example") or "")
 
 
+class DnsTimeoutTests(unittest.TestCase):
+    """The name lookup has its own time limit (getaddrinfo has none)."""
+
+    def test_a_slow_dns_lookup_is_reported(self):
+        import threading
+        import time
+
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def stuck(host, port):
+            release.wait(5)
+            return ["93.184.216.34"]
+
+        with patch.object(web, "_lookup", stuck), patch.object(web, "DNS_TIMEOUT", 0.2):
+            started = time.monotonic()
+            reason = web.check_url("http://slow.example/") or ""
+
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertIn("could not find slow.example", reason)
+        self.assertIn("took too long", reason)
+
+    def test_lookup_errors_still_name_the_host(self):
+        import socket
+
+        def missing(host, port):
+            raise socket.gaierror("no such name")
+
+        with patch.object(web, "_lookup", missing):
+            reason = web.check_url("http://nope.example/") or ""
+
+        self.assertIn("could not find nope.example", reason)
+        self.assertNotIn("too long", reason)
+
+    def test_a_fast_lookup_returns_its_addresses(self):
+        with patch.object(web, "_lookup", lambda host, port: ["93.184.216.34"]):
+            self.assertEqual(web._resolve("fast.example", 80), ["93.184.216.34"])
+
+
 class DnsRebindingTests(WebTestCase):
     """The connection must use the addresses that were checked, not a second DNS answer."""
 

@@ -16,6 +16,7 @@ import os
 import socket
 import threading
 import time
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -25,7 +26,8 @@ from retrieval import best_passages
 logger = logging.getLogger(__name__)
 
 SEARCH_TIMEOUT = 10  # seconds
-FETCH_TIMEOUT = 10
+FETCH_TIMEOUT = 10  # per connect / socket read
+DNS_TIMEOUT = 5
 MAX_PAGE_BYTES = 2_000_000
 MAX_REDIRECTS = 5
 MAX_SEARCH_RESULTS = 10
@@ -101,8 +103,32 @@ _pages = TTLCache()
 # --- fetching -----------------------------------------------------------------------
 
 
-def _resolve(host: str, port: int) -> list[str]:
+def _lookup(host: str, port: int) -> list[str]:
     return [str(info[4][0]) for info in socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)]
+
+
+def _resolve(host: str, port: int) -> list[str]:
+    """Addresses of `host`. getaddrinfo has no timeout, so it runs on a daemon thread and
+    TimeoutError is raised after DNS_TIMEOUT (the thread is left to finish on its own)."""
+    outcome: dict[str, Any] = {}
+
+    def lookup():
+        try:
+            outcome["addresses"] = _lookup(host, port)
+        except Exception as e:
+            outcome["error"] = e
+
+    worker = threading.Thread(target=lookup, name="dns-lookup", daemon=True)
+    worker.start()
+    worker.join(DNS_TIMEOUT)
+
+    if worker.is_alive():
+        raise TimeoutError(f"looking up {host} took too long")
+
+    if "error" in outcome:
+        raise outcome["error"]
+
+    return outcome["addresses"]
 
 
 def public_addresses(url: str) -> tuple[str, list[str]]:
@@ -121,6 +147,8 @@ def public_addresses(url: str) -> tuple[str, list[str]]:
     try:
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         addresses = _resolve(parsed.hostname, port)
+    except TimeoutError:
+        raise WebError(f"could not find {parsed.hostname} (the name lookup took too long)") from None
     except (OSError, ValueError):
         raise WebError(f"could not find {parsed.hostname}") from None
 
