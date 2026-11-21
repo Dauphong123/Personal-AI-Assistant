@@ -295,6 +295,18 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 
 .status:empty { display: none; }
+.model-select {
+  max-width: 11rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+}
+.model-select[hidden] { display: none; }
+.note.model-note { color: var(--muted); }
 .status::before { content: ""; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: currentColor; }
 .status[data-tone="busy"] { background: var(--accent-soft); color: var(--accent); }
 .status[data-tone="voice"] { background: var(--danger-soft); color: var(--danger); }

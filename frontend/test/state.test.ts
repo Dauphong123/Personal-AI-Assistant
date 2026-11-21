@@ -357,3 +357,19 @@ test("describeCalls: arguments that are not an object, or missing ones", () => {
   assert.equal(empty?.target, null);
   assert.deepEqual(empty?.fields, []);
 });
+
+test("F036: a model event adds one model line and does not end or start a turn", () => {
+  const event: ChatEvent = { id: 1, type: "model", model: "claude-code:opus", effort: "high", text: "Goes to Anthropic." };
+  assert.ok(isChatEvent(event));
+  const conv = apply(emptyConversation(), event);
+  assert.deepEqual(conv.items, [{ kind: "model", text: "Model: claude-code:opus (high). Goes to Anthropic." }]);
+  assert.equal(conv.busy, false);
+
+  const local = apply(emptyConversation(), { id: 2, type: "model", model: "qwen3:4b", effort: null, text: "" });
+  assert.deepEqual(local.items, [{ kind: "model", text: "Model: qwen3:4b." }]);
+});
+
+test("F036: bad model events are refused", () => {
+  assert.equal(isChatEvent({ id: 1, type: "model", model: 5, effort: null, text: "" }), false);
+  assert.equal(isChatEvent({ id: 1, type: "model", model: "x", effort: 3, text: "" }), false);
+});

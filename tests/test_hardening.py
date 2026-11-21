@@ -37,7 +37,7 @@ class RecordingTurns:
         self.approvals = []
         self.ask_approval = False
 
-    def __call__(self, app, text, config, on_text, approve, cancel, on_speech=None, speech_limit=1200, notice=False):
+    def __call__(self, app, text, config, on_text, approve, cancel, on_speech=None, speech_limit=1200, notice=False, model=None):
         self.calls.append(SimpleNamespace(text=text, notice=notice, cancelled_at_start=cancel.is_set()))
 
         if self.ask_approval:

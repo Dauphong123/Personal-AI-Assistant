@@ -65,3 +65,9 @@ test("every slash command has a usage line and help", () => {
     assert.ok(command.help.length > 0, command.name);
   }
 });
+
+test("F036: /model takes a model name and an optional effort", () => {
+  assert.deepEqual(parseSlash("/model claude-code:opus high"), { name: "model", arg: "claude-code:opus high" });
+  assert.deepEqual(parseSlash("/model"), { name: "model", arg: "" });
+  assert.ok(SLASH_COMMANDS.some((c) => c.name === "model" && c.takesArg));
+});

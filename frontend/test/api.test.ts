@@ -197,3 +197,18 @@ test("eventsUrl carries token and resume point", () => {
   const api = new Api("t k", fakeFetch(200, {}, []));
   assert.equal(api.eventsUrl("abcdef012345", 7), "/api/sessions/abcdef012345/events?token=t+k&after=7");
 });
+
+test("F036: listModels and setModel use the model routes", async () => {
+  const calls: Call[] = [];
+  const models = { models: ["qwen3:8b", "claude-code:opus"], efforts: ["low", "medium"], default: { model: "qwen3:8b", effort: null } };
+  const list = await new Api("tok", fakeFetch(200, models, calls)).listModels();
+  assert.deepEqual(list, { ok: true, data: models });
+  assert.equal(calls[0]?.url, "/api/models");
+
+  const id = "abcdef012345";
+  const set = await new Api("tok", fakeFetch(200, { ok: true, session: info }, calls)).setModel(id, "claude-code:opus", "high");
+  assert.equal(set.ok, true);
+  assert.equal(calls[1]?.url, `/api/sessions/${id}/model`);
+  assert.equal(calls[1]?.init?.method, "POST");
+  assert.deepEqual(JSON.parse(String(calls[1]?.init?.body)), { model: "claude-code:opus", effort: "high" });
+});

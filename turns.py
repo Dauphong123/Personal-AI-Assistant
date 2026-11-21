@@ -10,9 +10,9 @@ from langgraph.types import Command
 from language import detect_language, normalize, say
 from memories.scheduler import MEMORY_SCHEDULER
 
-STREAMED_NODES = {"direct", "code_tools", "tool_execute"}
+STREAMED_NODES = {"direct", "code_tools", "tool_execute", "claude_code"}
 # Only these produce text meant for the user; tool_execute streams raw tool output.
-SPOKEN_NODES = {"direct", "code_tools"}
+SPOKEN_NODES = {"direct", "code_tools", "claude_code"}
 
 CANCELLED_TOOL_OUTPUT = "ERROR: cancelled by the user."
 
@@ -208,6 +208,15 @@ class ToolActivity:
                 self._finished(piece)
             return True
 
+        if node == "claude_code" and isinstance(piece, AIMessageChunk):
+            # Claude Code runs its own tools; the bridge reports them on empty chunks.
+            tools = piece.additional_kwargs.get("claude_tools")
+            if isinstance(tools, list) and tools:
+                for tool in tools:
+                    self.report(dict(tool))
+                return True
+            return False
+
         if node == "code_tools" and isinstance(piece, AIMessageChunk):
             key = piece.id or ""
             total = self.messages[key] + piece if key in self.messages else piece
@@ -255,7 +264,7 @@ def stream_turn(
                     last_node = node
 
                 if node in SPOKEN_NODES:
-                    speech.feed(chunk, hold=node == "code_tools")
+                    speech.feed(chunk, hold=node in ("code_tools", "claude_code"))
 
             if activity is not None and activity.feed(node, chunk):
                 continue
@@ -283,8 +292,12 @@ def run_turn(
     speech_limit: int = 1200,
     notice: bool = False,
     on_tool: Callable[[dict], None] | None = None,
+    model=None,
 ) -> bool:
     """Run one user message to completion.
+
+    `model` (a model_choice.ModelChoice) picks the model for this turn; None means MODEL. It goes
+    into the run config with `approve` and `cancel`, which a Claude Code turn uses mid-node.
 
     `approve` is asked about tool calls that need approval. Raises TurnCancelled
     if `cancel` is set; the state stays consistent for the next turn.
@@ -301,6 +314,9 @@ def run_turn(
     # A turn pauses background memory saves: they share the one Ollama model with it.
     MEMORY_SCHEDULER.turn_started()
     try:
+        cancel = cancel or threading.Event()
+        configurable = {**config.get("configurable", {}), "model": model, "approve": approve, "cancel": cancel}
+        config = {**config, "configurable": configurable}
         return _run_turn(app, query, config, on_text, approve, cancel, on_speech, speech_limit, notice, on_tool)
     finally:
         MEMORY_SCHEDULER.turn_finished()

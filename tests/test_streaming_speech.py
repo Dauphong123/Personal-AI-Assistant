@@ -288,7 +288,7 @@ class ChatLoopHookTests(unittest.TestCase):
     def make_chat(self, run_turn_result):
         calls = []
 
-        def fake_run_turn(app, text, config, on_text, approve, cancel, on_speech=None, speech_limit=1200, notice=False):
+        def fake_run_turn(app, text, config, on_text, approve, cancel, on_speech=None, speech_limit=1200, notice=False, model=None):
             calls.append((on_speech, speech_limit))
             return run_turn_result
 

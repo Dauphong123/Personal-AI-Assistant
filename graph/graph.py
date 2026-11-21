@@ -4,6 +4,7 @@ from data.state import State
 
 from .node import (
     chosen_route,
+    claude_code,
     code_tools,
     direct,
     has_tools,
@@ -26,6 +27,7 @@ graph.add_node("direct", direct)
 graph.add_node("code_tools", code_tools)
 graph.add_node("tool_execute", tool_execute)
 graph.add_node("summarize", summarize)
+graph.add_node("claude_code", claude_code)
 
 # Recall and routing are independent, so they run in parallel; `routed` waits for both.
 graph.add_edge(START, "recall_memory")
@@ -33,8 +35,12 @@ graph.add_edge(START, "route")
 graph.add_edge(["recall_memory", "route"], "routed")
 
 graph.add_conditional_edges(
-    "routed", chosen_route, {"code_tools": "code_tools", "direct": "direct"}
+    "routed",
+    chosen_route,
+    {"code_tools": "code_tools", "direct": "direct", "claude_code": "claude_code"},
 )
+
+graph.add_edge("claude_code", "save_memory")
 
 graph.add_conditional_edges(
     "code_tools",

@@ -1,0 +1,9 @@
+{"type":"system","subtype":"init","session_id":"11111111-1111-5111-8111-111111111111","model":"claude-haiku-5-5"}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_1"}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Đã sửa"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" xong."}}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"text","text":"Đã sửa xong."}]}}
+not json at all
+{"type":"result","subtype":"success","is_error":false,"result":"Đã sửa xong.","session_id":"11111111-1111-5111-8111-111111111111"}

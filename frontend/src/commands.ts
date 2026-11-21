@@ -64,6 +64,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: "clear", usage: "/clear", help: "Clear this conversation", takesArg: false },
   { name: "delete", usage: "/delete", help: "Delete this session", takesArg: false },
   { name: "stop", usage: "/stop", help: "Stop the running answer", takesArg: false },
+  { name: "model", usage: "/model [name] [effort]", help: "Show or switch this session's model", takesArg: true },
   { name: "theme", usage: "/theme", help: "Switch between system, light and dark", takesArg: false },
 ];
 

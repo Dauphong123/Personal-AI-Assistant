@@ -19,6 +19,7 @@ export type Item =
   | { kind: "notice"; text: string } // what a finished background job reported
   | { kind: "assistant"; text: string; seconds?: number } // seconds: the turn's time, on its final answer
   | { kind: "note"; text: string; error: boolean }
+  | { kind: "model"; text: string } // F036: the session switched model
   | ToolItem;
 
 export interface Conversation {
@@ -91,6 +92,11 @@ export function apply(conv: Conversation, event: ChatEvent): Conversation {
       return { ...endTurn(next, event.text, true) };
     case "reset":
       return { ...next, items: [], busy: false, turnStartedAt: null, waiting: false };
+    case "model": {
+      const name = event.effort ? `${event.model} (${event.effort})` : event.model;
+      const text = `Model: ${name}.` + (event.text ? ` ${event.text}` : "");
+      return { ...next, items: [...conv.items, { kind: "model", text }] };
+    }
   }
 }
 
@@ -193,6 +199,12 @@ export function isChatEvent(value: unknown): value is ChatEvent {
         !Array.isArray(value["args"]) &&
         (value["status"] === "running" || value["status"] === "done" || value["status"] === "error") &&
         (value["text"] === undefined || typeof value["text"] === "string")
+      );
+    case "model":
+      return (
+        typeof value["model"] === "string" &&
+        (value["effort"] === null || typeof value["effort"] === "string") &&
+        typeof value["text"] === "string"
       );
     case "waiting":
     case "done":

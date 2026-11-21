@@ -8,6 +8,7 @@ reconnect resumes.
 """
 
 import logging
+import os
 import queue
 import re
 import threading
@@ -18,6 +19,7 @@ from collections import deque
 from langgraph.errors import GraphRecursionError
 
 from jobs import job_owner
+from model_choice import ModelChoice, privacy_notice
 from turns import TurnCancelled, run_turn
 
 logger = logging.getLogger(__name__)
@@ -57,9 +59,17 @@ def tool_event(activity: dict) -> dict:
 
 
 class ChatSession:
-    def __init__(self, app, run=run_turn, turn_slot: threading.Semaphore | None = None, title: str | None = None):
+    def __init__(
+        self,
+        app,
+        run=run_turn,
+        turn_slot: threading.Semaphore | None = None,
+        title: str | None = None,
+        choice: ModelChoice | None = None,
+    ):
         self.app = app
         self._run = run
+        self.choice = choice  # this session's model; None means MODEL (F036)
         self._slot = turn_slot  # shared between sessions: how many turns may run at once
         self.id = uuid.uuid4().hex[:12]
         self.created = time.time()
@@ -112,7 +122,29 @@ class ChatSession:
         with self._cond:
             last = self._events[-1]["id"] if self._events else 0
 
-        return {"id": self.id, "title": self.title, "state": state, "created": self.created, "last_event": last}
+        model = self.choice.model if self.choice else os.environ.get("MODEL", "").strip()
+        effort = self.choice.effort if self.choice else None
+
+        return {
+            "id": self.id,
+            "title": self.title,
+            "state": state,
+            "created": self.created,
+            "last_event": last,
+            "model": model,
+            "effort": effort,
+        }
+
+    def set_model(self, choice: ModelChoice) -> bool:
+        """Switch this session's model from its next turn. Refused while a turn is running."""
+        with self._cond:
+            if self._busy:
+                return False
+
+            self.choice = choice
+
+        self._emit("model", model=choice.model, effort=choice.effort, text=privacy_notice(choice) or "")
+        return True
 
     # --- events ------------------------------------------------------------------
 
@@ -267,7 +299,10 @@ class ChatSession:
     def _turn(self, text: str, notice: bool) -> tuple[str, dict]:
         """Run the turn; return the final event (type, fields)."""
         config = {"configurable": {"thread_id": self.thread_id}, "recursion_limit": 100}
-        kwargs = {"notice": True} if notice else {}
+        kwargs: dict = {"notice": True} if notice else {}
+
+        if self.choice is not None:
+            kwargs["model"] = self.choice
 
         try:
             # Background jobs started in this turn belong to this session (their notice comes here).
