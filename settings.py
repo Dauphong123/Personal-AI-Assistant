@@ -78,6 +78,29 @@ def model_retries(env=None) -> int:
     return value
 
 
+DEFAULT_TERMINAL_MEMORY_MB = 2048
+MIN_TERMINAL_MEMORY_MB = 64
+
+
+def terminal_memory_mb(env=None) -> int:
+    """Memory cap of one terminal command and everything it starts (sandbox.py, Windows); 0 = none."""
+    env = os.environ if env is None else env
+    raw = (env.get("TERMINAL_MEMORY_MB") or "").strip()
+
+    if not raw:
+        return DEFAULT_TERMINAL_MEMORY_MB
+
+    try:
+        value = int(raw)
+    except ValueError:
+        value = -1
+
+    if value != 0 and value < MIN_TERMINAL_MEMORY_MB:
+        raise ValueError(f"TERMINAL_MEMORY_MB must be 0 (no cap) or at least {MIN_TERMINAL_MEMORY_MB}, got {raw!r}")
+
+    return value
+
+
 _CLAUDE_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*")
 
 
@@ -121,6 +144,7 @@ def check_settings(env=None) -> list[str]:
         lambda: memory_idle_seconds(env),
         lambda: model_retries(env),
         lambda: claude_fallback_model(env),
+        lambda: terminal_memory_mb(env),
         lambda: parse_level(env.get("LOG_LEVEL")),
         lambda: _check_project_root(env),
         *(lambda name=name: _check_flag(env, name) for name in FLAGS if name != "LLM_REASONING"),

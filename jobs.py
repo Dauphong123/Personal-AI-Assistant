@@ -14,6 +14,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sandbox import ProcessBox, child_env
+
 logger = logging.getLogger(__name__)
 
 JOB_TIMEOUT = 600  # seconds before a job is killed
@@ -112,6 +114,12 @@ class Job:
     detached: bool = False  # the turn that started it has moved on
     done: threading.Event = field(default_factory=threading.Event)
     owner: str | None = None  # JOB_OWNER when it was started
+    box: ProcessBox | None = None  # sandbox.py: memory cap, reaches every process it started
+
+    def kill(self) -> None:
+        kill_tree(self.process)
+        if self.box is not None:
+            self.box.kill()
 
     def report(self) -> str:
         """Describe the job the way the model should see it."""
@@ -170,9 +178,13 @@ class JobManager:
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=child_env(),
             **kwargs,
         )
-        job = Job(id=next(self._ids), command=command, process=process, timeout=timeout, owner=JOB_OWNER.get())
+        from settings import terminal_memory_mb
+
+        box = ProcessBox(process.pid, terminal_memory_mb())
+        job = Job(id=next(self._ids), command=command, process=process, timeout=timeout, owner=JOB_OWNER.get(), box=box)
 
         with self._lock:
             self._jobs[job.id] = job
@@ -194,12 +206,12 @@ class JobManager:
         try:
             job.process.wait(timeout=job.timeout)
         except subprocess.TimeoutExpired:
-            kill_tree(job.process)
+            job.kill()
             job.process.wait()
             status = TIMED_OUT
         except Exception:
             logger.exception("Job %s watcher failed", job.id)
-            kill_tree(job.process)
+            job.kill()
             captured["err"] = ["internal error while running the job"]
 
         for reader in readers:
@@ -262,15 +274,21 @@ class JobManager:
         return list(self._jobs.values())
 
     def close(self) -> None:
-        """Kill every job that is still running (they must not outlive the app)."""
+        """Kill every job that is still running, and what finished jobs left running (they must
+        not outlive the app)."""
         with self._lock:
-            running = [job for job in self._jobs.values() if job.status == RUNNING]
+            jobs = list(self._jobs.values())
+            running = [job for job in jobs if job.status == RUNNING]
 
             for job in running:
                 job.status = CANCELLED
 
         for job in running:
-            kill_tree(job.process)
+            job.kill()
+
+        for job in jobs:
+            if job.box is not None:
+                job.box.close()
 
     def cancel(self, job_id: int) -> str:
         job = self.get(job_id)
@@ -284,5 +302,5 @@ class JobManager:
 
             job.status = CANCELLED
 
-        kill_tree(job.process)
+        job.kill()
         return f"Cancelled job {job_id}."

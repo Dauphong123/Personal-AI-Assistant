@@ -1767,8 +1767,8 @@
         {"n": 1, "title": "Retry transient Ollama errors before any token streamed (model_retry.py, MODEL_RETRIES)", "status": "done", "done": "2026-11-21", "tests": ["tests/test_model_retry.py"], "commit": null},
         {"n": 2, "title": "Fall back to MODEL when a picked Ollama model fails", "status": "done", "done": "2026-11-21", "tests": ["tests/test_model_switching.py::FallbackTests"], "commit": null},
         {"n": 3, "title": "Claude Code --fallback-model from CLAUDE_FALLBACK_MODEL", "status": "done", "done": "2026-11-21", "tests": ["tests/test_claude_bridge.py::CommandTests", "tests/test_claude_node.py::ClaudeNodeTests::test_fallback_model_comes_from_the_setting"], "commit": null},
-        {"n": 4, "title": "Sandbox terminal jobs: scrub secret env vars, Windows Job Object memory cap + kill tree", "status": "in_progress", "tests": ["tests/test_jobs.py::SandboxTests"], "commit": null},
-        {"n": 5, "title": "Docs", "status": "todo", "tests": [], "commit": null}
+        {"n": 4, "title": "Sandbox terminal jobs: scrub secret env vars, Windows Job Object memory cap + kill tree", "status": "done", "done": "2026-11-21", "tests": ["tests/test_sandbox.py"], "commit": null},
+        {"n": 5, "title": "Docs", "status": "in_progress", "tests": [], "commit": null}
       ],
       "notes": "Plan approved 2026-11-21 (user: \"ok all, go\"). Claude Code has no sandbox on native Windows [assumed], so sandbox covers the local terminal tool only. User request (claude-mem S46): \"Add retry, fallback, and sandbox to the API\". Scope chosen 2026-11-21: model calls (Ollama and the Claude Code bridge), not the web backend HTTP API. PR #14 (F036) squash-merged into main first (a8c84b5) at the user's choice."
     }
