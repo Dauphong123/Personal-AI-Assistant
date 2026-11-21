@@ -129,6 +129,8 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(value("--effort"), "medium")
         self.assertEqual(value("--setting-sources"), "project,local")
         self.assertEqual(value("--permission-prompts"), "host")
+        # Without it Claude Code denies edits itself ("permission_denied", source config) and never asks us.
+        self.assertEqual(value("--permission-prompt-tool"), "stdio")
         self.assertEqual(value("--input-format"), "stream-json")
         self.assertEqual(value("--output-format"), "stream-json")
         self.assertIn("--strict-mcp-config", command)
@@ -177,6 +179,25 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(parse_line("not json"), [])
         self.assertEqual(parse_line("[1, 2]"), [])
         self.assertEqual(parse_line('{"type": "unknown"}'), [])
+
+    def test_system_lines_with_a_text_message_are_skipped(self):
+        line = json.dumps({"type": "system", "subtype": "permission_denied", "tool_name": "Write", "message": "not granted"})
+        self.assertEqual(parse_line(line), [])
+
+    def test_real_claude_code_run(self):
+        # Trimmed capture of claude 2.1.330 (haiku): asked to write scratch.txt, the host denied it.
+        events = self.parse("real_write_denied.jsonl")
+        asks = [e for e in events if isinstance(e, Permission)]
+        self.assertEqual([(a.tool, a.args) for a in asks], [("Write", {"file_path": r"D:\app\Langchain\scratch.txt", "content": "hello"})])
+        starts = [e for e in events if isinstance(e, ToolStart)]
+        results = [e for e in events if isinstance(e, ToolResult)]
+        self.assertEqual([s.name for s in starts], ["Write"])
+        self.assertEqual([(r.id, r.is_error) for r in results], [(starts[0].id, True)])
+        text = "".join(e.text for e in events if isinstance(e, Text))
+        self.assertTrue(text.startswith("I didn't create `scratch.txt`"))
+        self.assertIsInstance(events[-1], Done)
+        self.assertFalse(events[-1].is_error)
+        self.assertEqual(events[-1].text, text)
 
     def test_tool_result_with_block_content(self):
         block = {"type": "tool_result", "tool_use_id": "t", "content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]}

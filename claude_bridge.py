@@ -2,8 +2,8 @@
 so the user's own Claude login pays for it and Claude Code's own context handling, thinking and tools
 apply. File edits and shell commands are asked about through our `approve` callback.
 
-The stream-json message shapes follow the Claude Agent SDK protocol; they are assumed until checked
-against a real run (tests/fixtures/claude_stream)."""
+The stream-json message shapes follow the Claude Agent SDK protocol, checked against a real run of
+claude 2.1.330 (tests/fixtures/claude_stream/real_write_denied.jsonl)."""
 
 import json
 import logging
@@ -86,8 +86,10 @@ def claude_command(alias: str, effort: str, session_id: str, resume: bool, exe: 
         # Only the project's settings: the user's global hooks, plugins and MCP servers stay out.
         "--setting-sources", "project,local",
         "--strict-mcp-config",
-        # Permission prompts come to us on stdout; we answer on stdin.
+        # Permission prompts come to us on stdout as can_use_tool requests; we answer on stdin.
+        # Without --permission-prompt-tool stdio, Claude Code denies edits itself and never asks.
         "--permission-prompts", "host",
+        "--permission-prompt-tool", "stdio",
         "--resume" if resume else "--session-id", session_id,
     ]
 
@@ -129,7 +131,9 @@ def parse_line(line: str) -> list[Event]:
     if kind == "result":
         return [Done(str(message.get("result") or ""), bool(message.get("is_error")))]
 
-    blocks = (message.get("message") or {}).get("content")
+    # System lines (permission_denied, for example) carry `message` as plain text.
+    body = message.get("message")
+    blocks = body.get("content") if isinstance(body, dict) else None
     if not isinstance(blocks, list):
         return []
 
