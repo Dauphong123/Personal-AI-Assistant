@@ -1770,7 +1770,63 @@
         {"n": 4, "title": "Sandbox terminal jobs: scrub secret env vars, Windows Job Object memory cap + kill tree", "status": "done", "done": "2026-11-21", "tests": ["tests/test_sandbox.py"], "commit": "fe59df1"},
         {"n": 5, "title": "Docs", "status": "done", "done": "2026-11-21", "tests": [], "commit": null}
       ],
-      "notes": "Plan approved 2026-11-21 (user: \"ok all, go\"). Claude Code has no sandbox on native Windows [assumed], so sandbox covers the local terminal tool only. User request (claude-mem S46): \"Add retry, fallback, and sandbox to the API\". Scope chosen 2026-11-21: model calls (Ollama and the Claude Code bridge), not the web backend HTTP API. PR #14 (F036) squash-merged into main first (a8c84b5) at the user's choice."
+      "notes": "Plan approved 2026-11-21 (user: \"ok all, go\"). Claude Code has no sandbox on native Windows [assumed], so sandbox covers the local terminal tool only. User request (claude-mem S46): \"Add retry, fallback, and sandbox to the API\". Scope chosen 2026-11-21: model calls (Ollama and the Claude Code bridge), not the web backend HTTP API. PR #14 (F036) squash-merged into main first (a8c84b5) at the user's choice. Merged to main as PR #15 (e98b646)."
+    },
+    {
+      "id": "F039",
+      "name": "Job notice module (conversation.py)",
+      "description": "One module creates user and job-notice messages and answers questions about them, replacing the raw additional_kwargs[\"notice\"] checks spread over turns, graph/node.py and memories/.",
+      "status": "open",
+      "created": "2026-11-21",
+      "completed": null,
+      "branch": null,
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [],
+      "notes": "From the 2026-11-21 architecture review (candidate 4), decisions settled with the user in a grilling round (all 'yes'). Refactor only: behavior unchanged, tests prove it. Root module conversation.py with user_message, notice_message, is_notice, latest_turn_start, visible_talk; replaces the readers at turns.py:330 (writer), graph/node.py:240/:449/:523, memories/manager.py:70, memories/extractor.py:143 and _last_human_index (node.py:225). A notice still counts as a turn start (own tool-call budget, summarize may split there) and the module states that rule. One table-driven test of notice semantics. GLOSSARY.md: 'Job notice'. Order: F039 -> F040 -> F041 -> F042."
+    },
+    {
+      "id": "F040",
+      "name": "Turn runner shared by the CLI and the web session",
+      "description": "turn_runner.TurnRunner owns the worker thread, stop, approval handshake with request ids, queued job notices, optional slot and owner, and a typed outcome; ChatLoop and ChatSession become its adapters.",
+      "status": "open",
+      "created": "2026-11-21",
+      "completed": null,
+      "branch": null,
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [],
+      "notes": "Architecture review candidate 1 (top pick). Duplication found: approval wait chat_loop.py:226-250 vs backend/session.py:245-267; same 'too many steps' text chat_loop.py:292 / session.py:324; notices chat_loop.py:143-160 vs session.py:186-200,329-343; turn config main.py:66 vs session.py:301. Decisions: refactor only; outcome typed (done / stopped / too many steps / error + detail), each adapter keeps its own wording; CLI gains approval request ids (internal, stale voice 'yes' refused); speech stays in the CLI adapter, passed through to run_turn; optional slot (shared semaphore) and owner, web passes both, CLI neither. Tests for approval/cancel/notices written once against the runner with the real compiled graph and stub chains (today all 33 test_backend_session tests use a scripted run). GLOSSARY.md: 'Turn runner'."
+    },
+    {
+      "id": "F041",
+      "name": "Build dependencies at the entry points, not at import",
+      "description": "dependency.py becomes a build_dependencies() factory called by main.py, backend/__main__.py and tests; chains, tools and the graph get their parts handed in; tests/stubs.py is deleted.",
+      "status": "open",
+      "created": "2026-11-21",
+      "completed": null,
+      "branch": null,
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [],
+      "notes": "Architecture review candidate 2. Breaking interface change approved by the user (no leftover `dependency` global). Today only tools.py:478 (rag), chains/* (model) and graph/node.py:141 (tokenizer) import it. Decisions: module-level direct/code/router/summerize chains removed, prompts stay in chains/*, every model incl. MODEL built through model_chains.chains_for (plus small router/summary builders); tools.build_tools(rag) returns TOOLS + TOOL_BY_NAME; build_graph(deps) binds parts into nodes at compile time, `configurable` keeps per-turn data only; fit_to_context and the summarize trigger take an injected count(messages) -> int, one opt-in test with the real Qwen tokenizer when cached; the 36 patch.object(node, ...) tests pass fakes through build_graph. Done when tests/stubs.py is deleted. Refactor only. Unblocks F042."
+    },
+    {
+      "id": "F042",
+      "name": "Split graph/node.py into step modules",
+      "description": "graph/context.py, graph/model_step.py, graph/tool_step.py and graph/claude_step.py take over from graph/node.py, which keeps memory nodes, routers, summarize and glue; no side effects at import.",
+      "status": "open",
+      "created": "2026-11-21",
+      "completed": null,
+      "branch": null,
+      "commit": null,
+      "files": [],
+      "tests": [],
+      "steps": [],
+      "notes": "Architecture review candidate 3; needs F041 first. node.py (619 lines) holds context budget 37-230, memory 233-263, model choice + fallback 266-303, tools 321-397, routers 400-486, Claude 497-569, summarize 572-618. Split: context.py (budget, fit_to_context, with_memory), model_step.py (choice, retry, fallback, direct/code_tools), tool_step.py (prepare, 30-call limit, approval, dispatch), claude_step.py (claude_prompt, claude_code). MESSAGE_BUDGET computed in build_graph and passed in (same value: every Ollama model shares LLM_NUM_CTX, so the 'budget follows the model' gap is not real); the import-time budget warning and timing-logger level move into build_graph. Glue (routed, chosen_route, has_tools) stays small. Refactor only."
     }
   ]
 }
