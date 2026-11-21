@@ -13,7 +13,7 @@ from langchain_core.messages import (
     RemoveMessage,
     ToolMessage,
 )
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import RunnableConfig, ensure_config
 from langgraph.types import interrupt
 
 import tool_args
@@ -27,8 +27,9 @@ from memories.manager import memory_query
 from memories.scheduler import MEMORY_SCHEDULER
 from claude_bridge import ClaudeCodeChat, ClaudeCodeError
 from model_chains import chains_for
+from model_retry import invoke_with_retry, is_model_error
 from model_choice import DEFAULT_EFFORT, ModelChoice
-from settings import max_history_tokens
+from settings import claude_fallback_model, max_history_tokens
 from tools import NEEDS_APPROVAL, PROJECT_ROOT, TOOL_BY_NAME
 
 logger = logging.getLogger(__name__)
@@ -278,12 +279,36 @@ def _chains(config: RunnableConfig | None) -> tuple:
     return chains_for(choice.model)
 
 
+def _answer(state: State, config: RunnableConfig | None, which: int) -> list:
+    """The turn model's reply (which: 0 direct, 1 code). A picked Ollama model that fails (gone,
+    out of memory, Ollama errors after the retries) hands the turn to MODEL, with a note first:
+    the reply stays last, so its tool calls still run."""
+    chain = _chains(config)[which]
+    main = (direct_chain, code_chain)[which]
+    inputs = {"messages": _model_messages(state)}
+
+    try:
+        return [invoke_with_retry(chain, inputs, config)]
+    except Exception as exc:
+        cancel = ensure_config(config).get("configurable", {}).get("cancel")
+        if chain is main or not is_model_error(exc) or (cancel is not None and cancel.is_set()):
+            raise
+        failed, error = turn_model(config), exc
+
+    name = failed.model if failed else "the chosen model"
+    fallback = os.environ.get("MODEL", "").strip()
+    logger.warning("%s failed (%s); %s answers this turn", name, error, fallback)
+    response = invoke_with_retry(main, inputs, config)
+    note = AIMessage(content=f"\n({name} could not answer: {error}. {fallback} answered instead.)\n")
+    return [note, response]
+
+
 @timed
 def code_tools(state: State, config: RunnableConfig | None = None):
-    response = _chains(config)[1].invoke({"messages": _model_messages(state)})
-    _log_reply("code_tools", response)
+    messages = _answer(state, config, 1)
+    _log_reply("code_tools", messages[-1])
 
-    return {"messages": [response]}
+    return {"messages": messages}
 
 
 def has_tools(state: State):
@@ -431,8 +456,8 @@ def router(state: State):
         for m in messages[-(ROUTER_HISTORY_MESSAGES + 1) : -1]
     )
 
-    response: Router = router_chain.invoke(  # pyright: ignore
-        {"question": str(messages[-1].content), "history": history}
+    response: Router = invoke_with_retry(  # pyright: ignore
+        router_chain, {"question": str(messages[-1].content), "history": history}
     )
 
     if response.destination == "code":
@@ -463,10 +488,10 @@ def routed(state: State):
 
 @timed
 def direct(state: State, config: RunnableConfig | None = None):
-    response = _chains(config)[0].invoke({"messages": _model_messages(state)})
-    _log_reply("direct", response)
+    messages = _answer(state, config, 0)
+    _log_reply("direct", messages[-1])
 
-    return {"messages": [response]}
+    return {"messages": messages}
 
 
 RECAP_MESSAGES = 12
@@ -529,6 +554,7 @@ def claude_code(state: State, config: RunnableConfig):
         resume=resumed,
         approve=configurable.get("approve") or (lambda request: False),
         cancel=configurable.get("cancel") or threading.Event(),
+        fallback=claude_fallback_model(),
     )
 
     try:
@@ -581,7 +607,7 @@ def summarize(state: State):
         return {}
 
     old, recent = messages[:split], messages[split:]
-    summary = summerize_chain.invoke({"messages": _as_text(old)})
+    summary = invoke_with_retry(summerize_chain, {"messages": _as_text(old)})
 
     return {
         # New messages are appended after removals, so the recent turn is re-added

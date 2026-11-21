@@ -73,7 +73,13 @@ Event = Text | ToolStart | ToolResult | Permission | Done
 Approve = Callable[[dict], bool]
 
 
-def claude_command(alias: str, effort: str, session_id: str, resume: bool, exe: str = "claude") -> list[str]:
+def claude_command(
+    alias: str, effort: str, session_id: str, resume: bool, exe: str = "claude", fallback: str = ""
+) -> list[str]:
+    # Claude Code switches to these itself when the main model is busy or unavailable (F038);
+    # the main model is tried again each turn. The main model itself is no fallback.
+    others = ",".join(m for m in fallback.split(",") if m and m != alias)
+    extra = ["--fallback-model", others] if others else []
     return [
         exe,
         "-p",
@@ -91,6 +97,7 @@ def claude_command(alias: str, effort: str, session_id: str, resume: bool, exe: 
         "--permission-prompts", "host",
         "--permission-prompt-tool", "stdio",
         "--resume" if resume else "--session-id", session_id,
+        *extra,
     ]
 
 
@@ -295,6 +302,7 @@ class ClaudeCodeChat(BaseChatModel):
     resume: bool
     approve: Approve
     cancel: threading.Event
+    fallback: str = ""
     runner: Callable[..., Iterator[Event]] = run_claude
 
     model_config = {"arbitrary_types_allowed": True}
@@ -316,7 +324,7 @@ class ClaudeCodeChat(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
-        command = claude_command(self.alias, self.effort, self.session_id, self.resume)
+        command = claude_command(self.alias, self.effort, self.session_id, self.resume, fallback=self.fallback)
         tools: dict[str, dict] = {}
         sent = False
 

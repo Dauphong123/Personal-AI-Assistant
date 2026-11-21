@@ -7,6 +7,7 @@ Voice settings are checked separately by `voice.config.VoiceConfig.from_env` whe
 
 import math
 import os
+import re
 from pathlib import Path
 
 from llm_options import FALSE, TRUE, model_name, ollama_options
@@ -54,6 +55,48 @@ def memory_idle_seconds(env=None) -> float:
     return value
 
 
+DEFAULT_MODEL_RETRIES = 2
+MAX_MODEL_RETRIES = 10
+
+
+def model_retries(env=None) -> int:
+    """How often a model call is tried again after a short Ollama failure (model_retry.py)."""
+    env = os.environ if env is None else env
+    raw = (env.get("MODEL_RETRIES") or "").strip()
+
+    if not raw:
+        return DEFAULT_MODEL_RETRIES
+
+    try:
+        value = int(raw)
+    except ValueError:
+        value = -1
+
+    if not 0 <= value <= MAX_MODEL_RETRIES:
+        raise ValueError(f"MODEL_RETRIES must be a whole number from 0 to {MAX_MODEL_RETRIES}, got {raw!r}")
+
+    return value
+
+
+_CLAUDE_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\[\]-]*")
+
+
+def claude_fallback_model(env=None) -> str:
+    """Claude Code's --fallback-model list (comma-separated, in order); empty = none."""
+    env = os.environ if env is None else env
+    raw = (env.get("CLAUDE_FALLBACK_MODEL") or "").strip()
+
+    if not raw:
+        return ""
+
+    names = [name.strip() for name in raw.split(",")]
+
+    if not all(_CLAUDE_MODEL.fullmatch(name) for name in names):
+        raise ValueError(f"CLAUDE_FALLBACK_MODEL must be Claude model names separated by commas, e.g. haiku, got {raw!r}")
+
+    return ",".join(names)
+
+
 def _check_flag(env, name: str) -> None:
     raw = (env.get(name) or "").strip().lower()
 
@@ -76,6 +119,8 @@ def check_settings(env=None) -> list[str]:
         lambda: ollama_options(env),
         lambda: max_history_tokens(env),
         lambda: memory_idle_seconds(env),
+        lambda: model_retries(env),
+        lambda: claude_fallback_model(env),
         lambda: parse_level(env.get("LOG_LEVEL")),
         lambda: _check_project_root(env),
         *(lambda name=name: _check_flag(env, name) for name in FLAGS if name != "LLM_REASONING"),
