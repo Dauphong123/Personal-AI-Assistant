@@ -1776,15 +1776,38 @@
       "id": "F039",
       "name": "Job notice module (conversation.py)",
       "description": "One module creates user and job-notice messages and answers questions about them, replacing the raw additional_kwargs[\"notice\"] checks spread over turns, graph/node.py and memories/.",
-      "status": "open",
+      "status": "in_progress",
       "created": "2026-11-21",
       "completed": null,
-      "branch": null,
+      "branch": "feature/F039-conversation-module",
       "commit": null,
       "files": [],
       "tests": [],
-      "steps": [],
-      "notes": "From the 2026-11-21 architecture review (candidate 4), decisions settled with the user in a grilling round (all 'yes'). Refactor only: behavior unchanged, tests prove it. Root module conversation.py with user_message, notice_message, is_notice, latest_turn_start, visible_talk; replaces the readers at turns.py:330 (writer), graph/node.py:240/:449/:523, memories/manager.py:70, memories/extractor.py:143 and _last_human_index (node.py:225). A notice still counts as a turn start (own tool-call budget, summarize may split there) and the module states that rule. One table-driven test of notice semantics. GLOSSARY.md: 'Job notice'. Order: F039 -> F040 -> F041 -> F042."
+      "steps": [
+        {
+          "n": 1,
+          "title": "conversation.py: user_message, notice_message, is_notice, latest_turn_start, visible_talk + table-driven test",
+          "status": "done",
+          "done": "2026-11-21",
+          "tests": ["tests/test_conversation.py::NoticeSemanticsTests"],
+          "commit": null
+        },
+        {
+          "n": 2,
+          "title": "Readers use it: turns.py, graph/node.py (recall_memory, router, claude_prompt, _last_human_index), memories/manager.py, memories/extractor.py",
+          "status": "todo",
+          "tests": ["full suite", "tests/test_conversation.py::NoRawFlagTests"],
+          "commit": null
+        },
+        {
+          "n": 3,
+          "title": "Docs: GLOSSARY.md 'Job notice', CLAUDE.md Hardening",
+          "status": "todo",
+          "tests": [],
+          "commit": null
+        }
+      ],
+      "notes": "Branched from docs/architecture-plan (db09dda, holds this entry and GLOSSARY.md; not yet in main). From the 2026-11-21 architecture review (candidate 4), decisions settled with the user in a grilling round (all 'yes'). Refactor only: behavior unchanged, tests prove it. Root module conversation.py with user_message, notice_message, is_notice, latest_turn_start, visible_talk; replaces the readers at turns.py:330 (writer), graph/node.py:240/:449/:523, memories/manager.py:70, memories/extractor.py:143 and _last_human_index (node.py:225). A notice still counts as a turn start (own tool-call budget, summarize may split there) and the module states that rule. One table-driven test of notice semantics. GLOSSARY.md: 'Job notice'. Order: F039 -> F040 -> F041 -> F042."
     },
     {
       "id": "F040",
