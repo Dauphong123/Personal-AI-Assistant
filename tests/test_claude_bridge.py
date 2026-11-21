@@ -143,6 +143,27 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(resumed[resumed.index("--resume") + 1], "U")
         self.assertNotIn("--session-id", resumed)
 
+    def test_fallback_model(self):
+        # F038 step 3: Claude Code itself switches when the main model is busy or unavailable.
+        command = claude_command("sonnet", "medium", "U", False, fallback="haiku,opus")
+        self.assertEqual(command[command.index("--fallback-model") + 1], "haiku,opus")
+
+        self.assertNotIn("--fallback-model", claude_command("sonnet", "medium", "U", False))
+        # a fallback equal to the main model is left out
+        self.assertNotIn("--fallback-model", claude_command("haiku", "medium", "U", False, fallback="haiku"))
+        same_dropped = claude_command("haiku", "medium", "U", False, fallback="haiku,sonnet")
+        self.assertEqual(same_dropped[same_dropped.index("--fallback-model") + 1], "sonnet")
+
+    def test_fallback_setting(self):
+        from settings import check_settings, claude_fallback_model
+
+        self.assertEqual(claude_fallback_model({}), "")
+        self.assertEqual(claude_fallback_model({"CLAUDE_FALLBACK_MODEL": " haiku, sonnet "}), "haiku,sonnet")
+        for raw in ("haiku;rm -rf", "--model", "a,,b"):
+            with self.subTest(raw=raw):
+                problems = check_settings({"MODEL": "qwen3:8b", "CLAUDE_FALLBACK_MODEL": raw})
+                self.assertTrue(any("CLAUDE_FALLBACK_MODEL" in p for p in problems), problems)
+
     def test_approval_tools(self):
         self.assertEqual(APPROVAL_TOOLS, frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}))
 

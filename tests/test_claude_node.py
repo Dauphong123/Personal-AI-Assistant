@@ -88,6 +88,17 @@ class ClaudeNodeTests(unittest.TestCase):
         self.assertEqual(self.fake.flag(0, "--effort"), "high")
         self.assertEqual(self.fake.runs[0]["cwd"], str(node.PROJECT_ROOT))
 
+    def test_fallback_model_comes_from_the_setting(self):
+        # F038 step 3
+        self.fake.scripts += [[Done("a", False)], [Done("b", False)]]
+        with patch.dict("os.environ", {"CLAUDE_FALLBACK_MODEL": "haiku"}):
+            self.turn("first question here")
+        with patch.dict("os.environ", {"CLAUDE_FALLBACK_MODEL": ""}):
+            self.turn("second question here")
+
+        self.assertEqual(self.fake.flag(0, "--fallback-model"), "haiku")
+        self.assertIsNone(self.fake.flag(1, "--fallback-model"))
+
     def test_one_claude_session_per_thread(self):
         self.fake.scripts += [[Text("a"), Done("a", False)], [Text("b"), Done("b", False)], [Text("c"), Done("c", False)]]
         self.turn("first question here")

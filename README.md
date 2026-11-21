@@ -163,6 +163,12 @@ Allow? [y/N]:
 
 `y` or `yes` approves. Anything else declines, and the agent is told the user declined. Nothing runs before approval.
 
+An approved `terminal` command runs in a small box: it does not see environment variables that look like secrets (tokens, keys, passwords, `DB_URL`), and on Windows it and everything it starts share a memory cap (`TERMINAL_MEMORY_MB`, default 2048) and end when you cancel the job or close the app. It still runs as you, in the project folder, so approve only commands you understand.
+
+### When a model fails
+
+A short Ollama failure (not running yet, busy, a 5xx answer) is tried again up to `MODEL_RETRIES` times (default 2), but never once text has appeared. If a model you picked with `/model` still fails, the main `MODEL` answers that turn and a note says so. For Claude models, `CLAUDE_FALLBACK_MODEL` (e.g. `haiku`) lets Claude Code switch when the picked model is busy or unavailable.
+
 ### While the agent is working
 
 You can keep typing. The prompt stays live.
